@@ -19,7 +19,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
 
   const { data: termin } = await supabase
     .from("seminartermine")
-    .select("*, seminartypen(name), veranstaltungsorte(name), trainer(name)")
+    .select("*, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), trainer(name)")
     .eq("id", id)
     .single();
 
@@ -55,7 +55,10 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
           <> · Vorabendanreise: {formatDatum(termin.vorabend_anreise_datum)}{termin.vorabend_anreise_uhrzeit ? ", " + formatZeit(termin.vorabend_anreise_uhrzeit) : ""}</>
         )}
         <br />
-        {termin.veranstaltungsorte?.name || "—"} · {termin.format} · Trainer: {termin.trainer?.name || "—"} · Kapazität {termin.kapazitaet} (+{termin.ueberbuchungspuffer} intern) · Status {termin.status}
+        {termin.veranstaltungsorte?.name || "—"}{termin.veranstaltungsorte?.ort ? `, ${termin.veranstaltungsorte.ort}` : ""}{termin.veranstaltungsorte?.nahe_grossstadt ? ` (bei ${termin.veranstaltungsorte.nahe_grossstadt})` : ""} · {termin.format} · Trainer: {termin.trainer?.name || "—"} · Kapazität {termin.kapazitaet} (+{termin.ueberbuchungspuffer} intern) · Status {termin.status}
+        {(termin.zusatzteilnehmer_preis || termin.zusatzteilnehmer_rabatt_prozent) && (
+          <><br />Zusätzlicher Teilnehmer: {termin.zusatzteilnehmer_preis ? formatEUR(Number(termin.zusatzteilnehmer_preis)) : `${termin.zusatzteilnehmer_rabatt_prozent}% Rabatt`}</>
+        )}
       </p>
 
       <div style={card}>
@@ -111,7 +114,9 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
               <select style={inputStyle} name="veranstaltungsort_id" defaultValue={termin.veranstaltungsort_id || ""}>
                 <option value="">—</option>
                 {orte?.map((o) => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
+                  <option key={o.id} value={o.id}>
+                    {o.name}{o.ort ? ` – ${o.ort}` : ""}{o.nahe_grossstadt ? ` (bei ${o.nahe_grossstadt})` : ""}
+                  </option>
                 ))}
               </select>
             </div>
@@ -144,6 +149,23 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             <div>
               <label style={labelStyle}>Angezeigte Restplätze (manuell, Urgency)</label>
               <input style={inputStyle} name="angezeigte_restplaetze" type="number" defaultValue={termin.angezeigte_restplaetze ?? ""} placeholder="leer = kein Hinweis" />
+            </div>
+          </div>
+
+          <div style={card}>
+            <strong>Zusätzlicher Teilnehmer (Gruppenpreis)</strong>
+            <p style={{ color: "#666", fontSize: "0.85rem", margin: "0.4rem 0 0.75rem" }}>
+              Preis für die 2. (und weitere) Person derselben Firma. Entweder Festpreis ODER Rabatt in % angeben, nicht beides.
+            </p>
+            <div style={row}>
+              <div>
+                <label style={labelStyle}>Festpreis pro weiterer Person (€)</label>
+                <input style={inputStyle} name="zusatzteilnehmer_preis" type="number" step="0.01" defaultValue={termin.zusatzteilnehmer_preis ?? ""} placeholder="z. B. 990" />
+              </div>
+              <div>
+                <label style={labelStyle}>oder Rabatt (%)</label>
+                <input style={inputStyle} name="zusatzteilnehmer_rabatt_prozent" type="number" step="0.1" defaultValue={termin.zusatzteilnehmer_rabatt_prozent ?? ""} placeholder="z. B. 15" />
+              </div>
             </div>
           </div>
 

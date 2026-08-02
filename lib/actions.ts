@@ -45,6 +45,19 @@ export async function createTrainer(formData: FormData) {
   redirect("/trainer");
 }
 
+export async function createVeranstaltungsort(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("veranstaltungsorte").insert({
+    name: String(formData.get("name")),
+    adresse: formData.get("adresse") || null,
+    ort: formData.get("ort") || null,
+    nahe_grossstadt: formData.get("nahe_grossstadt") || null,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/orte");
+  redirect("/orte");
+}
+
 export async function createSeminartermin(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const datumStart = String(formData.get("datum_start"));
@@ -68,6 +81,12 @@ export async function createSeminartermin(formData: FormData) {
       ueberbuchungspuffer: Number(formData.get("ueberbuchungspuffer") || 3),
       angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
         ? Number(formData.get("angezeigte_restplaetze"))
+        : null,
+      zusatzteilnehmer_preis: formData.get("zusatzteilnehmer_preis")
+        ? Number(formData.get("zusatzteilnehmer_preis"))
+        : null,
+      zusatzteilnehmer_rabatt_prozent: formData.get("zusatzteilnehmer_rabatt_prozent")
+        ? Number(formData.get("zusatzteilnehmer_rabatt_prozent"))
         : null,
     })
     .select()
@@ -112,6 +131,12 @@ export async function updateSeminartermin(formData: FormData) {
       angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
         ? Number(formData.get("angezeigte_restplaetze"))
         : null,
+      zusatzteilnehmer_preis: formData.get("zusatzteilnehmer_preis")
+        ? Number(formData.get("zusatzteilnehmer_preis"))
+        : null,
+      zusatzteilnehmer_rabatt_prozent: formData.get("zusatzteilnehmer_rabatt_prozent")
+        ? Number(formData.get("zusatzteilnehmer_rabatt_prozent"))
+        : null,
     })
     .eq("id", id);
   if (error) throw new Error(error.message);
@@ -124,14 +149,17 @@ export async function updateSeminartermin(formData: FormData) {
 export async function createBuchung(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const organisationId = formData.get("organisation_id") || null;
-  const teilnehmerId = String(formData.get("teilnehmer_id"));
   const modus = String(formData.get("modus") || "seminar");
+
+  // Bei mehreren Teilnehmern (Gruppenbuchung) ist der erste Teilnehmer auch
+  // Rechnungsempfänger, falls keine Organisation angegeben ist.
+  const ersterTeilnehmerId = String(formData.get("teilnehmer_id_0") || formData.get("teilnehmer_id"));
 
   const { data: buchung, error } = await supabase
     .from("buchungen")
     .insert({
       organisation_id: organisationId || null,
-      rechnungsempfaenger_teilnehmer_id: organisationId ? null : teilnehmerId,
+      rechnungsempfaenger_teilnehmer_id: organisationId ? null : ersterTeilnehmerId,
       status: "bestaetigt",
     })
     .select()
@@ -139,6 +167,7 @@ export async function createBuchung(formData: FormData) {
   if (error) throw new Error(error.message);
 
   if (modus === "individuell") {
+    const teilnehmerId = String(formData.get("teilnehmer_id"));
     const listenpreis = Number(formData.get("il_listenpreis") || 0);
     const rabatt = Number(formData.get("il_rabatt_betrag") || 0);
     const { error: posError } = await supabase.from("buchungspositionen").insert({
@@ -154,15 +183,34 @@ export async function createBuchung(formData: FormData) {
     if (posError) throw new Error(posError.message);
   } else {
     const seminarterminId = String(formData.get("seminartermin_id"));
-    const listenpreis = Number(formData.get("listenpreis") || 0);
-    const rabatt = Number(formData.get("rabatt_betrag") || 0);
-    const { error: posError } = await supabase.from("buchungspositionen").insert({
-      buchung_id: buchung.id,
-      teilnehmer_id: teilnehmerId,
-      seminartermin_id: seminarterminId,
-      listenpreis,
-      rabatt_betrag: rabatt,
-    });
+
+    // Gesammelte Teilnehmerzeilen einlesen (teilnehmer_id_0, listenpreis_0, rabatt_betrag_0, ...)
+    const zeilen: { teilnehmerId: string; listenpreis: number; rabatt: number }[] = [];
+    let i = 0;
+    while (formData.has(`teilnehmer_id_${i}`)) {
+      const tId = String(formData.get(`teilnehmer_id_${i}`));
+      const listenpreis = Number(formData.get(`listenpreis_${i}`) || 0);
+      const rabatt = Number(formData.get(`rabatt_betrag_${i}`) || 0);
+      zeilen.push({ teilnehmerId: tId, listenpreis, rabatt });
+      i++;
+    }
+    if (zeilen.length === 0) {
+      zeilen.push({
+        teilnehmerId: String(formData.get("teilnehmer_id")),
+        listenpreis: Number(formData.get("listenpreis") || 0),
+        rabatt: Number(formData.get("rabatt_betrag") || 0),
+      });
+    }
+
+    const { error: posError } = await supabase.from("buchungspositionen").insert(
+      zeilen.map((z) => ({
+        buchung_id: buchung.id,
+        teilnehmer_id: z.teilnehmerId,
+        seminartermin_id: seminarterminId,
+        listenpreis: z.listenpreis,
+        rabatt_betrag: z.rabatt,
+      }))
+    );
     if (posError) throw new Error(posError.message);
   }
 

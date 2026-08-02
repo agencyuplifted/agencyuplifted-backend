@@ -81,7 +81,9 @@ export default async function NeuerTerminPage() {
             <select style={inputStyle} name="veranstaltungsort_id">
               <option value="">—</option>
               {orte?.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
+                <option key={o.id} value={o.id}>
+                  {o.name}{o.ort ? ` – ${o.ort}` : ""}{o.nahe_grossstadt ? ` (bei ${o.nahe_grossstadt})` : ""}
+                </option>
               ))}
             </select>
           </div>
@@ -119,6 +121,23 @@ export default async function NeuerTerminPage() {
 
         <label style={labelStyle}>Preis (Normalpreis, €)</label>
         <input style={inputStyle} name="preis" type="number" step="0.01" placeholder="z. B. 1490" />
+
+        <div style={card}>
+          <strong>Zusätzlicher Teilnehmer (Gruppenpreis)</strong>
+          <p style={{ color: "#666", fontSize: "0.85rem", margin: "0.4rem 0 0.75rem" }}>
+            Wenn mehrere Personen derselben Firma zusammen gebucht werden: Preis für die 2. (und weitere) Person(en). Entweder Festpreis ODER Rabatt in % angeben, nicht beides.
+          </p>
+          <div style={row}>
+            <div>
+              <label style={labelStyle}>Festpreis pro weiterer Person (€)</label>
+              <input style={inputStyle} name="zusatzteilnehmer_preis" type="number" step="0.01" placeholder="z. B. 990" />
+            </div>
+            <div>
+              <label style={labelStyle}>oder Rabatt (%)</label>
+              <input style={inputStyle} name="zusatzteilnehmer_rabatt_prozent" type="number" step="0.1" placeholder="z. B. 15" />
+            </div>
+          </div>
+        </div>
 
         <button type="submit" style={{ background: "#102A4C", color: "white", padding: "0.6rem 1.2rem", border: "none", cursor: "pointer" }}>
           Termin anlegen
