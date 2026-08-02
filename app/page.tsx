@@ -1,8 +1,8 @@
 export default function Home() {
   return (
-    <main style={{ fontFamily: "system-ui", padding: "2rem" }}>
-      <h1>AgencyUplifted – Seminarverwaltung</h1>
-      <p>Admin-Tool im Aufbau. Phase 1: Kern-Datenmodell steht.</p>
+    <main>
+      <h1>Seminarverwaltung</h1>
+      <p>Phase 1: Termine, Teilnehmer, Organisationen und Buchungen manuell verwalten — ersetzt Pipedrive-Doppelerfassung.</p>
     </main>
   );
 }
