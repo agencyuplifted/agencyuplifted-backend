@@ -1,13 +1,17 @@
 export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { createPreisstaffel, createUrgencyStufe } from "@/lib/actions";
+import { createPreisstaffel, createUrgencyStufe, updateSeminartermin } from "@/lib/actions";
 import { formatDatum, formatEUR } from "@/lib/format";
 
 const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
 const row: React.CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" };
 const card: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1.25rem", marginBottom: "1.5rem" };
+
+function formatZeit(t: string | null) {
+  return t ? t.slice(0, 5) + " Uhr" : "";
+}
 
 export default async function TerminDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -18,6 +22,10 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
     .select("*, seminartypen(name), veranstaltungsorte(name), trainer(name)")
     .eq("id", id)
     .single();
+
+  const { data: seminartypen } = await supabase.from("seminartypen").select("*").order("name");
+  const { data: orte } = await supabase.from("veranstaltungsorte").select("*").order("name");
+  const { data: trainerListe } = await supabase.from("trainer").select("*").order("name");
 
   const { data: preisstaffeln } = await supabase
     .from("preisstaffeln")
@@ -33,12 +41,117 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
 
   if (!termin) return <main><p>Termin nicht gefunden.</p></main>;
 
+  const titelAnzeige = termin.titel || termin.seminartypen?.name;
+  const zeitraum = termin.datum_ende && termin.datum_ende !== termin.datum_start
+    ? `${formatDatum(termin.datum_start)}${termin.zeit_start ? ", " + formatZeit(termin.zeit_start) : ""} bis ${formatDatum(termin.datum_ende)}${termin.zeit_ende ? ", " + formatZeit(termin.zeit_ende) : ""}`
+    : `${formatDatum(termin.datum_start)}${termin.zeit_start ? ", " + formatZeit(termin.zeit_start) : ""}${termin.zeit_ende ? " – " + formatZeit(termin.zeit_ende) : ""}`;
+
   return (
     <main>
-      <h1>{termin.seminartypen?.name} – {formatDatum(termin.datum_start)}</h1>
+      <h1>{titelAnzeige}</h1>
       <p style={{ color: "#666" }}>
+        {termin.seminartypen?.name} · {zeitraum}
+        {termin.vorabend_anreise_datum && (
+          <> · Vorabendanreise: {formatDatum(termin.vorabend_anreise_datum)}{termin.vorabend_anreise_uhrzeit ? ", " + formatZeit(termin.vorabend_anreise_uhrzeit) : ""}</>
+        )}
+        <br />
         {termin.veranstaltungsorte?.name || "—"} · {termin.format} · Trainer: {termin.trainer?.name || "—"} · Kapazität {termin.kapazitaet} (+{termin.ueberbuchungspuffer} intern) · Status {termin.status}
       </p>
+
+      <div style={card}>
+        <h2>Termin bearbeiten</h2>
+        <form action={updateSeminartermin} style={{ maxWidth: 560 }}>
+          <input type="hidden" name="seminartermin_id" value={id} />
+          <label style={labelStyle}>Titel des Seminars</label>
+          <input style={inputStyle} name="titel" defaultValue={termin.titel || ""} placeholder="z. B. Preisfindung Intensiv – Herbst 2026" required />
+
+          <div style={row}>
+            <div>
+              <label style={labelStyle}>Startdatum</label>
+              <input style={inputStyle} name="datum_start" type="date" defaultValue={termin.datum_start} required />
+            </div>
+            <div>
+              <label style={labelStyle}>Startuhrzeit</label>
+              <input style={inputStyle} name="zeit_start" type="time" defaultValue={termin.zeit_start?.slice(0, 5) || ""} />
+            </div>
+          </div>
+          <div style={row}>
+            <div>
+              <label style={labelStyle}>Enddatum</label>
+              <input style={inputStyle} name="datum_ende" type="date" defaultValue={termin.datum_ende || termin.datum_start} />
+            </div>
+            <div>
+              <label style={labelStyle}>Enduhrzeit</label>
+              <input style={inputStyle} name="zeit_ende" type="time" defaultValue={termin.zeit_ende?.slice(0, 5) || ""} />
+            </div>
+          </div>
+
+          <div style={row}>
+            <div>
+              <label style={labelStyle}>Vorabendanreise – Tag</label>
+              <input style={inputStyle} name="vorabend_anreise_datum" type="date" defaultValue={termin.vorabend_anreise_datum || ""} />
+            </div>
+            <div>
+              <label style={labelStyle}>Vorabendanreise – Uhrzeit</label>
+              <input style={inputStyle} name="vorabend_anreise_uhrzeit" type="time" defaultValue={termin.vorabend_anreise_uhrzeit?.slice(0, 5) || ""} />
+            </div>
+          </div>
+
+          <div style={row}>
+            <div>
+              <label style={labelStyle}>Format</label>
+              <select style={inputStyle} name="format" defaultValue={termin.format}>
+                <option value="praesenz">Präsenz</option>
+                <option value="online">Online</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Ort</label>
+              <select style={inputStyle} name="veranstaltungsort_id" defaultValue={termin.veranstaltungsort_id || ""}>
+                <option value="">—</option>
+                {orte?.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <label style={labelStyle}>Trainer</label>
+          <select style={inputStyle} name="trainer_id" defaultValue={termin.trainer_id || ""}>
+            <option value="">—</option>
+            {trainerListe?.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+
+          <div style={row}>
+            <div>
+              <label style={labelStyle}>Kapazität</label>
+              <input style={inputStyle} name="kapazitaet" type="number" defaultValue={termin.kapazitaet} />
+            </div>
+            <div>
+              <label style={labelStyle}>Mindestteilnehmerzahl</label>
+              <input style={inputStyle} name="mindestteilnehmerzahl" type="number" defaultValue={termin.mindestteilnehmerzahl} />
+            </div>
+          </div>
+
+          <div style={row}>
+            <div>
+              <label style={labelStyle}>Überbuchungspuffer (intern)</label>
+              <input style={inputStyle} name="ueberbuchungspuffer" type="number" defaultValue={termin.ueberbuchungspuffer} />
+            </div>
+            <div>
+              <label style={labelStyle}>Angezeigte Restplätze (manuell, Urgency)</label>
+              <input style={inputStyle} name="angezeigte_restplaetze" type="number" defaultValue={termin.angezeigte_restplaetze ?? ""} placeholder="leer = kein Hinweis" />
+            </div>
+          </div>
+
+          <button type="submit" style={{ background: "#102A4C", color: "white", padding: "0.55rem 1rem", border: "none", cursor: "pointer" }}>
+            Änderungen speichern
+          </button>
+        </form>
+      </div>
 
       <div style={card}>
         <h2>Preisstaffeln</h2>

@@ -23,8 +23,9 @@ export default async function TerminePage() {
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "2px solid #102A4C" }}>
+            <th style={{ padding: "0.5rem" }}>Titel</th>
+            <th style={{ padding: "0.5rem" }}>Kategorie</th>
             <th style={{ padding: "0.5rem" }}>Datum</th>
-            <th style={{ padding: "0.5rem" }}>Thema</th>
             <th style={{ padding: "0.5rem" }}>Ort</th>
             <th style={{ padding: "0.5rem" }}>Format</th>
             <th style={{ padding: "0.5rem" }}>Kapazität</th>
@@ -36,9 +37,12 @@ export default async function TerminePage() {
           {termine?.map((t: any) => (
             <tr key={t.id} style={{ borderBottom: "1px solid #e2e2e2" }}>
               <td style={{ padding: "0.5rem" }}>
-                <Link href={`/termine/${t.id}`} style={{ color: "#102A4C" }}>{formatDatum(t.datum_start)}</Link>
+                <Link href={`/termine/${t.id}`} style={{ color: "#102A4C" }}>{t.titel || t.seminartypen?.name}</Link>
               </td>
               <td style={{ padding: "0.5rem" }}>{t.seminartypen?.name}</td>
+              <td style={{ padding: "0.5rem" }}>
+                {formatDatum(t.datum_start)}{t.zeit_start ? `, ${t.zeit_start.slice(0, 5)} Uhr` : ""}
+              </td>
               <td style={{ padding: "0.5rem" }}>{t.veranstaltungsorte?.name || "—"}</td>
               <td style={{ padding: "0.5rem" }}>{t.format}</td>
               <td style={{ padding: "0.5rem" }}>{t.kapazitaet} (+{t.ueberbuchungspuffer} intern)</td>
@@ -47,7 +51,7 @@ export default async function TerminePage() {
             </tr>
           ))}
           {!termine?.length && (
-            <tr><td colSpan={7} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Termine angelegt.</td></tr>
+            <tr><td colSpan={8} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Termine angelegt.</td></tr>
           )}
         </tbody>
       </table>

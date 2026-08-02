@@ -47,12 +47,19 @@ export async function createTrainer(formData: FormData) {
 
 export async function createSeminartermin(formData: FormData) {
   const supabase = getSupabaseAdmin();
+  const datumStart = String(formData.get("datum_start"));
+  const datumEnde = formData.get("datum_ende") || datumStart;
   const { data: termin, error } = await supabase
     .from("seminartermine")
     .insert({
+      titel: formData.get("titel") || null,
       seminartyp_id: String(formData.get("seminartyp_id")),
-      datum_start: String(formData.get("datum_start")),
-      dauer_tage: Number(formData.get("dauer_tage") || 1),
+      datum_start: datumStart,
+      zeit_start: formData.get("zeit_start") || null,
+      datum_ende: datumEnde,
+      zeit_ende: formData.get("zeit_ende") || null,
+      vorabend_anreise_datum: formData.get("vorabend_anreise_datum") || null,
+      vorabend_anreise_uhrzeit: formData.get("vorabend_anreise_uhrzeit") || null,
       format: String(formData.get("format") || "praesenz"),
       veranstaltungsort_id: formData.get("veranstaltungsort_id") || null,
       trainer_id: formData.get("trainer_id") || null,
@@ -79,6 +86,39 @@ export async function createSeminartermin(formData: FormData) {
 
   revalidatePath("/termine");
   redirect("/termine");
+}
+
+export async function updateSeminartermin(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const id = String(formData.get("seminartermin_id"));
+  const datumStart = String(formData.get("datum_start"));
+  const datumEnde = formData.get("datum_ende") || datumStart;
+  const { error } = await supabase
+    .from("seminartermine")
+    .update({
+      titel: formData.get("titel") || null,
+      datum_start: datumStart,
+      zeit_start: formData.get("zeit_start") || null,
+      datum_ende: datumEnde,
+      zeit_ende: formData.get("zeit_ende") || null,
+      vorabend_anreise_datum: formData.get("vorabend_anreise_datum") || null,
+      vorabend_anreise_uhrzeit: formData.get("vorabend_anreise_uhrzeit") || null,
+      format: String(formData.get("format") || "praesenz"),
+      veranstaltungsort_id: formData.get("veranstaltungsort_id") || null,
+      trainer_id: formData.get("trainer_id") || null,
+      kapazitaet: Number(formData.get("kapazitaet") || 12),
+      mindestteilnehmerzahl: Number(formData.get("mindestteilnehmerzahl") || 5),
+      ueberbuchungspuffer: Number(formData.get("ueberbuchungspuffer") || 3),
+      angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
+        ? Number(formData.get("angezeigte_restplaetze"))
+        : null,
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/termine");
+  revalidatePath(`/termine/${id}`);
+  redirect(`/termine/${id}`);
 }
 
 export async function createBuchung(formData: FormData) {
