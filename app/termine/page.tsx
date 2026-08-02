@@ -35,7 +35,9 @@ export default async function TerminePage() {
         <tbody>
           {termine?.map((t: any) => (
             <tr key={t.id} style={{ borderBottom: "1px solid #e2e2e2" }}>
-              <td style={{ padding: "0.5rem" }}>{formatDatum(t.datum_start)}</td>
+              <td style={{ padding: "0.5rem" }}>
+                <Link href={`/termine/${t.id}`} style={{ color: "#102A4C" }}>{formatDatum(t.datum_start)}</Link>
+              </td>
               <td style={{ padding: "0.5rem" }}>{t.seminartypen?.name}</td>
               <td style={{ padding: "0.5rem" }}>{t.veranstaltungsorte?.name || "—"}</td>
               <td style={{ padding: "0.5rem" }}>{t.format}</td>

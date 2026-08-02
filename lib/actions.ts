@@ -100,3 +100,61 @@ export async function createBuchung(formData: FormData) {
   revalidatePath("/buchungen");
   redirect("/buchungen");
 }
+
+export async function createPreisstaffel(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase.from("preisstaffeln").insert({
+    seminartermin_id: seminarterminId,
+    name: String(formData.get("name")),
+    stichtag_tage_vor_start: Number(formData.get("stichtag_tage_vor_start") || 0),
+    preis: Number(formData.get("preis")),
+    sortierung: Number(formData.get("stichtag_tage_vor_start") || 0),
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function createUrgencyStufe(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const schwellenwert = Number(formData.get("schwellenwert_prozent"));
+  const { error } = await supabase.from("urgency_stufen").insert({
+    seminartermin_id: seminarterminId,
+    schwellenwert_prozent: schwellenwert,
+    text_vorlage: String(formData.get("text_vorlage")),
+    sortierung: schwellenwert,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function createLead(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("leads").insert({
+    name: String(formData.get("name")),
+    firma: formData.get("firma") || null,
+    email: formData.get("email") || null,
+    telefon: formData.get("telefon") || null,
+    interesse_seminartyp_id: formData.get("interesse_seminartyp_id") || null,
+    quelle: formData.get("quelle") || null,
+    grund: formData.get("grund") || null,
+    notizen: formData.get("notizen") || null,
+    wiedervorlage_am: formData.get("wiedervorlage_am") || null,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/leads");
+  redirect("/leads");
+}
+
+export async function updateLeadStatus(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const leadId = String(formData.get("lead_id"));
+  const status = String(formData.get("status"));
+  const { error } = await supabase.from("leads").update({ status }).eq("id", leadId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/leads");
+  redirect("/leads");
+}
