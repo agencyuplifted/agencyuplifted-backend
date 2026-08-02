@@ -9,7 +9,7 @@ export default async function NeueBuchungPage() {
   const { data: organisationen } = await supabase.from("organisationen").select("*").order("name");
   const { data: termine } = await supabase
     .from("seminartermine")
-    .select("*, seminartypen(name)")
+    .select("*, seminartypen(name), seminartermin_optionen(*, preisstaffeln(*))")
     .order("datum_start");
 
   return (

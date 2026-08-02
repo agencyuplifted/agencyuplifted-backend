@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum } from "@/lib/format";
+import { duplicateSeminartermin } from "@/lib/actions";
 
 export default async function TerminePage() {
   const supabase = getSupabaseAdmin();
@@ -31,6 +32,7 @@ export default async function TerminePage() {
             <th style={{ padding: "0.5rem" }}>Kapazität</th>
             <th style={{ padding: "0.5rem" }}>Angezeigte Restplätze</th>
             <th style={{ padding: "0.5rem" }}>Status</th>
+            <th style={{ padding: "0.5rem" }}>Aktionen</th>
           </tr>
         </thead>
         <tbody>
@@ -48,10 +50,22 @@ export default async function TerminePage() {
               <td style={{ padding: "0.5rem" }}>{t.kapazitaet} (+{t.ueberbuchungspuffer} intern)</td>
               <td style={{ padding: "0.5rem" }}>{t.angezeigte_restplaetze ?? "—"}</td>
               <td style={{ padding: "0.5rem" }}>{t.status}</td>
+              <td style={{ padding: "0.5rem" }}>
+                <form action={duplicateSeminartermin}>
+                  <input type="hidden" name="seminartermin_id" value={t.id} />
+                  <button
+                    type="submit"
+                    title="Termin inkl. Optionen, Preisstaffeln und Urgency-Stufen duplizieren"
+                    style={{ background: "transparent", color: "#102A4C", border: "1px solid #102A4C", padding: "0.3rem 0.6rem", cursor: "pointer", fontSize: "0.8rem" }}
+                  >
+                    Duplizieren
+                  </button>
+                </form>
+              </td>
             </tr>
           ))}
           {!termine?.length && (
-            <tr><td colSpan={8} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Termine angelegt.</td></tr>
+            <tr><td colSpan={9} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Termine angelegt.</td></tr>
           )}
         </tbody>
       </table>

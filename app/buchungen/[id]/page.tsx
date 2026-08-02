@@ -22,7 +22,7 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
 
   const { data: positionen } = await supabase
     .from("buchungspositionen")
-    .select("*, teilnehmer(vorname, nachname, email), seminartermine(id, datum_start, seminartypen(name))")
+    .select("*, teilnehmer(vorname, nachname, email), seminartermine(id, datum_start, seminartypen(name)), seminartermin_optionen(titel)")
     .eq("buchung_id", id);
 
   const { data: protokoll } = await supabase
@@ -62,7 +62,7 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
                 <td style={{ padding: "0.4rem" }}>{p.teilnehmer?.vorname} {p.teilnehmer?.nachname}</td>
                 <td style={{ padding: "0.4rem" }}>
                   {p.seminartermine
-                    ? `${p.seminartermine.seminartypen?.name} – ${formatDatum(p.seminartermine.datum_start)}`
+                    ? `${p.seminartermine.seminartypen?.name} – ${formatDatum(p.seminartermine.datum_start)}${p.seminartermin_optionen?.titel ? ` (${p.seminartermin_optionen.titel})` : ""}`
                     : `${p.beschreibung} (individuell${p.startdatum ? `, ab ${formatDatum(p.startdatum)}` : ""})`}
                 </td>
                 <td style={{ padding: "0.4rem" }}>{formatEUR(Number(p.preis || 0))}</td>

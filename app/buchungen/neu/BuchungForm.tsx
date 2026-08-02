@@ -7,20 +7,35 @@ import { formatDatum, formatEUR } from "@/lib/format";
 const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
 const row: React.CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" };
-const teilnehmerRow: React.CSSProperties = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: "0.75rem", alignItems: "flex-end", marginBottom: "0.5rem" };
+const teilnehmerRow: React.CSSProperties = { display: "grid", gridTemplateColumns: "1.6fr 1.2fr 1fr 1fr auto", gap: "0.75rem", alignItems: "flex-end", marginBottom: "0.5rem" };
 const card: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1rem 1.25rem", marginBottom: "1.25rem" };
 
 type Teilnehmer = { id: string; vorname: string; nachname: string; email: string };
 type Organisation = { id: string; name: string };
+type Preisstaffel = { id: string; name: string; stichtag_tage_vor_start: number; preis: number };
+type Option = { id: string; titel: string; preisstaffeln?: Preisstaffel[] };
 type Termin = {
   id: string;
   datum_start: string;
   seminartypen?: { name: string } | null;
   zusatzteilnehmer_preis?: number | null;
   zusatzteilnehmer_rabatt_prozent?: number | null;
+  seminartermin_optionen?: Option[];
 };
 
 let rowIdCounter = 1;
+
+function aktuellerPreis(preisstaffeln: Preisstaffel[] | undefined, datumStart: string): number | null {
+  if (!preisstaffeln?.length) return null;
+  const heute = new Date();
+  const start = new Date(datumStart);
+  const tageBisStart = Math.ceil((start.getTime() - heute.getTime()) / (1000 * 60 * 60 * 24));
+  const sortiert = [...preisstaffeln].sort((a, b) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start);
+  const aktiv = sortiert.find((p) => tageBisStart >= p.stichtag_tage_vor_start);
+  if (aktiv) return Number(aktiv.preis);
+  const letzte = sortiert[sortiert.length - 1];
+  return letzte ? Number(letzte.preis) : null;
+}
 
 export default function BuchungForm({
   teilnehmer,
@@ -34,24 +49,33 @@ export default function BuchungForm({
   const [modus, setModus] = useState<"seminar" | "individuell">("seminar");
   const [seminarterminId, setSeminarterminId] = useState("");
   const [teilnehmerZeilen, setTeilnehmerZeilen] = useState([
-    { key: 0, teilnehmerId: "", listenpreis: "", rabatt: "0" },
+    { key: 0, teilnehmerId: "", optionId: "", listenpreis: "", rabatt: "0" },
   ]);
   const [einzelTeilnehmerId, setEinzelTeilnehmerId] = useState("");
 
   const gewaehlterTermin = termine.find((t) => t.id === seminarterminId);
+  const optionenDesTermins = gewaehlterTermin?.seminartermin_optionen || [];
+
+  function preisVorschlagFuer(optionId: string, istZusatzteilnehmer: boolean, ersteZeilePreis?: string): string {
+    if (!gewaehlterTermin) return "";
+    const option = optionenDesTermins.find((o) => o.id === optionId);
+    let basis = aktuellerPreis(option?.preisstaffeln, gewaehlterTermin.datum_start);
+
+    if (istZusatzteilnehmer) {
+      if (gewaehlterTermin.zusatzteilnehmer_preis) return String(gewaehlterTermin.zusatzteilnehmer_preis);
+      if (gewaehlterTermin.zusatzteilnehmer_rabatt_prozent) {
+        const grundlage = basis ?? Number(ersteZeilePreis || 0);
+        if (grundlage) return (grundlage * (1 - Number(gewaehlterTermin.zusatzteilnehmer_rabatt_prozent) / 100)).toFixed(2);
+      }
+    }
+    return basis !== null ? String(basis) : "";
+  }
 
   function zeileHinzufuegen() {
     const erste = teilnehmerZeilen[0];
-    let vorschlag = "";
-    if (gewaehlterTermin?.zusatzteilnehmer_preis) {
-      vorschlag = String(gewaehlterTermin.zusatzteilnehmer_preis);
-    } else if (gewaehlterTermin?.zusatzteilnehmer_rabatt_prozent && erste?.listenpreis) {
-      const basis = Number(erste.listenpreis);
-      vorschlag = (basis * (1 - Number(gewaehlterTermin.zusatzteilnehmer_rabatt_prozent) / 100)).toFixed(2);
-    }
     setTeilnehmerZeilen([
       ...teilnehmerZeilen,
-      { key: rowIdCounter++, teilnehmerId: "", listenpreis: vorschlag, rabatt: "0" },
+      { key: rowIdCounter++, teilnehmerId: "", optionId: erste?.optionId || "", listenpreis: preisVorschlagFuer(erste?.optionId || "", true, erste?.listenpreis), rabatt: "0" },
     ]);
   }
 
@@ -59,12 +83,22 @@ export default function BuchungForm({
     setTeilnehmerZeilen(teilnehmerZeilen.filter((z) => z.key !== key));
   }
 
-  function zeileAendern(key: number, feld: "teilnehmerId" | "listenpreis" | "rabatt", wert: string) {
-    setTeilnehmerZeilen(teilnehmerZeilen.map((z) => (z.key === key ? { ...z, [feld]: wert } : z)));
+  function zeileAendern(key: number, feld: "teilnehmerId" | "optionId" | "listenpreis" | "rabatt", wert: string) {
+    setTeilnehmerZeilen(
+      teilnehmerZeilen.map((z) => {
+        if (z.key !== key) return z;
+        if (feld === "optionId") {
+          const idx = teilnehmerZeilen.findIndex((zz) => zz.key === key);
+          const vorschlag = preisVorschlagFuer(wert, idx > 0, teilnehmerZeilen[0]?.listenpreis);
+          return { ...z, optionId: wert, listenpreis: vorschlag || z.listenpreis };
+        }
+        return { ...z, [feld]: wert };
+      })
+    );
   }
 
   return (
-    <form action={createBuchung} style={{ maxWidth: 640 }}>
+    <form action={createBuchung} style={{ maxWidth: 720 }}>
       <input type="hidden" name="modus" value={modus} />
 
       <label style={labelStyle}>Art der Buchung</label>
@@ -95,7 +129,10 @@ export default function BuchungForm({
             name="seminartermin_id"
             required
             value={seminarterminId}
-            onChange={(e) => setSeminarterminId(e.target.value)}
+            onChange={(e) => {
+              setSeminarterminId(e.target.value);
+              setTeilnehmerZeilen([{ key: rowIdCounter++, teilnehmerId: "", optionId: "", listenpreis: "", rabatt: "0" }]);
+            }}
           >
             <option value="">— bitte wählen —</option>
             {termine?.map((t) => (
@@ -104,6 +141,11 @@ export default function BuchungForm({
               </option>
             ))}
           </select>
+          {gewaehlterTermin && !optionenDesTermins.length && (
+            <p style={{ color: "#a15c00", fontSize: "0.85rem", marginTop: "-0.5rem" }}>
+              Für diesen Termin sind noch keine Optionen/Preisstaffeln angelegt — Preis unten bitte manuell eintragen.
+            </p>
+          )}
           {(gewaehlterTermin?.zusatzteilnehmer_preis || gewaehlterTermin?.zusatzteilnehmer_rabatt_prozent) && (
             <p style={{ color: "#666", fontSize: "0.85rem", marginTop: "-0.5rem" }}>
               Preis für weitere Teilnehmer dieser Firma:{" "}
@@ -117,6 +159,7 @@ export default function BuchungForm({
             <strong>Teilnehmer</strong>
             <div style={{ ...teilnehmerRow, marginTop: "0.75rem", fontSize: "0.8rem", fontWeight: 600, color: "#666" }}>
               <span>Teilnehmer</span>
+              <span>Option</span>
               <span>Listenpreis (€)</span>
               <span>Rabatt (€)</span>
               <span></span>
@@ -133,6 +176,17 @@ export default function BuchungForm({
                   <option value="">— wählen —</option>
                   {teilnehmer?.map((t) => (
                     <option key={t.id} value={t.id}>{t.vorname} {t.nachname} ({t.email})</option>
+                  ))}
+                </select>
+                <select
+                  style={{ ...inputStyle, marginBottom: 0 }}
+                  name={`seminartermin_option_id_${idx}`}
+                  value={z.optionId}
+                  onChange={(e) => zeileAendern(z.key, "optionId", e.target.value)}
+                >
+                  <option value="">— ohne Option —</option>
+                  {optionenDesTermins.map((o) => (
+                    <option key={o.id} value={o.id}>{o.titel}</option>
                   ))}
                 </select>
                 <input

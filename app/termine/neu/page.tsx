@@ -119,8 +119,9 @@ export default async function NeuerTerminPage() {
           </div>
         </div>
 
-        <label style={labelStyle}>Preis (Normalpreis, €)</label>
-        <input style={inputStyle} name="preis" type="number" step="0.01" placeholder="z. B. 1490" />
+        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          Preise, Optionen (A/B/C) und Frühbucherstaffeln werden nach dem Anlegen auf der Termin-Detailseite eingerichtet.
+        </p>
 
         <div style={card}>
           <strong>Zusätzlicher Teilnehmer (Gruppenpreis)</strong>

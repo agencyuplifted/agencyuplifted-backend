@@ -93,18 +93,8 @@ export async function createSeminartermin(formData: FormData) {
     .single();
   if (error) throw new Error(error.message);
 
-  const preis = Number(formData.get("preis") || 0);
-  if (preis > 0) {
-    await supabase.from("preisstaffeln").insert({
-      seminartermin_id: termin.id,
-      name: "Normalpreis",
-      stichtag_tage_vor_start: 0,
-      preis,
-    });
-  }
-
   revalidatePath("/termine");
-  redirect("/termine");
+  redirect(`/termine/${termin.id}`);
 }
 
 export async function updateSeminartermin(formData: FormData) {
@@ -146,6 +136,119 @@ export async function updateSeminartermin(formData: FormData) {
   redirect(`/termine/${id}`);
 }
 
+export async function duplicateSeminartermin(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const sourceId = String(formData.get("seminartermin_id"));
+
+  const { data: quelle, error: qErr } = await supabase
+    .from("seminartermine")
+    .select("*")
+    .eq("id", sourceId)
+    .single();
+  if (qErr || !quelle) throw new Error(qErr?.message || "Termin nicht gefunden");
+
+  const { id: _id, erstellt_am: _ea, aktualisiert_am: _aa, ...kopie } = quelle as any;
+
+  const { data: neuerTermin, error: insErr } = await supabase
+    .from("seminartermine")
+    .insert({
+      ...kopie,
+      titel: kopie.titel ? `${kopie.titel} (Kopie)` : null,
+      status: "geplant",
+      deaktiviert_am: null,
+    })
+    .select()
+    .single();
+  if (insErr) throw new Error(insErr.message);
+
+  const { data: optionen } = await supabase
+    .from("seminartermin_optionen")
+    .select("*, seminartermin_options_features(*), preisstaffeln(*)")
+    .eq("seminartermin_id", sourceId);
+
+  for (const opt of (optionen as any[]) || []) {
+    const { data: neueOption, error: optErr } = await supabase
+      .from("seminartermin_optionen")
+      .insert({
+        seminartermin_id: neuerTermin.id,
+        titel: opt.titel,
+        beschreibung: opt.beschreibung,
+        sortierung: opt.sortierung,
+      })
+      .select()
+      .single();
+    if (optErr) throw new Error(optErr.message);
+
+    if (opt.seminartermin_options_features?.length) {
+      await supabase.from("seminartermin_options_features").insert(
+        opt.seminartermin_options_features.map((f: any) => ({
+          seminartermin_option_id: neueOption.id,
+          text: f.text,
+          sortierung: f.sortierung,
+        }))
+      );
+    }
+    if (opt.preisstaffeln?.length) {
+      await supabase.from("preisstaffeln").insert(
+        opt.preisstaffeln.map((p: any) => ({
+          seminartermin_option_id: neueOption.id,
+          name: p.name,
+          stichtag_tage_vor_start: p.stichtag_tage_vor_start,
+          preis: p.preis,
+          waehrung: p.waehrung,
+          sortierung: p.sortierung,
+        }))
+      );
+    }
+  }
+
+  const { data: urgencyStufen } = await supabase
+    .from("urgency_stufen")
+    .select("*")
+    .eq("seminartermin_id", sourceId);
+  if (urgencyStufen?.length) {
+    await supabase.from("urgency_stufen").insert(
+      urgencyStufen.map((u) => ({
+        seminartermin_id: neuerTermin.id,
+        schwellenwert_prozent: u.schwellenwert_prozent,
+        text_vorlage: u.text_vorlage,
+        sortierung: u.sortierung,
+      }))
+    );
+  }
+
+  revalidatePath("/termine");
+  redirect(`/termine/${neuerTermin.id}`);
+}
+
+export async function createSeminarOption(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase.from("seminartermin_optionen").insert({
+    seminartermin_id: seminarterminId,
+    titel: String(formData.get("titel")),
+    beschreibung: formData.get("beschreibung") || null,
+    sortierung: Number(formData.get("sortierung") || 0),
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function createOptionFeature(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase.from("seminartermin_options_features").insert({
+    seminartermin_option_id: optionId,
+    text: String(formData.get("text")),
+    sortierung: Number(formData.get("sortierung") || 0),
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
 export async function createBuchung(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const organisationId = formData.get("organisation_id") || null;
@@ -184,19 +287,22 @@ export async function createBuchung(formData: FormData) {
   } else {
     const seminarterminId = String(formData.get("seminartermin_id"));
 
-    // Gesammelte Teilnehmerzeilen einlesen (teilnehmer_id_0, listenpreis_0, rabatt_betrag_0, ...)
-    const zeilen: { teilnehmerId: string; listenpreis: number; rabatt: number }[] = [];
+    // Gesammelte Teilnehmerzeilen einlesen (teilnehmer_id_0, seminartermin_option_id_0, listenpreis_0, rabatt_betrag_0, ...)
+    const zeilen: { teilnehmerId: string; optionId: string | null; listenpreis: number; rabatt: number }[] = [];
     let i = 0;
     while (formData.has(`teilnehmer_id_${i}`)) {
       const tId = String(formData.get(`teilnehmer_id_${i}`));
+      const optionRaw = formData.get(`seminartermin_option_id_${i}`);
       const listenpreis = Number(formData.get(`listenpreis_${i}`) || 0);
       const rabatt = Number(formData.get(`rabatt_betrag_${i}`) || 0);
-      zeilen.push({ teilnehmerId: tId, listenpreis, rabatt });
+      zeilen.push({ teilnehmerId: tId, optionId: optionRaw ? String(optionRaw) : null, listenpreis, rabatt });
       i++;
     }
     if (zeilen.length === 0) {
+      const optionRaw = formData.get("seminartermin_option_id");
       zeilen.push({
         teilnehmerId: String(formData.get("teilnehmer_id")),
+        optionId: optionRaw ? String(optionRaw) : null,
         listenpreis: Number(formData.get("listenpreis") || 0),
         rabatt: Number(formData.get("rabatt_betrag") || 0),
       });
@@ -207,6 +313,7 @@ export async function createBuchung(formData: FormData) {
         buchung_id: buchung.id,
         teilnehmer_id: z.teilnehmerId,
         seminartermin_id: seminarterminId,
+        seminartermin_option_id: z.optionId,
         listenpreis: z.listenpreis,
         rabatt_betrag: z.rabatt,
       }))
@@ -288,9 +395,10 @@ export async function umbuchenBuchung(formData: FormData) {
 
 export async function createPreisstaffel(formData: FormData) {
   const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
   const { error } = await supabase.from("preisstaffeln").insert({
-    seminartermin_id: seminarterminId,
+    seminartermin_option_id: optionId,
     name: String(formData.get("name")),
     stichtag_tage_vor_start: Number(formData.get("stichtag_tage_vor_start") || 0),
     preis: Number(formData.get("preis")),
