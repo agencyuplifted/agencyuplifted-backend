@@ -34,6 +34,17 @@ export async function createTeilnehmer(formData: FormData) {
   redirect("/teilnehmer");
 }
 
+export async function createTrainer(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("trainer").insert({
+    name: String(formData.get("name")),
+    email: formData.get("email") || null,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/trainer");
+  redirect("/trainer");
+}
+
 export async function createSeminartermin(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const { data: termin, error } = await supabase
@@ -44,6 +55,7 @@ export async function createSeminartermin(formData: FormData) {
       dauer_tage: Number(formData.get("dauer_tage") || 1),
       format: String(formData.get("format") || "praesenz"),
       veranstaltungsort_id: formData.get("veranstaltungsort_id") || null,
+      trainer_id: formData.get("trainer_id") || null,
       kapazitaet: Number(formData.get("kapazitaet") || 12),
       mindestteilnehmerzahl: Number(formData.get("mindestteilnehmerzahl") || 5),
       ueberbuchungspuffer: Number(formData.get("ueberbuchungspuffer") || 3),
@@ -73,9 +85,7 @@ export async function createBuchung(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const organisationId = formData.get("organisation_id") || null;
   const teilnehmerId = String(formData.get("teilnehmer_id"));
-  const seminarterminId = String(formData.get("seminartermin_id"));
-  const listenpreis = Number(formData.get("listenpreis") || 0);
-  const rabatt = Number(formData.get("rabatt_betrag") || 0);
+  const modus = String(formData.get("modus") || "seminar");
 
   const { data: buchung, error } = await supabase
     .from("buchungen")
@@ -88,17 +98,104 @@ export async function createBuchung(formData: FormData) {
     .single();
   if (error) throw new Error(error.message);
 
-  const { error: posError } = await supabase.from("buchungspositionen").insert({
-    buchung_id: buchung.id,
-    teilnehmer_id: teilnehmerId,
-    seminartermin_id: seminarterminId,
-    listenpreis,
-    rabatt_betrag: rabatt,
-  });
-  if (posError) throw new Error(posError.message);
+  if (modus === "individuell") {
+    const listenpreis = Number(formData.get("il_listenpreis") || 0);
+    const rabatt = Number(formData.get("il_rabatt_betrag") || 0);
+    const { error: posError } = await supabase.from("buchungspositionen").insert({
+      buchung_id: buchung.id,
+      teilnehmer_id: teilnehmerId,
+      seminartermin_id: null,
+      beschreibung: String(formData.get("il_beschreibung")),
+      startdatum: formData.get("il_startdatum") || null,
+      enddatum: formData.get("il_enddatum") || null,
+      listenpreis,
+      rabatt_betrag: rabatt,
+    });
+    if (posError) throw new Error(posError.message);
+  } else {
+    const seminarterminId = String(formData.get("seminartermin_id"));
+    const listenpreis = Number(formData.get("listenpreis") || 0);
+    const rabatt = Number(formData.get("rabatt_betrag") || 0);
+    const { error: posError } = await supabase.from("buchungspositionen").insert({
+      buchung_id: buchung.id,
+      teilnehmer_id: teilnehmerId,
+      seminartermin_id: seminarterminId,
+      listenpreis,
+      rabatt_betrag: rabatt,
+    });
+    if (posError) throw new Error(posError.message);
+  }
 
   revalidatePath("/buchungen");
   redirect("/buchungen");
+}
+
+export async function stornoBuchung(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const buchungId = String(formData.get("buchung_id"));
+  const grund = String(formData.get("grund") || "");
+
+  const { error } = await supabase
+    .from("buchungen")
+    .update({ status: "storniert" })
+    .eq("id", buchungId);
+  if (error) throw new Error(error.message);
+
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "buchung",
+    bezug_id: buchungId,
+    ereignis: "storno",
+    beschreibung: grund || "Storno ohne angegebenen Grund",
+    bearbeiter: "Markus Hartmann",
+  });
+
+  revalidatePath("/buchungen");
+  revalidatePath(`/buchungen/${buchungId}`);
+  redirect(`/buchungen/${buchungId}`);
+}
+
+export async function umbuchenBuchung(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const buchungId = String(formData.get("buchung_id"));
+  const positionId = String(formData.get("position_id"));
+  const neuerTerminId = String(formData.get("neuer_seminartermin_id"));
+
+  const { data: altePosition } = await supabase
+    .from("buchungspositionen")
+    .select("*, seminartermine(datum_start, seminartypen(name))")
+    .eq("id", positionId)
+    .single();
+
+  const { error } = await supabase
+    .from("buchungspositionen")
+    .update({ seminartermin_id: neuerTerminId })
+    .eq("id", positionId);
+  if (error) throw new Error(error.message);
+
+  const { data: neuerTermin } = await supabase
+    .from("seminartermine")
+    .select("datum_start, seminartypen(name)")
+    .eq("id", neuerTerminId)
+    .single();
+
+  const altBeschreibung = altePosition?.seminartermine
+    ? `${(altePosition.seminartermine as any).seminartypen?.name} – ${altePosition.seminartermine.datum_start}`
+    : "unbekannt";
+  const neuBeschreibung = neuerTermin
+    ? `${(neuerTermin.seminartypen as any)?.name} – ${neuerTermin.datum_start}`
+    : "unbekannt";
+
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "buchung",
+    bezug_id: buchungId,
+    ereignis: "umbuchung",
+    beschreibung: `Von "${altBeschreibung}" auf "${neuBeschreibung}" umgebucht.`,
+    bearbeiter: "Markus Hartmann",
+  });
+
+  revalidatePath("/buchungen");
+  revalidatePath(`/buchungen/${buchungId}`);
+  redirect(`/buchungen/${buchungId}`);
 }
 
 export async function createPreisstaffel(formData: FormData) {
@@ -157,4 +254,56 @@ export async function updateLeadStatus(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/leads");
   redirect("/leads");
+}
+
+export async function createWartelisteEintrag(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase.from("warteliste").insert({
+    seminartermin_id: seminarterminId,
+    email: String(formData.get("email")),
+    name: formData.get("name") || null,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/warteliste");
+  redirect("/warteliste");
+}
+
+export async function benachrichtigeWarteliste(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const eintragId = String(formData.get("eintrag_id"));
+  const { error } = await supabase
+    .from("warteliste")
+    .update({ benachrichtigt_am: new Date().toISOString() })
+    .eq("id", eintragId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/warteliste");
+  redirect("/warteliste");
+}
+
+export async function createCommunityGruppe(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("community_gruppen").insert({
+    name: String(formData.get("name")),
+    typ: String(formData.get("typ") || "stammtisch"),
+    beschreibung: formData.get("beschreibung") || null,
+    zugangsweg: formData.get("zugangsweg") || null,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/community");
+  redirect("/community");
+}
+
+export async function addTeilnehmerZuCommunity(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const gruppeId = String(formData.get("community_gruppe_id"));
+  const teilnehmerId = String(formData.get("teilnehmer_id"));
+  const { error } = await supabase.from("teilnehmer_community_status").insert({
+    community_gruppe_id: gruppeId,
+    teilnehmer_id: teilnehmerId,
+    status: "eingeladen",
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/community");
+  redirect("/community");
 }

@@ -22,6 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/teilnehmer" style={{ textDecoration: "none", color: "#102A4C" }}>Teilnehmer</Link>
           <Link href="/organisationen" style={{ textDecoration: "none", color: "#102A4C" }}>Organisationen</Link>
           <Link href="/buchungen" style={{ textDecoration: "none", color: "#102A4C" }}>Buchungen</Link>
+          <Link href="/warteliste" style={{ textDecoration: "none", color: "#102A4C" }}>Warteliste</Link>
+          <Link href="/trainer" style={{ textDecoration: "none", color: "#102A4C" }}>Trainer</Link>
+          <Link href="/community" style={{ textDecoration: "none", color: "#102A4C" }}>Community</Link>
           <Link href="/leads" style={{ textDecoration: "none", color: "#102A4C" }}>Leads</Link>
         </nav>
         <div style={{ padding: "2rem", maxWidth: 960, margin: "0 auto" }}>{children}</div>

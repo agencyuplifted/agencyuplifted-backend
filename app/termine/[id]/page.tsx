@@ -15,7 +15,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
 
   const { data: termin } = await supabase
     .from("seminartermine")
-    .select("*, seminartypen(name), veranstaltungsorte(name)")
+    .select("*, seminartypen(name), veranstaltungsorte(name), trainer(name)")
     .eq("id", id)
     .single();
 
@@ -37,7 +37,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
     <main>
       <h1>{termin.seminartypen?.name} – {formatDatum(termin.datum_start)}</h1>
       <p style={{ color: "#666" }}>
-        {termin.veranstaltungsorte?.name || "—"} · {termin.format} · Kapazität {termin.kapazitaet} (+{termin.ueberbuchungspuffer} intern) · Status {termin.status}
+        {termin.veranstaltungsorte?.name || "—"} · {termin.format} · Trainer: {termin.trainer?.name || "—"} · Kapazität {termin.kapazitaet} (+{termin.ueberbuchungspuffer} intern) · Status {termin.status}
       </p>
 
       <div style={card}>

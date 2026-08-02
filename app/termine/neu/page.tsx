@@ -11,6 +11,7 @@ export default async function NeuerTerminPage() {
   const supabase = getSupabaseAdmin();
   const { data: seminartypen } = await supabase.from("seminartypen").select("*").order("name");
   const { data: orte } = await supabase.from("veranstaltungsorte").select("*").order("name");
+  const { data: trainerListe } = await supabase.from("trainer").select("*").order("name");
 
   return (
     <main>
@@ -53,6 +54,14 @@ export default async function NeuerTerminPage() {
             </select>
           </div>
         </div>
+
+        <label style={labelStyle}>Trainer</label>
+        <select style={inputStyle} name="trainer_id">
+          <option value="">—</option>
+          {trainerListe?.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
 
         <div style={row}>
           <div>

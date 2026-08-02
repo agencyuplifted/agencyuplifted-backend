@@ -33,7 +33,7 @@ export default async function BuchungenPage() {
         <tbody>
           {buchungen?.map((b: any) => (
             <tr key={b.id} style={{ borderBottom: "1px solid #e2e2e2" }}>
-              <td style={{ padding: "0.5rem" }}>{b.buchungsnummer}</td>
+              <td style={{ padding: "0.5rem" }}><Link href={`/buchungen/${b.id}`} style={{ color: "#102A4C" }}>{b.buchungsnummer}</Link></td>
               <td style={{ padding: "0.5rem" }}>
                 {b.organisationen?.name || (b.teilnehmer ? `${b.teilnehmer.vorname} ${b.teilnehmer.nachname}` : "—")}
               </td>
