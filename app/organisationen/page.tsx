@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createOrganisation } from "@/lib/actions";
+import OrganisationenTable from "./OrganisationenTable";
 
 const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
@@ -10,34 +11,33 @@ export default async function OrganisationenPage() {
   const supabase = getSupabaseAdmin();
   const { data: orgs } = await supabase
     .from("organisationen")
-    .select("*")
+    .select("*, buchungen(buchungspositionen(seminartermine(seminartypen(name))))")
     .order("erstellt_am", { ascending: false });
+
+  const rows = (orgs || []).map((o: any) => {
+    const seminare = Array.from(
+      new Set(
+        (o.buchungen || [])
+          .flatMap((b: any) => b.buchungspositionen || [])
+          .map((p: any) => p.seminartermine?.seminartypen?.name)
+          .filter(Boolean)
+      )
+    ) as string[];
+    return {
+      id: o.id,
+      name: o.name,
+      ort: o.rechnungsadresse_ort,
+      ust_id: o.ust_id,
+      erstellt_am: o.erstellt_am,
+      seminare,
+    };
+  });
 
   return (
     <main>
       <h1>Organisationen</h1>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "2rem" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #102A4C" }}>
-            <th style={{ padding: "0.5rem" }}>Name</th>
-            <th style={{ padding: "0.5rem" }}>Ort</th>
-            <th style={{ padding: "0.5rem" }}>USt-ID</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orgs?.map((o) => (
-            <tr key={o.id} style={{ borderBottom: "1px solid #e2e2e2" }}>
-              <td style={{ padding: "0.5rem" }}>{o.name}</td>
-              <td style={{ padding: "0.5rem" }}>{o.rechnungsadresse_ort || "—"}</td>
-              <td style={{ padding: "0.5rem" }}>{o.ust_id || "—"}</td>
-            </tr>
-          ))}
-          {!orgs?.length && (
-            <tr><td colSpan={3} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Organisationen erfasst.</td></tr>
-          )}
-        </tbody>
-      </table>
+      <OrganisationenTable organisationen={rows} />
 
       <h2>Neue Organisation</h2>
       <form action={createOrganisation} style={{ maxWidth: 420 }}>

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createTeilnehmer } from "@/lib/actions";
+import TeilnehmerTable from "./TeilnehmerTable";
 
 const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
@@ -10,34 +11,33 @@ export default async function TeilnehmerPage() {
   const supabase = getSupabaseAdmin();
   const { data: teilnehmer } = await supabase
     .from("teilnehmer")
-    .select("*")
+    .select("*, buchungspositionen(seminartermine(seminartypen(name)))")
     .order("erstellt_am", { ascending: false });
+
+  const rows = (teilnehmer || []).map((t: any) => {
+    const seminare = Array.from(
+      new Set(
+        (t.buchungspositionen || [])
+          .map((p: any) => p.seminartermine?.seminartypen?.name)
+          .filter(Boolean)
+      )
+    ) as string[];
+    return {
+      id: t.id,
+      vorname: t.vorname,
+      nachname: t.nachname,
+      email: t.email,
+      telefon: t.telefon,
+      erstellt_am: t.erstellt_am,
+      seminare,
+    };
+  });
 
   return (
     <main>
       <h1>Teilnehmer</h1>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "2rem" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #102A4C" }}>
-            <th style={{ padding: "0.5rem" }}>Name</th>
-            <th style={{ padding: "0.5rem" }}>E-Mail</th>
-            <th style={{ padding: "0.5rem" }}>Telefon</th>
-          </tr>
-        </thead>
-        <tbody>
-          {teilnehmer?.map((t) => (
-            <tr key={t.id} style={{ borderBottom: "1px solid #e2e2e2" }}>
-              <td style={{ padding: "0.5rem" }}>{t.vorname} {t.nachname}</td>
-              <td style={{ padding: "0.5rem" }}>{t.email}</td>
-              <td style={{ padding: "0.5rem" }}>{t.telefon || "—"}</td>
-            </tr>
-          ))}
-          {!teilnehmer?.length && (
-            <tr><td colSpan={3} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Teilnehmer erfasst.</td></tr>
-          )}
-        </tbody>
-      </table>
+      <TeilnehmerTable teilnehmer={rows} />
 
       <h2>Neuer Teilnehmer</h2>
       <form action={createTeilnehmer} style={{ maxWidth: 420 }}>
