@@ -27,16 +27,53 @@ export async function createOrganisation(formData: FormData) {
 export async function createTeilnehmer(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("teilnehmer").insert({
+    anrede: formData.get("anrede") || "keine_angabe",
     vorname: String(formData.get("vorname")),
     nachname: String(formData.get("nachname")),
     email: String(formData.get("email")),
+    email_zweite: formData.get("email_zweite") || null,
     telefon: formData.get("telefon") || null,
+    mobiltelefon: formData.get("mobiltelefon") || null,
     linkedin_url: formData.get("linkedin_url") || null,
+    geburtsdatum: formData.get("geburtsdatum") || null,
+    position: formData.get("position") || null,
+    firma_freitext: formData.get("firma_freitext") || null,
     ernaehrung_sonderwuensche: formData.get("ernaehrung") || null,
   });
   if (error) throw new Error(error.message);
   revalidatePath("/teilnehmer");
   redirect("/teilnehmer");
+}
+
+export async function updateTeilnehmerStammdaten(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("teilnehmer")
+    .update({
+      anrede: formData.get("anrede") || "keine_angabe",
+      vorname: String(formData.get("vorname")),
+      nachname: String(formData.get("nachname")),
+      email: String(formData.get("email")),
+      email_zweite: formData.get("email_zweite") || null,
+      telefon: formData.get("telefon") || null,
+      mobiltelefon: formData.get("mobiltelefon") || null,
+      linkedin_url: formData.get("linkedin_url") || null,
+      geburtsdatum: formData.get("geburtsdatum") || null,
+      position: formData.get("position") || null,
+      firma_freitext: formData.get("firma_freitext") || null,
+      privatadresse_strasse: formData.get("privatadresse_strasse") || null,
+      privatadresse_plz: formData.get("privatadresse_plz") || null,
+      privatadresse_ort: formData.get("privatadresse_ort") || null,
+      privatadresse_land: formData.get("privatadresse_land") || null,
+      ernaehrung_sonderwuensche: formData.get("ernaehrung_sonderwuensche") || null,
+      notizen: formData.get("notizen") || null,
+      teilnehmerliste_opt_out: formData.get("teilnehmerliste_opt_out") === "on",
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/teilnehmer/${id}`);
+  redirect(`/teilnehmer/${id}`);
 }
 
 export async function setMarketingConsentStatus(formData: FormData) {

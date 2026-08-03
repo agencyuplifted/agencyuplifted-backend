@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
-import { setMarketingConsentStatus } from "@/lib/actions";
+import { setMarketingConsentStatus, updateTeilnehmerStammdaten } from "@/lib/actions";
 
 export default async function TeilnehmerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -34,48 +34,121 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
 
       <div className="au-card">
         <h2>Stammdaten</h2>
-        <div className="au-dl">
-          <div className="au-dt">E-Mail</div>
-          <div>{t.email}</div>
-          <div className="au-dt">Telefon</div>
-          <div>{t.telefon || "—"}</div>
-          <div className="au-dt">LinkedIn</div>
-          <div>{t.linkedin_url ? <a href={t.linkedin_url} target="_blank" rel="noreferrer">{t.linkedin_url}</a> : "—"}</div>
-          <div className="au-dt">Ernährung / Sonderwünsche</div>
-          <div>{t.ernaehrung_sonderwuensche || "—"}</div>
-          <div className="au-dt">Teilnehmerliste Opt-out</div>
-          <div>{t.teilnehmerliste_opt_out ? "Ja — nicht auf Teilnehmerlisten aufführen" : "Nein"}</div>
-          <div className="au-dt">Marketing-Consent</div>
-          <div>
-            <form action={setMarketingConsentStatus} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-              <input type="hidden" name="id" value={t.id} />
-              <select name="status" defaultValue={t.marketing_consent_status || "unbekannt"} className="au-select" style={{ marginBottom: 0, width: "auto" }}>
-                <option value="abonniert">abonniert</option>
-                <option value="keine_zustimmung">keine_zustimmung</option>
-                <option value="abgemeldet">abgemeldet (bekommt keine Funnel-Mails)</option>
-                <option value="unbekannt">unbekannt</option>
+        <form action={updateTeilnehmerStammdaten} style={{ maxWidth: 640 }}>
+          <input type="hidden" name="id" value={t.id} />
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Anrede</label>
+              <select className="au-select" name="anrede" defaultValue={t.anrede || "keine_angabe"}>
+                <option value="keine_angabe">—</option>
+                <option value="Herr">Herr</option>
+                <option value="Frau">Frau</option>
+                <option value="Divers">Divers</option>
               </select>
-              <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
-              <span style={{ color: "var(--color-text-faint)", fontSize: "0.8rem" }}>
-                {t.marketing_consent_zeitpunkt ? `seit ${formatDatum(t.marketing_consent_zeitpunkt)}` : ""}
-                {t.marketing_consent_quelle ? ` · Quelle: ${t.marketing_consent_quelle}` : ""}
-              </span>
-            </form>
-            {t.marketing_consent_status === "abgemeldet" && (
-              <p style={{ color: "var(--color-danger)", fontSize: "0.8rem", marginTop: "0.35rem", marginBottom: 0 }}>
-                Abgemeldet — erhält garantiert keine Funnel-/Serien-Mails mehr.
-              </p>
-            )}
+            </div>
+            <div>
+              <label className="au-label">Geburtsdatum</label>
+              <input className="au-input" name="geburtsdatum" type="date" defaultValue={t.geburtsdatum || ""} />
+            </div>
           </div>
-          <div className="au-dt">Erfasst am</div>
-          <div>{formatDatum(t.erstellt_am)}</div>
-          {t.deaktiviert_am && (
-            <>
-              <div className="au-dt">Deaktiviert am</div>
-              <div>{formatDatum(t.deaktiviert_am)}</div>
-            </>
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Vorname</label>
+              <input className="au-input" name="vorname" defaultValue={t.vorname} required />
+            </div>
+            <div>
+              <label className="au-label">Nachname</label>
+              <input className="au-input" name="nachname" defaultValue={t.nachname} required />
+            </div>
+          </div>
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">E-Mail</label>
+              <input className="au-input" name="email" type="email" defaultValue={t.email} required />
+            </div>
+            <div>
+              <label className="au-label">Zweite E-Mail</label>
+              <input className="au-input" name="email_zweite" type="email" defaultValue={t.email_zweite || ""} />
+            </div>
+          </div>
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Telefon</label>
+              <input className="au-input" name="telefon" defaultValue={t.telefon || ""} />
+            </div>
+            <div>
+              <label className="au-label">Mobiltelefon</label>
+              <input className="au-input" name="mobiltelefon" defaultValue={t.mobiltelefon || ""} />
+            </div>
+          </div>
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Position / Jobtitel</label>
+              <input className="au-input" name="position" defaultValue={t.position || ""} />
+            </div>
+            <div>
+              <label className="au-label">Firma (falls keine Organisation im System)</label>
+              <input className="au-input" name="firma_freitext" defaultValue={t.firma_freitext || ""} />
+            </div>
+          </div>
+
+          <label className="au-label">LinkedIn-URL</label>
+          <input className="au-input" name="linkedin_url" defaultValue={t.linkedin_url || ""} />
+
+          <label className="au-label">Privatadresse (für Hotel-Meldeschein & Rechnungen an Einzelpersonen)</label>
+          <input className="au-input" name="privatadresse_strasse" placeholder="Straße, Hausnummer" defaultValue={t.privatadresse_strasse || ""} />
+          <div className="au-row-2">
+            <input className="au-input" name="privatadresse_plz" placeholder="PLZ" defaultValue={t.privatadresse_plz || ""} />
+            <input className="au-input" name="privatadresse_ort" placeholder="Ort" defaultValue={t.privatadresse_ort || ""} />
+          </div>
+          <input className="au-input" name="privatadresse_land" placeholder="Land" defaultValue={t.privatadresse_land || "Deutschland"} />
+
+          <label className="au-label">Ernährung / Sonderwünsche</label>
+          <input className="au-input" name="ernaehrung_sonderwuensche" defaultValue={t.ernaehrung_sonderwuensche || ""} />
+
+          <label className="au-label">Notizen (intern)</label>
+          <textarea className="au-textarea" name="notizen" defaultValue={t.notizen || ""} />
+
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 400, marginBottom: "1rem", fontSize: "0.9rem" }}>
+            <input type="checkbox" name="teilnehmerliste_opt_out" defaultChecked={t.teilnehmerliste_opt_out} />
+            Nicht auf Teilnehmerlisten aufführen (Opt-out)
+          </label>
+
+          <button type="submit" className="au-btn au-btn-primary">Stammdaten speichern</button>
+        </form>
+
+        <div style={{ marginTop: "1.5rem", paddingTop: "1.25rem", borderTop: "1px solid var(--color-border)" }}>
+          <div className="au-dt" style={{ marginBottom: "0.5rem" }}>Marketing-Consent (Funnel-Mails)</div>
+          <form action={setMarketingConsentStatus} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <input type="hidden" name="id" value={t.id} />
+            <select name="status" defaultValue={t.marketing_consent_status || "unbekannt"} className="au-select" style={{ marginBottom: 0, width: "auto" }}>
+              <option value="abonniert">abonniert</option>
+              <option value="keine_zustimmung">keine_zustimmung</option>
+              <option value="abgemeldet">abgemeldet (bekommt keine Funnel-Mails)</option>
+              <option value="unbekannt">unbekannt</option>
+            </select>
+            <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
+            <span style={{ color: "var(--color-text-faint)", fontSize: "0.8rem" }}>
+              {t.marketing_consent_zeitpunkt ? `seit ${formatDatum(t.marketing_consent_zeitpunkt)}` : ""}
+              {t.marketing_consent_quelle ? ` · Quelle: ${t.marketing_consent_quelle}` : ""}
+            </span>
+          </form>
+          {t.marketing_consent_status === "abgemeldet" && (
+            <p style={{ color: "var(--color-danger)", fontSize: "0.8rem", marginTop: "0.35rem", marginBottom: 0 }}>
+              Abgemeldet — erhält garantiert keine Funnel-/Serien-Mails mehr.
+            </p>
           )}
         </div>
+
+        <p style={{ fontSize: "0.8rem", color: "var(--color-text-faint)", marginTop: "1rem", marginBottom: 0 }}>
+          Erfasst am {formatDatum(t.erstellt_am)}
+          {t.deaktiviert_am ? ` · Deaktiviert am ${formatDatum(t.deaktiviert_am)}` : ""}
+        </p>
       </div>
 
       <div className="au-card">

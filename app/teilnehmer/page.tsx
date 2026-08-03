@@ -35,21 +35,74 @@ export default async function TeilnehmerPage() {
 
       <TeilnehmerTable teilnehmer={rows} />
 
-      <div className="au-card" style={{ maxWidth: 460 }}>
+      <div className="au-card" style={{ maxWidth: 620 }}>
         <h2>Neuer Teilnehmer</h2>
         <form action={createTeilnehmer}>
-          <label className="au-label">Vorname</label>
-          <input className="au-input" name="vorname" required />
-          <label className="au-label">Nachname</label>
-          <input className="au-input" name="nachname" required />
-          <label className="au-label">E-Mail</label>
-          <input className="au-input" name="email" type="email" required />
-          <label className="au-label">Telefon</label>
-          <input className="au-input" name="telefon" />
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Anrede</label>
+              <select className="au-select" name="anrede" defaultValue="keine_angabe">
+                <option value="keine_angabe">—</option>
+                <option value="Herr">Herr</option>
+                <option value="Frau">Frau</option>
+                <option value="Divers">Divers</option>
+              </select>
+            </div>
+            <div>
+              <label className="au-label">Geburtsdatum</label>
+              <input className="au-input" name="geburtsdatum" type="date" />
+            </div>
+          </div>
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Vorname</label>
+              <input className="au-input" name="vorname" required />
+            </div>
+            <div>
+              <label className="au-label">Nachname</label>
+              <input className="au-input" name="nachname" required />
+            </div>
+          </div>
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">E-Mail</label>
+              <input className="au-input" name="email" type="email" required />
+            </div>
+            <div>
+              <label className="au-label">Zweite E-Mail (optional)</label>
+              <input className="au-input" name="email_zweite" type="email" />
+            </div>
+          </div>
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Telefon</label>
+              <input className="au-input" name="telefon" />
+            </div>
+            <div>
+              <label className="au-label">Mobiltelefon</label>
+              <input className="au-input" name="mobiltelefon" />
+            </div>
+          </div>
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Position / Jobtitel</label>
+              <input className="au-input" name="position" />
+            </div>
+            <div>
+              <label className="au-label">Firma (falls keine Organisation im System)</label>
+              <input className="au-input" name="firma_freitext" />
+            </div>
+          </div>
+
           <label className="au-label">LinkedIn-URL</label>
           <input className="au-input" name="linkedin_url" />
           <label className="au-label">Ernährung / Sonderwünsche</label>
           <input className="au-input" name="ernaehrung" />
+
           <button type="submit" className="au-btn au-btn-primary">Anlegen</button>
         </form>
       </div>
