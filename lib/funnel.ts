@@ -83,10 +83,10 @@ async function sammleFaelligeEmpfaenger(
       if (anchor > heute) continue;
       const { data: positionen } = await supabase
         .from("buchungspositionen")
-        .select("teilnehmer(vorname, nachname, email)")
+        .select("teilnehmer(vorname, nachname, email, marketing_consent_status)")
         .eq("buchung_id", b.id);
       const empfaenger: Empfaenger[] = (positionen || [])
-        .filter((p: any) => p.teilnehmer?.email)
+        .filter((p: any) => p.teilnehmer?.email && p.teilnehmer?.marketing_consent_status !== "abgemeldet")
         .map((p: any) => ({
           email: p.teilnehmer.email,
           werte: { vorname: p.teilnehmer.vorname, nachname: p.teilnehmer.nachname, firma: b.organisationen?.name || "" },
@@ -110,7 +110,7 @@ async function sammleFaelligeEmpfaenger(
 
       const { data: positionen } = await supabase
         .from("buchungspositionen")
-        .select("teilnehmer(vorname, nachname, email), buchungen(status)")
+        .select("teilnehmer(vorname, nachname, email, marketing_consent_status), buchungen(status)")
         .eq("seminartermin_id", t.id);
       const titel = t.titel || t.seminartypen?.name || "Seminar";
       const seminardatum = formatDatum(t.datum_start);
@@ -118,7 +118,12 @@ async function sammleFaelligeEmpfaenger(
       const teilnehmerliste = await teilnehmerlisteText(supabase, t.id);
 
       const empfaenger: Empfaenger[] = (positionen || [])
-        .filter((p: any) => p.buchungen?.status !== "storniert" && p.teilnehmer?.email)
+        .filter(
+          (p: any) =>
+            p.buchungen?.status !== "storniert" &&
+            p.teilnehmer?.email &&
+            p.teilnehmer?.marketing_consent_status !== "abgemeldet"
+        )
         .map((p: any) => ({
           email: p.teilnehmer.email,
           werte: {

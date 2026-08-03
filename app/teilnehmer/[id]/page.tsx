@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
+import { setMarketingConsentStatus } from "@/lib/actions";
 
 const card: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1.25rem", marginBottom: "1.5rem" };
 const dl: React.CSSProperties = { display: "grid", gridTemplateColumns: "220px 1fr", rowGap: "0.6rem", columnGap: "1rem" };
@@ -50,9 +51,30 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
           <div>{t.teilnehmerliste_opt_out ? "Ja — nicht auf Teilnehmerlisten aufführen" : "Nein"}</div>
           <div style={dt}>Marketing-Consent</div>
           <div>
-            {t.marketing_consent_status || "—"}
-            {t.marketing_consent_zeitpunkt ? ` · seit ${formatDatum(t.marketing_consent_zeitpunkt)}` : ""}
-            {t.marketing_consent_quelle ? ` · Quelle: ${t.marketing_consent_quelle}` : ""}
+            <form action={setMarketingConsentStatus} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+              <input type="hidden" name="id" value={t.id} />
+              <select name="status" defaultValue={t.marketing_consent_status || "unbekannt"} style={{ padding: "0.35rem" }}>
+                <option value="abonniert">abonniert</option>
+                <option value="keine_zustimmung">keine_zustimmung</option>
+                <option value="abgemeldet">abgemeldet (bekommt keine Funnel-Mails)</option>
+                <option value="unbekannt">unbekannt</option>
+              </select>
+              <button
+                type="submit"
+                style={{ background: "#102A4C", color: "white", border: "none", padding: "0.4rem 0.8rem", cursor: "pointer", fontSize: "0.85rem" }}
+              >
+                Speichern
+              </button>
+              <span style={{ color: "#666", fontSize: "0.8rem" }}>
+                {t.marketing_consent_zeitpunkt ? `seit ${formatDatum(t.marketing_consent_zeitpunkt)}` : ""}
+                {t.marketing_consent_quelle ? ` · Quelle: ${t.marketing_consent_quelle}` : ""}
+              </span>
+            </form>
+            {t.marketing_consent_status === "abgemeldet" && (
+              <p style={{ color: "#8a1f1f", fontSize: "0.8rem", marginTop: "0.35rem", marginBottom: 0 }}>
+                Abgemeldet — erhält garantiert keine Funnel-/Serien-Mails mehr.
+              </p>
+            )}
           </div>
           <div style={dt}>Erfasst am</div>
           <div>{formatDatum(t.erstellt_am)}</div>

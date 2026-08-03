@@ -39,6 +39,30 @@ export async function createTeilnehmer(formData: FormData) {
   redirect("/teilnehmer");
 }
 
+export async function setMarketingConsentStatus(formData: FormData) {
+  const id = String(formData.get("id"));
+  const status = String(formData.get("status"));
+  const erlaubteStatus = ["abonniert", "keine_zustimmung", "abgemeldet", "unbekannt"];
+  if (!erlaubteStatus.includes(status)) {
+    throw new Error("Ungueltiger Consent-Status.");
+  }
+
+  const supabase = getSupabaseAdmin();
+  const benutzer = await getAktuellerBenutzer();
+  const { error } = await supabase
+    .from("teilnehmer")
+    .update({
+      marketing_consent_status: status,
+      marketing_consent_zeitpunkt: new Date().toISOString(),
+      marketing_consent_quelle: `manuell (${benutzer?.name || "Admin-UI"})`,
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/teilnehmer/${id}`);
+  redirect(`/teilnehmer/${id}`);
+}
+
 export async function createTrainer(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("trainer").insert({
