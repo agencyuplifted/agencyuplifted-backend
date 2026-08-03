@@ -41,17 +41,20 @@ export default function BuchungForm({
   teilnehmer,
   organisationen,
   termine,
+  initialTeilnehmerId,
 }: {
   teilnehmer: Teilnehmer[];
   organisationen: Organisation[];
   termine: Termin[];
+  initialTeilnehmerId?: string;
 }) {
   const [modus, setModus] = useState<"seminar" | "individuell">("seminar");
   const [seminarterminId, setSeminarterminId] = useState("");
   const [teilnehmerZeilen, setTeilnehmerZeilen] = useState([
-    { key: 0, teilnehmerId: "", optionId: "", listenpreis: "", rabatt: "0" },
+    { key: 0, teilnehmerId: initialTeilnehmerId || "", optionId: "", listenpreis: "", rabatt: "0" },
   ]);
-  const [einzelTeilnehmerId, setEinzelTeilnehmerId] = useState("");
+  const [einzelTeilnehmerId, setEinzelTeilnehmerId] = useState(initialTeilnehmerId || "");
+  const vorausgewaehlt = teilnehmer.find((t) => t.id === initialTeilnehmerId);
 
   const gewaehlterTermin = termine.find((t) => t.id === seminarterminId);
   const optionenDesTermins = gewaehlterTermin?.seminartermin_optionen || [];
@@ -104,6 +107,12 @@ export default function BuchungForm({
       <p style={{ color: "#666", fontSize: "0.85rem", background: "#f7f7f7", padding: "0.6rem 0.8rem", marginBottom: "1rem" }}>
         Hinweis: Alle Preise werden netto (zzgl. gesetzlicher USt.) erfasst.
       </p>
+
+      {vorausgewaehlt && (
+        <p style={{ color: "#102A4C", fontSize: "0.85rem", background: "#eef2f7", padding: "0.6rem 0.8rem", marginBottom: "1rem" }}>
+          Vorausgewählt: {vorausgewaehlt.vorname} {vorausgewaehlt.nachname} ({vorausgewaehlt.email})
+        </p>
+      )}
 
       <label style={labelStyle}>Art der Buchung</label>
       <div style={{ display: "flex", gap: "1.5rem", marginBottom: "1rem" }}>

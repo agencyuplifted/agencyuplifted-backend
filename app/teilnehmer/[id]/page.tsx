@@ -66,7 +66,15 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
       </div>
 
       <div style={card}>
-        <h2>Buchungen</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+          <h2 style={{ margin: 0 }}>Buchungen</h2>
+          <Link
+            href={`/buchungen/neu?teilnehmer_id=${id}`}
+            style={{ background: "#102A4C", color: "white", padding: "0.5rem 1rem", textDecoration: "none", fontSize: "0.9rem" }}
+          >
+            + Neue Buchung anlegen
+          </Link>
+        </div>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
@@ -76,13 +84,14 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
               <th style={{ padding: "0.4rem" }}>Preis (netto)</th>
               <th style={{ padding: "0.4rem" }}>Preis (brutto)</th>
               <th style={{ padding: "0.4rem" }}>Status</th>
+              <th style={{ padding: "0.4rem" }}>Aktion</th>
             </tr>
           </thead>
           <tbody>
             {positionen?.map((p: any) => (
               <tr key={p.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                 <td style={{ padding: "0.4rem" }}>
-                  <Link href={`/buchungen/${p.buchungen?.id}`} style={{ color: "#102A4C" }}>{p.buchungen?.buchungsnummer}</Link>
+                  {p.buchungen?.buchungsnummer}
                 </td>
                 <td style={{ padding: "0.4rem" }}>
                   {p.seminartermine
@@ -93,10 +102,13 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
                 <td style={{ padding: "0.4rem" }}>{formatEUR(Number(p.preis || 0))}</td>
                 <td style={{ padding: "0.4rem" }}>{formatEURBrutto(Number(p.preis || 0))}</td>
                 <td style={{ padding: "0.4rem" }}>{p.buchungen?.status}</td>
+                <td style={{ padding: "0.4rem" }}>
+                  <Link href={`/buchungen/${p.buchungen?.id}`} style={{ color: "#102A4C" }}>Bearbeiten / Umbuchen / Stornieren →</Link>
+                </td>
               </tr>
             ))}
             {!positionen?.length && (
-              <tr><td colSpan={6} style={{ padding: "0.4rem", color: "#888" }}>Noch keine Buchungen.</td></tr>
+              <tr><td colSpan={7} style={{ padding: "0.4rem", color: "#888" }}>Noch keine Buchungen.</td></tr>
             )}
           </tbody>
         </table>
