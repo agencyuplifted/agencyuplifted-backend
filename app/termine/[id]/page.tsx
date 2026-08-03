@@ -20,6 +20,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
 import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
+import Link from "next/link";
 
 const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
@@ -103,12 +104,17 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             )}
           </p>
         </div>
-        <form action={duplicateSeminartermin}>
-          <input type="hidden" name="seminartermin_id" value={id} />
-          <button type="submit" style={btnSecondary} title="Legt eine Kopie dieses Termins inkl. Optionen, Featurelisten, Preisstaffeln und Urgency-Stufen an">
-            Termin duplizieren
-          </button>
-        </form>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <Link href={`/termine/${id}/teilnehmerliste`} style={{ ...btnSecondary, textDecoration: "none", display: "inline-block" }}>
+            Teilnehmerliste (Hotel)
+          </Link>
+          <form action={duplicateSeminartermin}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <button type="submit" style={btnSecondary} title="Legt eine Kopie dieses Termins inkl. Optionen, Featurelisten, Preisstaffeln und Urgency-Stufen an">
+              Termin duplizieren
+            </button>
+          </form>
+        </div>
       </div>
 
       <div style={card}>
