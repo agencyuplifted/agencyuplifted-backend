@@ -8,7 +8,11 @@ import { verifySession, SESSION_COOKIE_NAME } from "@/lib/session";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith("/api/cron/") || pathname === "/login") {
+  if (
+    pathname.startsWith("/api/cron/") ||
+    pathname.startsWith("/api/public/") ||
+    pathname === "/login"
+  ) {
     return NextResponse.next();
   }
 
