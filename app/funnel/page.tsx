@@ -6,7 +6,6 @@ import {
   updateFunnelMail,
   deleteFunnelMail,
   toggleFunnelMailAktiv,
-  funnelVersandJetzt,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum } from "@/lib/format";
@@ -62,9 +61,13 @@ export default async function FunnelPage({
       )}
 
       <div style={card}>
-        <form action={funnelVersandJetzt}>
-          <button type="submit" style={btn}>Jetzt prüfen &amp; fällige Mails senden</button>
-        </form>
+        <Link href="/funnel/vorschau" style={{ ...btn, textDecoration: "none", display: "inline-block" }}>
+          Vorschau: Fällige Mails prüfen &amp; senden
+        </Link>
+        <p style={{ color: "#888", fontSize: "0.85rem", marginTop: "0.5rem", marginBottom: 0 }}>
+          Zeigt zuerst, wer was bekommen würde. Der tatsächliche Versand erfordert danach eine zweite,
+          ausdrückliche Bestätigung.
+        </p>
       </div>
 
       <div style={card}>

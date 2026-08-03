@@ -159,12 +159,22 @@ async function sammleFaelligeEmpfaenger(
   return ergebnis;
 }
 
-export async function pruefeUndSendeFaelligeFunnelMails(): Promise<{ geprueft: number; gesendet: number; fehler: number; uebersprungen: number }> {
-  const supabase = getSupabaseAdmin();
+export type FaelligeVorschauEintrag = {
+  funnelMailId: string;
+  funnelName: string;
+  bezugTyp: string;
+  bezugId: string;
+  empfaengerEmail: string;
+  betreff: string;
+  inhaltHtml: string;
+};
+
+async function ermittleFaelligeEintraege(
+  supabase: any
+): Promise<{ eintraege: FaelligeVorschauEintrag[]; uebersprungen: number; geprueft: number }> {
   const { data: funnels } = await supabase.from("funnel_mails").select("*").eq("aktiv", true);
 
-  let gesendet = 0;
-  let fehler = 0;
+  const eintraege: FaelligeVorschauEintrag[] = [];
   let uebersprungen = 0;
 
   for (const funnel of funnels || []) {
@@ -183,42 +193,80 @@ export async function pruefeUndSendeFaelligeFunnelMails(): Promise<{ geprueft: n
           continue;
         }
 
-        const betreff = renderPlatzhalter(funnel.betreff, empf.werte);
-        const inhaltHtml = renderPlatzhalter(funnel.inhalt, empf.werte).replace(/\n/g, "<br/>");
-
-        let status: "gesendet" | "fehler" = "gesendet";
-        let fehlermeldung: string | null = null;
-        try {
-          const resend = getResend();
-          const { error } = await resend.emails.send({
-            from: ABSENDER,
-            to: [empf.email],
-            subject: betreff,
-            html: inhaltHtml,
-          });
-          if (error) {
-            status = "fehler";
-            fehlermeldung = error.message;
-          }
-        } catch (e: any) {
-          status = "fehler";
-          fehlermeldung = e?.message || "Unbekannter Fehler beim Versand.";
-        }
-
-        await supabase.from("funnel_versand_log").insert({
-          funnel_mail_id: funnel.id,
-          bezug_typ: gruppe.bezugTyp,
-          bezug_id: gruppe.bezugId,
-          empfaenger_email: empf.email,
-          status,
-          fehlermeldung,
+        eintraege.push({
+          funnelMailId: funnel.id,
+          funnelName: funnel.name,
+          bezugTyp: gruppe.bezugTyp,
+          bezugId: gruppe.bezugId,
+          empfaengerEmail: empf.email,
+          betreff: renderPlatzhalter(funnel.betreff, empf.werte),
+          inhaltHtml: renderPlatzhalter(funnel.inhalt, empf.werte).replace(/\n/g, "<br/>"),
         });
-
-        if (status === "gesendet") gesendet++;
-        else fehler++;
       }
     }
   }
 
-  return { geprueft: (funnels || []).length, gesendet, fehler, uebersprungen };
+  return { eintraege, uebersprungen, geprueft: (funnels || []).length };
+}
+
+/**
+ * Liefert alle aktuell fälligen, noch nicht verschickten Funnel-Mails als Vorschau
+ * (ohne etwas zu versenden). Wird von der Vorschau-Seite im Admin-UI genutzt, damit
+ * vor dem tatsächlichen Versand geprüft werden kann, was rausgehen würde.
+ */
+export async function ermittleFaelligeVorschau(): Promise<{
+  eintraege: FaelligeVorschauEintrag[];
+  uebersprungen: number;
+  geprueft: number;
+}> {
+  const supabase = getSupabaseAdmin();
+  return ermittleFaelligeEintraege(supabase);
+}
+
+export async function pruefeUndSendeFaelligeFunnelMails(): Promise<{
+  geprueft: number;
+  gesendet: number;
+  fehler: number;
+  uebersprungen: number;
+}> {
+  const supabase = getSupabaseAdmin();
+  const { eintraege, uebersprungen, geprueft } = await ermittleFaelligeEintraege(supabase);
+
+  let gesendet = 0;
+  let fehler = 0;
+
+  for (const eintrag of eintraege) {
+    let status: "gesendet" | "fehler" = "gesendet";
+    let fehlermeldung: string | null = null;
+    try {
+      const resend = getResend();
+      const { error } = await resend.emails.send({
+        from: ABSENDER,
+        to: [eintrag.empfaengerEmail],
+        subject: eintrag.betreff,
+        html: eintrag.inhaltHtml,
+      });
+      if (error) {
+        status = "fehler";
+        fehlermeldung = error.message;
+      }
+    } catch (e: any) {
+      status = "fehler";
+      fehlermeldung = e?.message || "Unbekannter Fehler beim Versand.";
+    }
+
+    await supabase.from("funnel_versand_log").insert({
+      funnel_mail_id: eintrag.funnelMailId,
+      bezug_typ: eintrag.bezugTyp,
+      bezug_id: eintrag.bezugId,
+      empfaenger_email: eintrag.empfaengerEmail,
+      status,
+      fehlermeldung,
+    });
+
+    if (status === "gesendet") gesendet++;
+    else fehler++;
+  }
+
+  return { geprueft, gesendet, fehler, uebersprungen };
 }
