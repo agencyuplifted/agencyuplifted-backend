@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { sendeTestMail } from "@/lib/actions";
 
 export default async function EmailTestPage({
@@ -23,6 +24,17 @@ export default async function EmailTestPage({
       {fehler && (
         <div className="au-banner au-banner-error">Fehler beim Versand: {fehler}</div>
       )}
+
+      <div className="au-card">
+        <h2 style={{ marginTop: 0 }}>Zustellung/Öffnung/Klick-Tracking</h2>
+        <p style={{ fontSize: "0.9rem" }}>
+          Zeigt im Funnel-Tool, ob eine Mail zugestellt, geöffnet oder angeklickt wurde. Erfordert eine
+          einmalige Einrichtung (Tracking-Domain + Webhook).
+        </p>
+        <Link href="/email-test/tracking-setup" className="au-btn au-btn-secondary">
+          Tracking &amp; Webhook einrichten
+        </Link>
+      </div>
 
       <div className="au-card">
         <form action={sendeTestMail}>

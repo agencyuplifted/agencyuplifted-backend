@@ -975,3 +975,93 @@ export async function setMitarbeiterZugang(formData: FormData) {
   revalidatePath("/mitarbeiter");
   redirect("/mitarbeiter");
 }
+
+// Einmaliges Setup fuer Resend-Tracking (Oeffnungen/Klicks) + Webhook-Empfang.
+// Aktiviert open/click-Tracking auf der agencyuplifted.de-Domain mit der
+// Tracking-Subdomain "links" (Markus richtet dafuer selbst den DNS-CNAME-Eintrag
+// ein) und registriert (falls noch nicht vorhanden) einen Webhook auf
+// /api/webhooks/resend. Ergebnis (DNS-Eintrag + Webhook-Signing-Secret) wird in
+// resend_setup_status gespeichert und auf /email-test/tracking-setup angezeigt -
+// bewusst nicht per URL-Query, damit das Secret nicht in der Browser-Historie landet.
+const RESEND_WEBHOOK_ENDPOINT =
+  process.env.RESEND_WEBHOOK_URL || "https://agencyuplifted-backend.vercel.app/api/webhooks/resend";
+const RESEND_TRACKING_SUBDOMAIN = "links";
+const RESEND_WEBHOOK_EVENTS = [
+  "email.delivered",
+  "email.opened",
+  "email.clicked",
+  "email.bounced",
+  "email.complained",
+] as const;
+
+export async function richteResendTrackingEin() {
+  const supabase = getSupabaseAdmin();
+  const resend = getResend();
+
+  try {
+    const { data: domainListe, error: domainListeFehler } = await resend.domains.list();
+    if (domainListeFehler) throw new Error(domainListeFehler.message);
+
+    const domain = (domainListe?.data || []).find(
+      (d) => d.name === "agencyuplifted.de" || d.name.endsWith(".agencyuplifted.de")
+    );
+    if (!domain) {
+      throw new Error(
+        "Keine Domain 'agencyuplifted.de' bei Resend gefunden. Bitte zuerst die Domain in Resend anlegen/verifizieren."
+      );
+    }
+
+    const { error: updateFehler } = await resend.domains.update({
+      id: domain.id,
+      openTracking: true,
+      clickTracking: true,
+      trackingSubdomain: RESEND_TRACKING_SUBDOMAIN,
+    });
+    if (updateFehler) throw new Error(updateFehler.message);
+
+    const { data: domainDetails, error: domainDetailsFehler } = await resend.domains.get(domain.id);
+    if (domainDetailsFehler) throw new Error(domainDetailsFehler.message);
+
+    const { data: webhookListe, error: webhookListeFehler } = await resend.webhooks.list();
+    if (webhookListeFehler) throw new Error(webhookListeFehler.message);
+
+    let webhookId: string;
+    let signingSecret: string;
+
+    const bestehenderWebhook = (webhookListe?.data || []).find((w) => w.endpoint === RESEND_WEBHOOK_ENDPOINT);
+    if (bestehenderWebhook) {
+      const { data: webhookDetails, error: webhookDetailsFehler } = await resend.webhooks.get(bestehenderWebhook.id);
+      if (webhookDetailsFehler) throw new Error(webhookDetailsFehler.message);
+      webhookId = bestehenderWebhook.id;
+      signingSecret = webhookDetails!.signing_secret;
+    } else {
+      const { data: neuerWebhook, error: webhookCreateFehler } = await resend.webhooks.create({
+        endpoint: RESEND_WEBHOOK_ENDPOINT,
+        events: [...RESEND_WEBHOOK_EVENTS],
+      });
+      if (webhookCreateFehler) throw new Error(webhookCreateFehler.message);
+      webhookId = neuerWebhook!.id;
+      signingSecret = neuerWebhook!.signing_secret;
+    }
+
+    const { error: upsertFehler } = await supabase.from("resend_setup_status").upsert({
+      id: "default",
+      domain_id: domain.id,
+      domain_name: domain.name,
+      tracking_subdomain: RESEND_TRACKING_SUBDOMAIN,
+      dns_records: domainDetails?.records || [],
+      webhook_id: webhookId,
+      webhook_signing_secret: signingSecret,
+      webhook_endpoint: RESEND_WEBHOOK_ENDPOINT,
+      eingerichtet_am: new Date().toISOString(),
+      aktualisiert_am: new Date().toISOString(),
+    });
+    if (upsertFehler) throw new Error(upsertFehler.message);
+  } catch (e: any) {
+    revalidatePath("/email-test/tracking-setup");
+    redirect(`/email-test/tracking-setup?fehler=${encodeURIComponent(e?.message || "Unbekannter Fehler.")}`);
+  }
+
+  revalidatePath("/email-test/tracking-setup");
+  redirect("/email-test/tracking-setup?erfolg=1");
+}

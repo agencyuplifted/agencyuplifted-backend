@@ -5,6 +5,14 @@ export function formatDatum(d: string) {
   return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(d));
 }
 
+// Fuer Zeitstempel (z.B. Resend-Tracking: zugestellt/geoeffnet/geklickt am),
+// bei denen zusaetzlich zum Datum auch die Uhrzeit relevant ist.
+export function formatDatumZeit(d: string) {
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  }).format(new Date(d));
+}
+
 // Alle in der App erfassten Preise sind Nettopreise (zzgl. gesetzlicher USt.).
 export const MWST_SATZ = 0.19;
 

@@ -243,9 +243,10 @@ export async function pruefeUndSendeFaelligeFunnelMails(): Promise<{
   for (const eintrag of eintraege) {
     let status: "gesendet" | "fehler" = "gesendet";
     let fehlermeldung: string | null = null;
+    let resendEmailId: string | null = null;
     try {
       const resend = getResend();
-      const { error } = await resend.emails.send({
+      const { data, error } = await resend.emails.send({
         from: ABSENDER,
         to: [eintrag.empfaengerEmail],
         subject: eintrag.betreff,
@@ -254,6 +255,8 @@ export async function pruefeUndSendeFaelligeFunnelMails(): Promise<{
       if (error) {
         status = "fehler";
         fehlermeldung = error.message;
+      } else {
+        resendEmailId = data?.id || null;
       }
     } catch (e: any) {
       status = "fehler";
@@ -267,6 +270,7 @@ export async function pruefeUndSendeFaelligeFunnelMails(): Promise<{
       empfaenger_email: eintrag.empfaengerEmail,
       status,
       fehlermeldung,
+      resend_email_id: resendEmailId,
     });
 
     if (status === "gesendet") gesendet++;

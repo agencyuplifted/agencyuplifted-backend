@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith("/api/cron/") ||
     pathname.startsWith("/api/public/") ||
+    pathname.startsWith("/api/webhooks/") ||
     pathname === "/login"
   ) {
     return NextResponse.next();
