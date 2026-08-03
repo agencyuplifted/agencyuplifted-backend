@@ -24,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/buchungen" style={{ textDecoration: "none", color: "#102A4C" }}>Buchungen</Link>
           <Link href="/warteliste" style={{ textDecoration: "none", color: "#102A4C" }}>Warteliste</Link>
           <Link href="/trainer" style={{ textDecoration: "none", color: "#102A4C" }}>Trainer</Link>
+          <Link href="/mitarbeiter" style={{ textDecoration: "none", color: "#102A4C" }}>Mitarbeiter</Link>
           <Link href="/orte" style={{ textDecoration: "none", color: "#102A4C" }}>Orte</Link>
           <Link href="/community" style={{ textDecoration: "none", color: "#102A4C" }}>Community</Link>
           <Link href="/leads" style={{ textDecoration: "none", color: "#102A4C" }}>Leads</Link>

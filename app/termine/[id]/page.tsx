@@ -9,6 +9,12 @@ import {
   duplicateSeminartermin,
   duplicateSeminarOption,
   updateOptionBadge,
+  updateSeminarOption,
+  deleteSeminarOption,
+  deleteOptionFeature,
+  deletePreisstaffel,
+  addMitarbeiterZuTermin,
+  removeMitarbeiterVonTermin,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
@@ -22,6 +28,8 @@ const card: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1.25r
 const optionCard: React.CSSProperties = { border: "1px solid #cfd8e3", background: "#f7f9fc", padding: "1rem 1.25rem", marginBottom: "1rem" };
 const btn: React.CSSProperties = { background: "#102A4C", color: "white", padding: "0.55rem 1rem", border: "none", cursor: "pointer" };
 const btnSecondary: React.CSSProperties = { background: "transparent", color: "#102A4C", border: "1px solid #102A4C", padding: "0.4rem 0.8rem", cursor: "pointer", fontSize: "0.85rem" };
+const btnDanger: React.CSSProperties = { background: "transparent", color: "#8a1f1f", border: "1px solid #8a1f1f", padding: "0.3rem 0.6rem", cursor: "pointer", fontSize: "0.8rem" };
+const linkDelete: React.CSSProperties = { background: "none", border: "none", color: "#8a1f1f", cursor: "pointer", fontSize: "0.8rem", padding: 0, marginLeft: "0.5rem" };
 const badgeStyle: React.CSSProperties = { display: "inline-block", background: "#c98a1f", color: "white", fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: 3, marginLeft: "0.6rem", verticalAlign: "middle" };
 
 const badgeLabel: Record<string, string> = {
@@ -58,6 +66,18 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
     .select("*")
     .eq("seminartermin_id", id)
     .order("schwellenwert_prozent", { ascending: true });
+
+  const { data: mitarbeiterListe } = await supabase
+    .from("mitarbeiter")
+    .select("*")
+    .eq("aktiv", true)
+    .order("name");
+
+  const { data: terminMitarbeiter } = await supabase
+    .from("seminartermin_mitarbeiter")
+    .select("*, mitarbeiter(name)")
+    .eq("seminartermin_id", id)
+    .order("erstellt_am", { ascending: true });
 
   if (!termin) return <main><p>Termin nicht gefunden.</p></main>;
 
@@ -206,6 +226,67 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
       </div>
 
       <div style={card}>
+        <h2>Mitarbeiter beim Termin</h2>
+        <p style={{ color: "#666", fontSize: "0.9rem" }}>
+          Referenten/Assistenz, die bei diesem Termin dabei sind — nicht als Teilnehmer, sondern als Personal erfasst.
+        </p>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+          <thead>
+            <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+              <th style={{ padding: "0.4rem" }}>Name</th>
+              <th style={{ padding: "0.4rem" }}>Rolle</th>
+              <th style={{ padding: "0.4rem" }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {terminMitarbeiter?.map((tm: any) => (
+              <tr key={tm.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                <td style={{ padding: "0.4rem" }}>{tm.mitarbeiter?.name}</td>
+                <td style={{ padding: "0.4rem" }}>{tm.rolle}</td>
+                <td style={{ padding: "0.4rem" }}>
+                  <form action={removeMitarbeiterVonTermin} style={{ display: "inline" }}>
+                    <input type="hidden" name="zuordnung_id" value={tm.id} />
+                    <input type="hidden" name="seminartermin_id" value={id} />
+                    <button type="submit" style={linkDelete}>entfernen</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+            {!terminMitarbeiter?.length && (
+              <tr><td colSpan={3} style={{ padding: "0.4rem", color: "#888" }}>Noch keine Mitarbeiter zugeordnet.</td></tr>
+            )}
+          </tbody>
+        </table>
+        <form action={addMitarbeiterZuTermin} style={row}>
+          <input type="hidden" name="seminartermin_id" value={id} />
+          <div>
+            <label style={labelStyle}>Mitarbeiter</label>
+            <select style={inputStyle} name="mitarbeiter_id" required>
+              <option value="">— wählen —</option>
+              {mitarbeiterListe?.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Rolle</label>
+            <select style={inputStyle} name="rolle" defaultValue="Referent">
+              <option value="Referent">Referent</option>
+              <option value="Assistenz">Assistenz</option>
+              <option value="Co-Trainer">Co-Trainer</option>
+              <option value="Sonstiges">Sonstiges</option>
+            </select>
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <button type="submit" style={btn}>Mitarbeiter zuordnen</button>
+          </div>
+        </form>
+        <p style={{ color: "#888", fontSize: "0.8rem", marginTop: "0.5rem" }}>
+          Fehlt jemand in der Liste? Unter <a href="/mitarbeiter" style={{ color: "#102A4C" }}>Mitarbeiter</a> neu anlegen.
+        </p>
+      </div>
+
+      <div style={card}>
         <h2>Optionen (z. B. A / B / C)</h2>
         <p style={{ color: "#666", fontSize: "0.9rem" }}>
           Jede Option ist ein eigenes buchbares Paket mit eigenem Titel, Beschreibung, Featureliste und eigenen Preisstufen (Frühbucher/Normalpreis). Ein Seminar mit nur einer Buchungsvariante braucht nur eine Option.
@@ -218,15 +299,39 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                 <strong>{opt.titel}</strong>
                 {opt.badge && <span style={badgeStyle}>{badgeLabel[opt.badge] || opt.badge}</span>}
               </div>
-              <form action={duplicateSeminarOption}>
-                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                <input type="hidden" name="seminartermin_id" value={id} />
-                <button type="submit" style={btnSecondary} title="Legt eine Kopie dieser Option (inkl. Features und Preisstaffeln) an, z. B. als Basis für Option B">
-                  Option duplizieren
-                </button>
-              </form>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <form action={duplicateSeminarOption}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <button type="submit" style={btnSecondary} title="Legt eine Kopie dieser Option (inkl. Features und Preisstaffeln) an, z. B. als Basis für Option B">
+                    Option duplizieren
+                  </button>
+                </form>
+              </div>
             </div>
             {opt.beschreibung && <p style={{ color: "#444", fontSize: "0.9rem", margin: "0.35rem 0" }}>{renderFett(opt.beschreibung)}</p>}
+
+            <details style={{ margin: "0.5rem 0" }}>
+              <summary style={{ cursor: "pointer", color: "#102A4C", fontSize: "0.85rem", fontWeight: 600 }}>Option bearbeiten</summary>
+              <form action={updateSeminarOption} style={{ marginTop: "0.6rem", maxWidth: 480 }}>
+                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                <input type="hidden" name="seminartermin_id" value={id} />
+                <label style={labelStyle}>Titel</label>
+                <input style={inputStyle} name="titel" defaultValue={opt.titel} required />
+                <label style={labelStyle}>Beschreibung</label>
+                <FettTextarea name="beschreibung" defaultValue={opt.beschreibung || ""} placeholder="Kurze Beschreibung dieser Option" />
+                <label style={labelStyle}>Sortierung (0 = zuerst)</label>
+                <input style={inputStyle} name="sortierung" type="number" defaultValue={opt.sortierung ?? 0} />
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button type="submit" style={btnSecondary}>Speichern</button>
+                </div>
+              </form>
+              <form action={deleteSeminarOption} style={{ marginTop: "0.5rem" }}>
+                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                <input type="hidden" name="seminartermin_id" value={id} />
+                <button type="submit" style={btnDanger}>Option löschen</button>
+              </form>
+            </details>
 
             <form action={updateOptionBadge} style={{ display: "flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" }}>
               <input type="hidden" name="seminartermin_option_id" value={opt.id} />
@@ -246,7 +351,14 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                 {opt.seminartermin_options_features
                   ?.sort((a: any, b: any) => a.sortierung - b.sortierung)
                   .map((f: any) => (
-                    <li key={f.id} style={{ fontSize: "0.9rem" }}>{renderFett(f.text)}</li>
+                    <li key={f.id} style={{ fontSize: "0.9rem" }}>
+                      {renderFett(f.text)}
+                      <form action={deleteOptionFeature} style={{ display: "inline" }}>
+                        <input type="hidden" name="feature_id" value={f.id} />
+                        <input type="hidden" name="seminartermin_id" value={id} />
+                        <button type="submit" style={linkDelete}>entfernen</button>
+                      </form>
+                    </li>
                   ))}
                 {!opt.seminartermin_options_features?.length && (
                   <li style={{ fontSize: "0.9rem", color: "#888", listStyle: "none", marginLeft: "-1.2rem" }}>Noch keine Features.</li>
@@ -269,6 +381,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                     <th style={{ padding: "0.3rem" }}>Stichtag (Tage vorher)</th>
                     <th style={{ padding: "0.3rem" }}>Preis (netto)</th>
                     <th style={{ padding: "0.3rem" }}>Preis (brutto, 19% USt.)</th>
+                    <th style={{ padding: "0.3rem" }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -280,10 +393,17 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                         <td style={{ padding: "0.3rem" }}>{p.stichtag_tage_vor_start}</td>
                         <td style={{ padding: "0.3rem" }}>{formatEUR(Number(p.preis))}</td>
                         <td style={{ padding: "0.3rem", color: "#666" }}>{formatEURBrutto(Number(p.preis))}</td>
+                        <td style={{ padding: "0.3rem" }}>
+                          <form action={deletePreisstaffel}>
+                            <input type="hidden" name="preisstaffel_id" value={p.id} />
+                            <input type="hidden" name="seminartermin_id" value={id} />
+                            <button type="submit" style={linkDelete}>entfernen</button>
+                          </form>
+                        </td>
                       </tr>
                     ))}
                   {!opt.preisstaffeln?.length && (
-                    <tr><td colSpan={4} style={{ padding: "0.3rem", color: "#888" }}>Noch keine Preisstaffeln.</td></tr>
+                    <tr><td colSpan={5} style={{ padding: "0.3rem", color: "#888" }}>Noch keine Preisstaffeln.</td></tr>
                   )}
                 </tbody>
               </table>

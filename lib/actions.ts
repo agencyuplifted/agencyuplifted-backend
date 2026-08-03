@@ -218,6 +218,20 @@ export async function duplicateSeminartermin(formData: FormData) {
     );
   }
 
+  const { data: mitarbeiterZuordnungen } = await supabase
+    .from("seminartermin_mitarbeiter")
+    .select("*")
+    .eq("seminartermin_id", sourceId);
+  if (mitarbeiterZuordnungen?.length) {
+    await supabase.from("seminartermin_mitarbeiter").insert(
+      mitarbeiterZuordnungen.map((m) => ({
+        seminartermin_id: neuerTermin.id,
+        mitarbeiter_id: m.mitarbeiter_id,
+        rolle: m.rolle,
+      }))
+    );
+  }
+
   revalidatePath("/termine");
   redirect(`/termine/${neuerTermin.id}`);
 }
@@ -571,4 +585,103 @@ export async function addTeilnehmerZuCommunity(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/community");
   redirect("/community");
+}
+
+export async function createMitarbeiter(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("mitarbeiter").insert({
+    name: String(formData.get("name")),
+    email: formData.get("email") || null,
+    telefon: formData.get("telefon") || null,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/mitarbeiter");
+  redirect("/mitarbeiter");
+}
+
+export async function deaktiviereMitarbeiter(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const mitarbeiterId = String(formData.get("mitarbeiter_id"));
+  const { error } = await supabase
+    .from("mitarbeiter")
+    .update({ aktiv: false })
+    .eq("id", mitarbeiterId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/mitarbeiter");
+  redirect("/mitarbeiter");
+}
+
+export async function addMitarbeiterZuTermin(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const mitarbeiterId = String(formData.get("mitarbeiter_id"));
+  const rolle = String(formData.get("rolle") || "Referent");
+  const { error } = await supabase.from("seminartermin_mitarbeiter").insert({
+    seminartermin_id: seminarterminId,
+    mitarbeiter_id: mitarbeiterId,
+    rolle,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function removeMitarbeiterVonTermin(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const zuordnungId = String(formData.get("zuordnung_id"));
+  const { error } = await supabase
+    .from("seminartermin_mitarbeiter")
+    .delete()
+    .eq("id", zuordnungId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function updateSeminarOption(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase
+    .from("seminartermin_optionen")
+    .update({
+      titel: String(formData.get("titel")),
+      beschreibung: formData.get("beschreibung") || null,
+      sortierung: Number(formData.get("sortierung") || 0),
+    })
+    .eq("id", optionId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function deleteSeminarOption(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase.from("seminartermin_optionen").delete().eq("id", optionId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function deleteOptionFeature(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const featureId = String(formData.get("feature_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase.from("seminartermin_options_features").delete().eq("id", featureId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function deletePreisstaffel(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const preisstaffelId = String(formData.get("preisstaffel_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase.from("preisstaffeln").delete().eq("id", preisstaffelId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
 }
