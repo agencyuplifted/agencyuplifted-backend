@@ -238,10 +238,16 @@ export async function updateSeminartermin(formData: FormData) {
       return wert === null || wert === undefined || wert === "" ? "—" : String(wert);
     };
 
+    const ZEIT_FELDER = new Set(["zeit_start", "zeit_ende", "vorabend_anreise_uhrzeit"]);
+    const normalisiert = (feld: string, wert: any): string => {
+      if (wert === null || wert === undefined || wert === "") return "";
+      if (ZEIT_FELDER.has(feld) && typeof wert === "string") return wert.slice(0, 5);
+      return String(wert);
+    };
     const geaenderteFelder = Object.keys(update).filter((feld) => {
       const alt = (alterTermin as any)[feld] ?? null;
       const neu = (update as any)[feld] ?? null;
-      return String(alt ?? "") !== String(neu ?? "");
+      return normalisiert(feld, alt) !== normalisiert(feld, neu);
     });
 
     if (geaenderteFelder.length > 0) {
