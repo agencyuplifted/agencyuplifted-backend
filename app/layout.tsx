@@ -18,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/" style={{ fontWeight: 700, textDecoration: "none", color: "#102A4C" }}>
             AgencyUplifted
           </Link>
+          <Link href="/dashboard" style={{ textDecoration: "none", color: "#102A4C" }}>Dashboard</Link>
           <Link href="/termine" style={{ textDecoration: "none", color: "#102A4C" }}>Termine</Link>
           <Link href="/teilnehmer" style={{ textDecoration: "none", color: "#102A4C" }}>Teilnehmer</Link>
           <Link href="/organisationen" style={{ textDecoration: "none", color: "#102A4C" }}>Organisationen</Link>
