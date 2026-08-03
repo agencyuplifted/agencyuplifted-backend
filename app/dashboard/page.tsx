@@ -4,16 +4,6 @@ import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatEURBrutto, formatDatum } from "@/lib/format";
 
-const card: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1.25rem", marginBottom: "1.5rem" };
-const kacheln: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "1rem", marginBottom: "1.5rem" };
-const kachel: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1rem 1.25rem" };
-const kachelZahl: React.CSSProperties = { fontSize: "1.8rem", fontWeight: 700, color: "#102A4C" };
-const kachelLabel: React.CSSProperties = { fontSize: "0.8rem", color: "#666", marginTop: "0.25rem" };
-const tabsWrap: React.CSSProperties = { display: "flex", gap: "0.5rem", marginBottom: "1.5rem", flexWrap: "wrap" };
-const table: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
-const th: React.CSSProperties = { padding: "0.4rem", textAlign: "left", borderBottom: "1px solid #ccc" };
-const td: React.CSSProperties = { padding: "0.4rem", borderBottom: "1px solid #f0f0f0" };
-
 type Ansicht = "uebersicht" | "nachfrage" | "auslastung" | "kunden" | "vertrieb";
 
 const TABS: { key: Ansicht; label: string }[] = [
@@ -24,23 +14,11 @@ const TABS: { key: Ansicht; label: string }[] = [
   { key: "vertrieb", label: "Vertrieb (Leads & Warteliste)" },
 ];
 
-function tabLink(key: Ansicht, aktiv: Ansicht): React.CSSProperties {
-  const istAktiv = key === aktiv;
-  return {
-    padding: "0.5rem 0.9rem",
-    textDecoration: "none",
-    fontSize: "0.9rem",
-    border: "1px solid #102A4C",
-    color: istAktiv ? "white" : "#102A4C",
-    background: istAktiv ? "#102A4C" : "transparent",
-  };
-}
-
-function balken(anteil: number, farbe = "#102A4C"): React.ReactNode {
+function balken(anteil: number, farbe = "var(--color-accent)"): React.ReactNode {
   const pct = Math.max(0, Math.min(1, anteil)) * 100;
   return (
-    <div style={{ background: "#eee", height: "8px", width: "100%", marginTop: "0.25rem" }}>
-      <div style={{ background: farbe, height: "8px", width: `${pct}%` }} />
+    <div style={{ background: "var(--color-border)", height: "6px", width: "100%", marginTop: "0.3rem", borderRadius: 3 }}>
+      <div style={{ background: farbe, height: "6px", width: `${pct}%`, borderRadius: 3 }} />
     </div>
   );
 }
@@ -59,11 +37,11 @@ export default async function DashboardPage({
   return (
     <main>
       <h1>Dashboard</h1>
-      <p style={{ color: "#666" }}>Auswertungen über Teilnehmer, Buchungen, Nachfrage und Vertrieb — kombiniert aus Altdaten (Pipedrive-Import) und dem neuen System.</p>
+      <p>Auswertungen über Teilnehmer, Buchungen, Nachfrage und Vertrieb — kombiniert aus Altdaten (Pipedrive-Import) und dem neuen System.</p>
 
-      <div style={tabsWrap}>
+      <div className="au-tabs">
         {TABS.map((t) => (
-          <Link key={t.key} href={`/dashboard?ansicht=${t.key}`} style={tabLink(t.key, ansicht)}>
+          <Link key={t.key} href={`/dashboard?ansicht=${t.key}`} className={`au-tab ${t.key === ansicht ? "au-tab-active" : ""}`}>
             {t.label}
           </Link>
         ))}
@@ -101,38 +79,38 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
 
   return (
     <>
-      <div style={kacheln}>
-        <div style={kachel}>
-          <div style={kachelZahl}>{teilnehmerCount ?? 0}</div>
-          <div style={kachelLabel}>Teilnehmer (aktiv)</div>
+      <div className="au-kpi-grid">
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{teilnehmerCount ?? 0}</div>
+          <div className="au-kpi-label">Teilnehmer (aktiv)</div>
         </div>
-        <div style={kachel}>
-          <div style={kachelZahl}>{orgaCount ?? 0}</div>
-          <div style={kachelLabel}>Organisationen (aktiv)</div>
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{orgaCount ?? 0}</div>
+          <div className="au-kpi-label">Organisationen (aktiv)</div>
         </div>
-        <div style={kachel}>
-          <div style={kachelZahl}>{terminCount ?? 0}</div>
-          <div style={kachelLabel}>Anstehende Seminartermine</div>
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{terminCount ?? 0}</div>
+          <div className="au-kpi-label">Anstehende Seminartermine</div>
         </div>
-        <div style={kachel}>
-          <div style={kachelZahl}>{formatEUR(umsatzNetto)}</div>
-          <div style={kachelLabel}>Umsatz netto (neues System, nicht storniert)</div>
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{formatEUR(umsatzNetto)}</div>
+          <div className="au-kpi-label">Umsatz netto (neues System, nicht storniert)</div>
         </div>
-        <div style={kachel}>
-          <div style={kachelZahl}>{leadsOffen ?? 0}</div>
-          <div style={kachelLabel}>Offene Leads</div>
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{leadsOffen ?? 0}</div>
+          <div className="au-kpi-label">Offene Leads</div>
         </div>
-        <div style={kachel}>
-          <div style={kachelZahl}>{wartelisteCount ?? 0}</div>
-          <div style={kachelLabel}>Wartelisten-Einträge</div>
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{wartelisteCount ?? 0}</div>
+          <div className="au-kpi-label">Wartelisten-Einträge</div>
         </div>
-        <div style={kachel}>
-          <div style={kachelZahl}>{legacyCount ?? 0}</div>
-          <div style={kachelLabel}>Historische Teilnahmen (Altdaten)</div>
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{legacyCount ?? 0}</div>
+          <div className="au-kpi-label">Historische Teilnahmen (Altdaten)</div>
         </div>
       </div>
-      <div style={card}>
-        <p style={{ color: "#666", fontSize: "0.85rem", margin: 0 }}>
+      <div className="au-card">
+        <p style={{ fontSize: "0.85rem", margin: 0 }}>
           Hinweis: Der Umsatz-Wert bezieht sich nur auf Buchungen, die im neuen System erfasst wurden — bei den
           historischen Pipedrive-Altdaten wurden keine Preise übernommen. Alle Preise netto, zzgl. 19% USt. (brutto:{" "}
           {formatEURBrutto(umsatzNetto)}).
@@ -182,21 +160,21 @@ async function Nachfrage({ supabase }: { supabase: any }) {
   });
 
   return (
-    <div style={card}>
+    <div className="au-card">
       <h2>Nachfrage pro Seminarart & Jahr</h2>
-      <p style={{ color: "#666", fontSize: "0.85rem" }}>
+      <p style={{ fontSize: "0.85rem" }}>
         Anzahl Teilnahmen (Altdaten aus Pipedrive-Import + neue Buchungen, ohne stornierte). Zeigt, welche Formate am
         meisten nachgefragt werden und wie sich die Nachfrage über die Jahre entwickelt.
       </p>
       <div style={{ overflowX: "auto" }}>
-        <table style={table}>
+        <table className="au-table">
           <thead>
             <tr>
-              <th style={th}>Seminarart</th>
+              <th>Seminarart</th>
               {jahreSortiert.map((j) => (
-                <th key={j} style={{ ...th, textAlign: "right" }}>{j}</th>
+                <th key={j} style={{ textAlign: "right" }}>{j}</th>
               ))}
-              <th style={{ ...th, textAlign: "right" }}>Gesamt</th>
+              <th style={{ textAlign: "right" }}>Gesamt</th>
             </tr>
           </thead>
           <tbody>
@@ -205,16 +183,16 @@ async function Nachfrage({ supabase }: { supabase: any }) {
               const gesamt = [...jahrMap.values()].reduce((s, v) => s + v, 0);
               return (
                 <tr key={art}>
-                  <td style={td}>{art}</td>
+                  <td>{art}</td>
                   {jahreSortiert.map((j) => (
-                    <td key={j} style={{ ...td, textAlign: "right" }}>{jahrMap.get(j) || "—"}</td>
+                    <td key={j} style={{ textAlign: "right" }}>{jahrMap.get(j) || "—"}</td>
                   ))}
-                  <td style={{ ...td, textAlign: "right", fontWeight: 600 }}>{gesamt}</td>
+                  <td style={{ textAlign: "right", fontWeight: 600 }}>{gesamt}</td>
                 </tr>
               );
             })}
             {!artenSortiert.length && (
-              <tr><td style={td} colSpan={jahreSortiert.length + 2}>Noch keine Daten.</td></tr>
+              <tr className="au-table-empty"><td colSpan={jahreSortiert.length + 2}>Noch keine Daten.</td></tr>
             )}
           </tbody>
         </table>
@@ -248,17 +226,15 @@ async function Auslastung({ supabase, heute }: { supabase: any; heute: string })
     const gebucht = gebuchtProTermin.get(t.id) || 0;
     const kapazitaet = t.kapazitaet || 0;
     const anteil = kapazitaet ? gebucht / kapazitaet : 0;
-    const farbe = anteil >= 1 ? "#8a1f1f" : anteil >= 0.7 ? "#a15c00" : "#102A4C";
+    const farbe = anteil >= 1 ? "var(--color-danger)" : anteil >= 0.7 ? "var(--color-warning)" : "var(--color-accent)";
     return (
       <tr key={t.id}>
-        <td style={td}>
-          <Link href={`/termine/${t.id}`} style={{ color: "#102A4C" }}>
-            {t.titel || t.seminartypen?.name} – {formatDatum(t.datum_start)}
-          </Link>
+        <td>
+          <Link href={`/termine/${t.id}`}>{t.titel || t.seminartypen?.name} – {formatDatum(t.datum_start)}</Link>
         </td>
-        <td style={td}>{t.veranstaltungsorte?.ort || "—"}</td>
-        <td style={td}>{t.status}</td>
-        <td style={{ ...td, minWidth: 140 }}>
+        <td>{t.veranstaltungsorte?.ort || "—"}</td>
+        <td>{t.status}</td>
+        <td style={{ minWidth: 140 }}>
           {gebucht} / {kapazitaet}
           {balken(anteil, farbe)}
         </td>
@@ -268,35 +244,35 @@ async function Auslastung({ supabase, heute }: { supabase: any; heute: string })
 
   return (
     <>
-      <div style={card}>
+      <div className="au-card">
         <h2>Anstehende Termine</h2>
-        <table style={table}>
+        <table className="au-table">
           <thead>
             <tr>
-              <th style={th}>Termin</th>
-              <th style={th}>Ort</th>
-              <th style={th}>Status</th>
-              <th style={th}>Auslastung</th>
+              <th>Termin</th>
+              <th>Ort</th>
+              <th>Status</th>
+              <th>Auslastung</th>
             </tr>
           </thead>
           <tbody>
             {anstehend.map(terminZeile)}
             {!anstehend.length && (
-              <tr><td style={td} colSpan={4}>Keine anstehenden Termine.</td></tr>
+              <tr className="au-table-empty"><td colSpan={4}>Keine anstehenden Termine.</td></tr>
             )}
           </tbody>
         </table>
       </div>
       {!!vergangen.length && (
-        <div style={card}>
+        <div className="au-card">
           <h2>Vergangene Termine</h2>
-          <table style={table}>
+          <table className="au-table">
             <thead>
               <tr>
-                <th style={th}>Termin</th>
-                <th style={th}>Ort</th>
-                <th style={th}>Status</th>
-                <th style={th}>Auslastung</th>
+                <th>Termin</th>
+                <th>Ort</th>
+                <th>Status</th>
+                <th>Auslastung</th>
               </tr>
             </thead>
             <tbody>{vergangen.map(terminZeile)}</tbody>
@@ -336,32 +312,30 @@ async function Kunden({ supabase }: { supabase: any }) {
   const maxAnzahl = rangliste[0]?.anzahl || 1;
 
   return (
-    <div style={card}>
+    <div className="au-card">
       <h2>Top-Kunden nach Teilnahmen</h2>
-      <p style={{ color: "#666", fontSize: "0.85rem" }}>
+      <p style={{ fontSize: "0.85rem" }}>
         Organisationen mit den meisten Teilnahmen — kombiniert aus Altdaten und neuen Buchungen.
       </p>
-      <table style={table}>
+      <table className="au-table">
         <thead>
           <tr>
-            <th style={th}>Organisation</th>
-            <th style={th}>Teilnahmen</th>
+            <th>Organisation</th>
+            <th>Teilnahmen</th>
           </tr>
         </thead>
         <tbody>
           {rangliste.map((r) => (
             <tr key={r.id}>
-              <td style={td}>
-                <Link href={`/organisationen/${r.id}`} style={{ color: "#102A4C" }}>{r.name}</Link>
-              </td>
-              <td style={{ ...td, minWidth: 180 }}>
+              <td><Link href={`/organisationen/${r.id}`}>{r.name}</Link></td>
+              <td style={{ minWidth: 180 }}>
                 {r.anzahl}
                 {balken(r.anzahl / maxAnzahl)}
               </td>
             </tr>
           ))}
           {!rangliste.length && (
-            <tr><td style={td} colSpan={2}>Noch keine Daten.</td></tr>
+            <tr className="au-table-empty"><td colSpan={2}>Noch keine Daten.</td></tr>
           )}
         </tbody>
       </table>
@@ -387,67 +361,65 @@ async function Vertrieb({ supabase }: { supabase: any }) {
 
   return (
     <>
-      <div style={card}>
+      <div className="au-card">
         <h2>Leads-Pipeline nach Status</h2>
-        <div style={kacheln}>
+        <div className="au-kpi-grid">
           {Object.keys(statusLabel).map((s) => (
-            <div key={s} style={kachel}>
-              <div style={kachelZahl}>{statusZaehler.get(s) || 0}</div>
-              <div style={kachelLabel}>{statusLabel[s]}</div>
+            <div key={s} className="au-kpi-card">
+              <div className="au-kpi-value">{statusZaehler.get(s) || 0}</div>
+              <div className="au-kpi-label">{statusLabel[s]}</div>
             </div>
           ))}
         </div>
-        <table style={table}>
+        <table className="au-table">
           <thead>
             <tr>
-              <th style={th}>Name</th>
-              <th style={th}>Firma</th>
-              <th style={th}>Interesse</th>
-              <th style={th}>Status</th>
-              <th style={th}>Wiedervorlage</th>
+              <th>Name</th>
+              <th>Firma</th>
+              <th>Interesse</th>
+              <th>Status</th>
+              <th>Wiedervorlage</th>
             </tr>
           </thead>
           <tbody>
             {(leads || []).slice(0, 30).map((l: any) => (
               <tr key={l.id}>
-                <td style={td}>{l.name}</td>
-                <td style={td}>{l.firma || "—"}</td>
-                <td style={td}>{l.seminartypen?.name || "—"}</td>
-                <td style={td}>{statusLabel[l.status] || l.status}</td>
-                <td style={td}>{l.wiedervorlage_am ? formatDatum(l.wiedervorlage_am) : "—"}</td>
+                <td>{l.name}</td>
+                <td>{l.firma || "—"}</td>
+                <td>{l.seminartypen?.name || "—"}</td>
+                <td>{statusLabel[l.status] || l.status}</td>
+                <td>{l.wiedervorlage_am ? formatDatum(l.wiedervorlage_am) : "—"}</td>
               </tr>
             ))}
             {!leads?.length && (
-              <tr><td style={td} colSpan={5}>Noch keine Leads erfasst.</td></tr>
+              <tr className="au-table-empty"><td colSpan={5}>Noch keine Leads erfasst.</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
-      <div style={card}>
+      <div className="au-card">
         <h2>Warteliste</h2>
-        <table style={table}>
+        <table className="au-table">
           <thead>
             <tr>
-              <th style={th}>Name / E-Mail</th>
-              <th style={th}>Termin</th>
-              <th style={th}>Angemeldet am</th>
-              <th style={th}>Benachrichtigt</th>
+              <th>Name / E-Mail</th>
+              <th>Termin</th>
+              <th>Angemeldet am</th>
+              <th>Benachrichtigt</th>
             </tr>
           </thead>
           <tbody>
             {(warteliste || []).map((w: any) => (
               <tr key={w.id}>
-                <td style={td}>{w.name || w.email}</td>
-                <td style={td}>
-                  {w.seminartermine ? `${w.seminartermine.titel || w.seminartermine.seminartypen?.name} – ${formatDatum(w.seminartermine.datum_start)}` : "—"}
-                </td>
-                <td style={td}>{formatDatum(w.angemeldet_am)}</td>
-                <td style={td}>{w.benachrichtigt_am ? formatDatum(w.benachrichtigt_am) : "—"}</td>
+                <td>{w.name || w.email}</td>
+                <td>{w.seminartermine ? `${w.seminartermine.titel || w.seminartermine.seminartypen?.name} – ${formatDatum(w.seminartermine.datum_start)}` : "—"}</td>
+                <td>{formatDatum(w.angemeldet_am)}</td>
+                <td>{w.benachrichtigt_am ? formatDatum(w.benachrichtigt_am) : "—"}</td>
               </tr>
             ))}
             {!warteliste?.length && (
-              <tr><td style={td} colSpan={4}>Niemand auf der Warteliste.</td></tr>
+              <tr className="au-table-empty"><td colSpan={4}>Niemand auf der Warteliste.</td></tr>
             )}
           </tbody>
         </table>

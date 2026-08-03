@@ -85,54 +85,46 @@ export default function TeilnehmerTable({ teilnehmer }: { teilnehmer: Row[] }) {
     return sortDir === "asc" ? " ▲" : " ▼";
   }
 
-  const th: React.CSSProperties = { padding: "0.5rem", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" };
-
   return (
     <div>
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+      <div className="au-toolbar">
         <input
+          className="au-input"
           placeholder="Suche nach Name, E-Mail oder Telefon..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: "0.5rem", minWidth: 260, border: "1px solid #ccc" }}
         />
-        <select value={seminarFilter} onChange={(e) => setSeminarFilter(e.target.value)} style={{ padding: "0.5rem", border: "1px solid #ccc" }}>
+        <select className="au-select" value={seminarFilter} onChange={(e) => setSeminarFilter(e.target.value)}>
           <option value="">Alle Seminare</option>
           {alleSeminare.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
-        <span style={{ padding: "0.5rem", color: "#666", fontSize: "0.85rem" }}>{gefiltert.length} von {teilnehmer.length}</span>
+        <span className="au-toolbar-count">{gefiltert.length} von {teilnehmer.length}</span>
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "2rem" }}>
+      <table className="au-table">
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #102A4C" }}>
-            <th style={th} onClick={() => toggleSort("name")}>Name{pfeil("name")}</th>
-            <th style={th} onClick={() => toggleSort("email")}>E-Mail{pfeil("email")}</th>
-            <th style={th} onClick={() => toggleSort("telefon")}>Telefon{pfeil("telefon")}</th>
-            <th style={th} onClick={() => toggleSort("seminare")}>Seminare{pfeil("seminare")}</th>
-            <th style={th} onClick={() => toggleSort("erstellt_am")}>Erfasst{pfeil("erstellt_am")}</th>
+          <tr>
+            <th className="au-th-sortable" onClick={() => toggleSort("name")}>Name{pfeil("name")}</th>
+            <th className="au-th-sortable" onClick={() => toggleSort("email")}>E-Mail{pfeil("email")}</th>
+            <th className="au-th-sortable" onClick={() => toggleSort("telefon")}>Telefon{pfeil("telefon")}</th>
+            <th className="au-th-sortable" onClick={() => toggleSort("seminare")}>Seminare{pfeil("seminare")}</th>
+            <th className="au-th-sortable" onClick={() => toggleSort("erstellt_am")}>Erfasst{pfeil("erstellt_am")}</th>
           </tr>
         </thead>
         <tbody>
           {gefiltert.map((t) => (
-            <tr
-              key={t.id}
-              onClick={() => router.push(`/teilnehmer/${t.id}`)}
-              style={{ borderBottom: "1px solid #e2e2e2", cursor: "pointer" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#f7f9fc")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              <td style={{ padding: "0.5rem", color: "#102A4C", fontWeight: 600 }}>{t.vorname} {t.nachname}</td>
-              <td style={{ padding: "0.5rem" }}>{t.email}</td>
-              <td style={{ padding: "0.5rem" }}>{t.telefon || "—"}</td>
-              <td style={{ padding: "0.5rem" }}>{t.seminare.length ? t.seminare.join(", ") : "—"}</td>
-              <td style={{ padding: "0.5rem" }}>{formatDatum(t.erstellt_am)}</td>
+            <tr key={t.id} className="au-table-row-link" onClick={() => router.push(`/teilnehmer/${t.id}`)}>
+              <td style={{ color: "#102A4C", fontWeight: 600 }}>{t.vorname} {t.nachname}</td>
+              <td>{t.email}</td>
+              <td>{t.telefon || "—"}</td>
+              <td>{t.seminare.length ? t.seminare.join(", ") : "—"}</td>
+              <td>{formatDatum(t.erstellt_am)}</td>
             </tr>
           ))}
           {!gefiltert.length && (
-            <tr><td colSpan={5} style={{ padding: "0.5rem", color: "#888" }}>Keine Treffer.</td></tr>
+            <tr className="au-table-empty"><td colSpan={5}>Keine Treffer.</td></tr>
           )}
         </tbody>
       </table>

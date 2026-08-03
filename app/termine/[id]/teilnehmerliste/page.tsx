@@ -4,8 +4,6 @@ import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, splitName } from "@/lib/format";
 
-const card: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1.25rem", marginBottom: "1.5rem" };
-
 type Zeile = { vorname: string; nachname: string; typ: "Teilnehmer" | "Mitarbeiter"; info: string };
 
 export default async function TeilnehmerlistePage({ params }: { params: Promise<{ id: string }> }) {
@@ -56,49 +54,50 @@ export default async function TeilnehmerlistePage({ params }: { params: Promise<
 
   return (
     <main>
-      <p><Link href={`/termine/${id}`} style={{ color: "#102A4C" }}>← Zurück zum Termin</Link></p>
+      <p><Link href={`/termine/${id}`}>← Zurück zum Termin</Link></p>
       <h1>Teilnehmerliste für Hotel</h1>
-      <p style={{ color: "#666" }}>
+      <p>
         {titelAnzeige} · {formatDatum(termin.datum_start)}
         {termin.datum_ende && termin.datum_ende !== termin.datum_start ? ` – ${formatDatum(termin.datum_ende)}` : ""}
         {" "}· {zeilen.length} Personen (Teilnehmer + Mitarbeiter — alle benötigen ein Zimmer)
       </p>
 
-      <div style={card}>
+      <div className="au-card">
         <h2>Zum Kopieren</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem", marginTop: 0 }}>
+        <p style={{ fontSize: "0.85rem", marginTop: 0 }}>
           Format „Vorname; Nachname", eine Person pro Zeile — Feld anklicken, alles markieren (Strg/Cmd+A) und kopieren.
         </p>
         <textarea
           readOnly
           value={copyText}
           rows={Math.max(zeilen.length, 3) + 1}
-          style={{ width: "100%", padding: "0.75rem", fontFamily: "monospace", fontSize: "0.9rem" }}
+          className="au-textarea"
+          style={{ fontFamily: "monospace", minHeight: "auto" }}
         />
       </div>
 
-      <div style={card}>
+      <div className="au-card">
         <h2>Übersicht</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table className="au-table">
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-              <th style={{ padding: "0.4rem" }}>Vorname</th>
-              <th style={{ padding: "0.4rem" }}>Nachname</th>
-              <th style={{ padding: "0.4rem" }}>Typ</th>
-              <th style={{ padding: "0.4rem" }}>Option / Rolle</th>
+            <tr>
+              <th>Vorname</th>
+              <th>Nachname</th>
+              <th>Typ</th>
+              <th>Option / Rolle</th>
             </tr>
           </thead>
           <tbody>
             {zeilen.map((z, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                <td style={{ padding: "0.4rem" }}>{z.vorname}</td>
-                <td style={{ padding: "0.4rem" }}>{z.nachname}</td>
-                <td style={{ padding: "0.4rem" }}>{z.typ}</td>
-                <td style={{ padding: "0.4rem", color: "#666" }}>{z.info || "—"}</td>
+              <tr key={i}>
+                <td>{z.vorname}</td>
+                <td>{z.nachname}</td>
+                <td>{z.typ}</td>
+                <td>{z.info || "—"}</td>
               </tr>
             ))}
             {!zeilen.length && (
-              <tr><td colSpan={4} style={{ padding: "0.4rem", color: "#888" }}>Noch keine Teilnehmer oder Mitarbeiter für diesen Termin.</td></tr>
+              <tr className="au-table-empty"><td colSpan={4}>Noch keine Teilnehmer oder Mitarbeiter für diesen Termin.</td></tr>
             )}
           </tbody>
         </table>

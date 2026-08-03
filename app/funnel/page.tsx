@@ -11,17 +11,6 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum } from "@/lib/format";
 import { TRIGGER_LABEL, PLATZHALTER_HILFE, type TriggerTyp } from "@/lib/funnel";
 
-const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
-const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
-const card: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1.25rem", marginBottom: "1.5rem" };
-const funnelCard: React.CSSProperties = { border: "1px solid #cfd8e3", background: "#f7f9fc", padding: "1rem 1.25rem", marginBottom: "1rem" };
-const btn: React.CSSProperties = { background: "#102A4C", color: "white", padding: "0.55rem 1rem", border: "none", cursor: "pointer" };
-const btnSecondary: React.CSSProperties = { background: "transparent", color: "#102A4C", border: "1px solid #102A4C", padding: "0.4rem 0.8rem", cursor: "pointer", fontSize: "0.85rem" };
-const btnDanger: React.CSSProperties = { background: "transparent", color: "#8a1f1f", border: "1px solid #8a1f1f", padding: "0.3rem 0.6rem", cursor: "pointer", fontSize: "0.8rem" };
-const table: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
-const th: React.CSSProperties = { padding: "0.4rem", textAlign: "left", borderBottom: "1px solid #ccc" };
-const td: React.CSSProperties = { padding: "0.4rem", borderBottom: "1px solid #f0f0f0" };
-
 const TRIGGER_TYPEN: TriggerTyp[] = [
   "buchung_erstellt",
   "vor_seminarstart",
@@ -48,44 +37,44 @@ export default async function FunnelPage({
   return (
     <main>
       <h1>Funnel-Mails</h1>
-      <p style={{ color: "#666" }}>
+      <p>
         Automatische E-Mails mit Zeitschalter — z. B. Erinnerung vor dem Seminar oder Follow-up nach der Buchung.
         Läuft automatisch einmal täglich; über den Button unten kann der Versand auch manuell angestoßen werden.
       </p>
 
       {lauf && (
-        <div style={{ ...card, background: "#eef7ee", borderColor: "#3a7d3a", color: "#245c24" }}>
+        <div className="au-banner au-banner-success">
           Lauf abgeschlossen: {geprueft} aktive Funnel-Mails geprüft, {gesendet} verschickt, {uebersprungen} bereits
           zuvor verschickt (übersprungen), {fehler} Fehler.
         </div>
       )}
 
-      <div style={card}>
-        <Link href="/funnel/vorschau" style={{ ...btn, textDecoration: "none", display: "inline-block" }}>
+      <div className="au-card">
+        <Link href="/funnel/vorschau" className="au-btn au-btn-primary">
           Vorschau: Fällige Mails prüfen &amp; senden
         </Link>
-        <p style={{ color: "#888", fontSize: "0.85rem", marginTop: "0.5rem", marginBottom: 0 }}>
+        <p style={{ fontSize: "0.85rem", marginTop: "0.6rem", marginBottom: 0 }}>
           Zeigt zuerst, wer was bekommen würde. Der tatsächliche Versand erfordert danach eine zweite,
           ausdrückliche Bestätigung.
         </p>
       </div>
 
-      <div style={card}>
+      <div className="au-card">
         <h2>Platzhalter</h2>
-        <table style={table}>
+        <table className="au-table">
           <thead>
             <tr>
-              <th style={th}>Platzhalter</th>
-              <th style={th}>Bedeutung</th>
-              <th style={th}>Verfügbar bei</th>
+              <th>Platzhalter</th>
+              <th>Bedeutung</th>
+              <th>Verfügbar bei</th>
             </tr>
           </thead>
           <tbody>
             {PLATZHALTER_HILFE.map((p) => (
               <tr key={p.key}>
-                <td style={{ ...td, fontFamily: "monospace" }}>{p.key}</td>
-                <td style={td}>{p.beschreibung}</td>
-                <td style={{ ...td, color: "#666", fontSize: "0.85rem" }}>
+                <td style={{ fontFamily: "monospace" }}>{p.key}</td>
+                <td>{p.beschreibung}</td>
+                <td style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
                   {p.verfuegbarBei.map((t) => TRIGGER_LABEL[t]).join(", ")}
                 </td>
               </tr>
@@ -94,113 +83,121 @@ export default async function FunnelPage({
         </table>
       </div>
 
-      <div style={card}>
+      <div className="au-card">
         <h2>Neue Funnel-Mail</h2>
         <form action={createFunnelMail}>
-          <label style={labelStyle}>Name (intern)</label>
-          <input style={inputStyle} name="name" required placeholder="z. B. Erinnerung 3 Tage vor Seminarstart" />
+          <label className="au-label">Name (intern)</label>
+          <input className="au-input" name="name" required placeholder="z. B. Erinnerung 3 Tage vor Seminarstart" />
 
-          <label style={labelStyle}>Auslöser</label>
-          <select style={inputStyle} name="trigger_typ" required defaultValue="vor_seminarstart">
+          <label className="au-label">Auslöser</label>
+          <select className="au-select" name="trigger_typ" required defaultValue="vor_seminarstart">
             {TRIGGER_TYPEN.map((t) => (
               <option key={t} value={t}>{TRIGGER_LABEL[t]}</option>
             ))}
           </select>
 
-          <label style={labelStyle}>Anzahl Tage (X)</label>
-          <input style={inputStyle} name="versatz_tage" type="number" min={0} defaultValue={3} required />
+          <label className="au-label">Anzahl Tage (X)</label>
+          <input className="au-input" name="versatz_tage" type="number" min={0} defaultValue={3} required />
 
-          <label style={labelStyle}>Betreff</label>
-          <input style={inputStyle} name="betreff" required placeholder="z. B. Bald geht's los, {{vorname}}!" />
+          <label className="au-label">Betreff</label>
+          <input className="au-input" name="betreff" required placeholder="z. B. Bald geht's los, {{vorname}}!" />
 
-          <label style={labelStyle}>Inhalt (Platzhalter siehe oben, Zeilenumbrüche werden übernommen)</label>
-          <textarea style={{ ...inputStyle, minHeight: 160 }} name="inhalt" required
-            placeholder={"Hallo {{vorname}},\n\nnur noch wenige Tage bis {{seminartitel}} am {{seminardatum}}.\n\nViele Grüße"} />
+          <label className="au-label">Inhalt (Platzhalter siehe oben, Zeilenumbrüche werden übernommen)</label>
+          <textarea
+            className="au-textarea"
+            name="inhalt"
+            required
+            placeholder={"Hallo {{vorname}},\n\nnur noch wenige Tage bis {{seminartitel}} am {{seminardatum}}.\n\nViele Grüße"}
+          />
 
-          <button type="submit" style={btn}>Funnel-Mail anlegen</button>
+          <button type="submit" className="au-btn au-btn-primary">Funnel-Mail anlegen</button>
         </form>
       </div>
 
-      <div style={card}>
+      <div className="au-card">
         <h2>Bestehende Funnel-Mails</h2>
         {(funnelMails || []).map((f: any) => (
-          <div key={f.id} style={funnelCard}>
+          <div key={f.id} className="au-subcard">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <strong>{f.name}</strong>
-                <div style={{ color: "#666", fontSize: "0.85rem" }}>
+                <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
                   {TRIGGER_LABEL[f.trigger_typ as TriggerTyp]?.replace("X", String(f.versatz_tage))}
                 </div>
-                <div style={{ color: "#666", fontSize: "0.85rem" }}>Betreff: {f.betreff}</div>
+                <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>Betreff: {f.betreff}</div>
               </div>
               <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                 <form action={toggleFunnelMailAktiv}>
                   <input type="hidden" name="id" value={f.id} />
                   <input type="hidden" name="aktiv_neu" value={String(!f.aktiv)} />
-                  <button type="submit" style={btnSecondary}>{f.aktiv ? "Aktiv (deaktivieren)" : "Inaktiv (aktivieren)"}</button>
+                  <button type="submit" className="au-btn au-btn-secondary au-btn-sm">
+                    {f.aktiv ? "Aktiv (deaktivieren)" : "Inaktiv (aktivieren)"}
+                  </button>
                 </form>
                 <form action={deleteFunnelMail}>
                   <input type="hidden" name="id" value={f.id} />
-                  <button type="submit" style={btnDanger}>Löschen</button>
+                  <button type="submit" className="au-btn au-btn-danger au-btn-sm">Löschen</button>
                 </form>
               </div>
             </div>
 
-            <details style={{ marginTop: "0.75rem" }}>
-              <summary style={{ cursor: "pointer", color: "#102A4C", fontSize: "0.85rem" }}>Bearbeiten</summary>
-              <form action={updateFunnelMail} style={{ marginTop: "0.75rem" }}>
+            <details style={{ marginTop: "0.85rem" }}>
+              <summary style={{ color: "#102A4C", fontSize: "0.85rem", fontWeight: 600 }}>Bearbeiten</summary>
+              <form action={updateFunnelMail} style={{ marginTop: "0.85rem" }}>
                 <input type="hidden" name="id" value={f.id} />
-                <label style={labelStyle}>Name (intern)</label>
-                <input style={inputStyle} name="name" required defaultValue={f.name} />
+                <label className="au-label">Name (intern)</label>
+                <input className="au-input" name="name" required defaultValue={f.name} />
 
-                <label style={labelStyle}>Auslöser</label>
-                <select style={inputStyle} name="trigger_typ" required defaultValue={f.trigger_typ}>
+                <label className="au-label">Auslöser</label>
+                <select className="au-select" name="trigger_typ" required defaultValue={f.trigger_typ}>
                   {TRIGGER_TYPEN.map((t) => (
                     <option key={t} value={t}>{TRIGGER_LABEL[t]}</option>
                   ))}
                 </select>
 
-                <label style={labelStyle}>Anzahl Tage (X)</label>
-                <input style={inputStyle} name="versatz_tage" type="number" min={0} defaultValue={f.versatz_tage} required />
+                <label className="au-label">Anzahl Tage (X)</label>
+                <input className="au-input" name="versatz_tage" type="number" min={0} defaultValue={f.versatz_tage} required />
 
-                <label style={labelStyle}>Betreff</label>
-                <input style={inputStyle} name="betreff" required defaultValue={f.betreff} />
+                <label className="au-label">Betreff</label>
+                <input className="au-input" name="betreff" required defaultValue={f.betreff} />
 
-                <label style={labelStyle}>Inhalt</label>
-                <textarea style={{ ...inputStyle, minHeight: 160 }} name="inhalt" required defaultValue={f.inhalt} />
+                <label className="au-label">Inhalt</label>
+                <textarea className="au-textarea" name="inhalt" required defaultValue={f.inhalt} />
 
-                <button type="submit" style={btn}>Speichern</button>
+                <button type="submit" className="au-btn au-btn-primary">Speichern</button>
               </form>
             </details>
           </div>
         ))}
-        {!funnelMails?.length && <p style={{ color: "#888" }}>Noch keine Funnel-Mails angelegt.</p>}
+        {!funnelMails?.length && <p>Noch keine Funnel-Mails angelegt.</p>}
       </div>
 
-      <div style={card}>
+      <div className="au-card">
         <h2>Letzte Versendungen</h2>
-        <table style={table}>
+        <table className="au-table">
           <thead>
             <tr>
-              <th style={th}>Datum</th>
-              <th style={th}>Funnel-Mail</th>
-              <th style={th}>Empfänger</th>
-              <th style={th}>Status</th>
-              <th style={th}>Fehler</th>
+              <th>Datum</th>
+              <th>Funnel-Mail</th>
+              <th>Empfänger</th>
+              <th>Status</th>
+              <th>Fehler</th>
             </tr>
           </thead>
           <tbody>
             {(log || []).map((l: any) => (
               <tr key={l.id}>
-                <td style={td}>{formatDatum(l.gesendet_am)}</td>
-                <td style={td}>{l.funnel_mails?.name || "—"}</td>
-                <td style={td}>{l.empfaenger_email}</td>
-                <td style={{ ...td, color: l.status === "fehler" ? "#8a1f1f" : "#245c24" }}>{l.status}</td>
-                <td style={{ ...td, color: "#8a1f1f", fontSize: "0.85rem" }}>{l.fehlermeldung || "—"}</td>
+                <td>{formatDatum(l.gesendet_am)}</td>
+                <td>{l.funnel_mails?.name || "—"}</td>
+                <td>{l.empfaenger_email}</td>
+                <td>
+                  <span className={`au-badge ${l.status === "fehler" ? "au-badge-danger" : "au-badge-success"}`}>{l.status}</span>
+                </td>
+                <td style={{ color: "var(--color-danger)", fontSize: "0.85rem" }}>{l.fehlermeldung || "—"}</td>
               </tr>
             ))}
             {!log?.length && (
-              <tr><td style={td} colSpan={5}>Noch keine Mails verschickt.</td></tr>
+              <tr className="au-table-empty"><td colSpan={5}>Noch keine Mails verschickt.</td></tr>
             )}
           </tbody>
         </table>

@@ -15,43 +15,33 @@ export default async function BuchungenPage() {
     <main>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>Buchungen</h1>
-        <Link href="/buchungen/neu" style={{ background: "#102A4C", color: "white", padding: "0.5rem 1rem", textDecoration: "none" }}>
-          + Neue Buchung
-        </Link>
+        <Link href="/buchungen/neu" className="au-btn au-btn-primary">+ Neue Buchung</Link>
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table className="au-table">
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #102A4C" }}>
-            <th style={{ padding: "0.5rem" }}>Buchungsnr.</th>
-            <th style={{ padding: "0.5rem" }}>Rechnungsempfänger</th>
-            <th style={{ padding: "0.5rem" }}>Seminar</th>
-            <th style={{ padding: "0.5rem" }}>Preis (netto)</th>
-            <th style={{ padding: "0.5rem" }}>Preis (brutto)</th>
-            <th style={{ padding: "0.5rem" }}>Status</th>
+          <tr>
+            <th>Buchungsnr.</th>
+            <th>Rechnungsempfänger</th>
+            <th>Seminar</th>
+            <th>Preis (netto)</th>
+            <th>Preis (brutto)</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
           {buchungen?.map((b: any) => (
-            <tr key={b.id} style={{ borderBottom: "1px solid #e2e2e2" }}>
-              <td style={{ padding: "0.5rem" }}><Link href={`/buchungen/${b.id}`} style={{ color: "#102A4C" }}>{b.buchungsnummer}</Link></td>
-              <td style={{ padding: "0.5rem" }}>
-                {b.organisationen?.name || (b.teilnehmer ? `${b.teilnehmer.vorname} ${b.teilnehmer.nachname}` : "—")}
-              </td>
-              <td style={{ padding: "0.5rem" }}>
-                {b.buchungspositionen?.[0]?.seminartermine?.seminartypen?.name || "—"}
-              </td>
-              <td style={{ padding: "0.5rem" }}>
-                {formatEUR(b.buchungspositionen?.reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0) || 0)}
-              </td>
-              <td style={{ padding: "0.5rem" }}>
-                {formatEURBrutto(b.buchungspositionen?.reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0) || 0)}
-              </td>
-              <td style={{ padding: "0.5rem" }}>{b.status}</td>
+            <tr key={b.id}>
+              <td><Link href={`/buchungen/${b.id}`}>{b.buchungsnummer}</Link></td>
+              <td>{b.organisationen?.name || (b.teilnehmer ? `${b.teilnehmer.vorname} ${b.teilnehmer.nachname}` : "—")}</td>
+              <td>{b.buchungspositionen?.[0]?.seminartermine?.seminartypen?.name || "—"}</td>
+              <td>{formatEUR(b.buchungspositionen?.reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0) || 0)}</td>
+              <td>{formatEURBrutto(b.buchungspositionen?.reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0) || 0)}</td>
+              <td>{b.status}</td>
             </tr>
           ))}
           {!buchungen?.length && (
-            <tr><td colSpan={6} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Buchungen erfasst.</td></tr>
+            <tr className="au-table-empty"><td colSpan={6}>Noch keine Buchungen erfasst.</td></tr>
           )}
         </tbody>
       </table>

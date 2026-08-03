@@ -82,54 +82,46 @@ export default function OrganisationenTable({ organisationen }: { organisationen
     return sortDir === "asc" ? " ▲" : " ▼";
   }
 
-  const th: React.CSSProperties = { padding: "0.5rem", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" };
-
   return (
     <div>
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+      <div className="au-toolbar">
         <input
+          className="au-input"
           placeholder="Suche nach Name oder Ort..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: "0.5rem", minWidth: 260, border: "1px solid #ccc" }}
         />
-        <select value={seminarFilter} onChange={(e) => setSeminarFilter(e.target.value)} style={{ padding: "0.5rem", border: "1px solid #ccc" }}>
+        <select className="au-select" value={seminarFilter} onChange={(e) => setSeminarFilter(e.target.value)}>
           <option value="">Alle Seminare</option>
           {alleSeminare.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
-        <span style={{ padding: "0.5rem", color: "#666", fontSize: "0.85rem" }}>{gefiltert.length} von {organisationen.length}</span>
+        <span className="au-toolbar-count">{gefiltert.length} von {organisationen.length}</span>
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "2rem" }}>
+      <table className="au-table">
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #102A4C" }}>
-            <th style={th} onClick={() => toggleSort("name")}>Name{pfeil("name")}</th>
-            <th style={th} onClick={() => toggleSort("ort")}>Ort{pfeil("ort")}</th>
-            <th style={th} onClick={() => toggleSort("ust_id")}>USt-ID{pfeil("ust_id")}</th>
-            <th style={th} onClick={() => toggleSort("seminare")}>Seminare{pfeil("seminare")}</th>
-            <th style={th} onClick={() => toggleSort("erstellt_am")}>Erfasst{pfeil("erstellt_am")}</th>
+          <tr>
+            <th className="au-th-sortable" onClick={() => toggleSort("name")}>Name{pfeil("name")}</th>
+            <th className="au-th-sortable" onClick={() => toggleSort("ort")}>Ort{pfeil("ort")}</th>
+            <th className="au-th-sortable" onClick={() => toggleSort("ust_id")}>USt-ID{pfeil("ust_id")}</th>
+            <th className="au-th-sortable" onClick={() => toggleSort("seminare")}>Seminare{pfeil("seminare")}</th>
+            <th className="au-th-sortable" onClick={() => toggleSort("erstellt_am")}>Erfasst{pfeil("erstellt_am")}</th>
           </tr>
         </thead>
         <tbody>
           {gefiltert.map((o) => (
-            <tr
-              key={o.id}
-              onClick={() => router.push(`/organisationen/${o.id}`)}
-              style={{ borderBottom: "1px solid #e2e2e2", cursor: "pointer" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#f7f9fc")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              <td style={{ padding: "0.5rem", color: "#102A4C", fontWeight: 600 }}>{o.name}</td>
-              <td style={{ padding: "0.5rem" }}>{o.ort || "—"}</td>
-              <td style={{ padding: "0.5rem" }}>{o.ust_id || "—"}</td>
-              <td style={{ padding: "0.5rem" }}>{o.seminare.length ? o.seminare.join(", ") : "—"}</td>
-              <td style={{ padding: "0.5rem" }}>{formatDatum(o.erstellt_am)}</td>
+            <tr key={o.id} className="au-table-row-link" onClick={() => router.push(`/organisationen/${o.id}`)}>
+              <td style={{ color: "#102A4C", fontWeight: 600 }}>{o.name}</td>
+              <td>{o.ort || "—"}</td>
+              <td>{o.ust_id || "—"}</td>
+              <td>{o.seminare.length ? o.seminare.join(", ") : "—"}</td>
+              <td>{formatDatum(o.erstellt_am)}</td>
             </tr>
           ))}
           {!gefiltert.length && (
-            <tr><td colSpan={5} style={{ padding: "0.5rem", color: "#888" }}>Keine Treffer.</td></tr>
+            <tr className="au-table-empty"><td colSpan={5}>Keine Treffer.</td></tr>
           )}
         </tbody>
       </table>

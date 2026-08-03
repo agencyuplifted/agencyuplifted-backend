@@ -1,53 +1,47 @@
 import Link from "next/link";
 import { getAktuellerBenutzer } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions";
+import "./globals.css";
 
 export const metadata = { title: "AgencyUplifted Backend" };
 
-const navStyle: React.CSSProperties = {
-  display: "flex",
-  gap: "1.25rem",
-  padding: "1rem 2rem",
-  borderBottom: "1px solid #e2e2e2",
-  fontFamily: "system-ui, sans-serif",
-  alignItems: "center",
-};
+const NAV_LINKS: { href: string; label: string }[] = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/termine", label: "Termine" },
+  { href: "/teilnehmer", label: "Teilnehmer" },
+  { href: "/organisationen", label: "Organisationen" },
+  { href: "/buchungen", label: "Buchungen" },
+  { href: "/warteliste", label: "Warteliste" },
+  { href: "/trainer", label: "Trainer" },
+  { href: "/mitarbeiter", label: "Mitarbeiter" },
+  { href: "/orte", label: "Orte" },
+  { href: "/community", label: "Community" },
+  { href: "/leads", label: "Leads" },
+  { href: "/funnel", label: "Funnel-Mails" },
+  { href: "/email-test", label: "E-Mail-Test" },
+];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const benutzer = await getAktuellerBenutzer();
 
   return (
     <html lang="de">
-      <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", color: "#102A4C" }}>
-        <nav style={navStyle}>
-          <Link href="/" style={{ fontWeight: 700, textDecoration: "none", color: "#102A4C" }}>
-            AgencyUplifted
-          </Link>
-          <Link href="/dashboard" style={{ textDecoration: "none", color: "#102A4C" }}>Dashboard</Link>
-          <Link href="/termine" style={{ textDecoration: "none", color: "#102A4C" }}>Termine</Link>
-          <Link href="/teilnehmer" style={{ textDecoration: "none", color: "#102A4C" }}>Teilnehmer</Link>
-          <Link href="/organisationen" style={{ textDecoration: "none", color: "#102A4C" }}>Organisationen</Link>
-          <Link href="/buchungen" style={{ textDecoration: "none", color: "#102A4C" }}>Buchungen</Link>
-          <Link href="/warteliste" style={{ textDecoration: "none", color: "#102A4C" }}>Warteliste</Link>
-          <Link href="/trainer" style={{ textDecoration: "none", color: "#102A4C" }}>Trainer</Link>
-          <Link href="/mitarbeiter" style={{ textDecoration: "none", color: "#102A4C" }}>Mitarbeiter</Link>
-          <Link href="/orte" style={{ textDecoration: "none", color: "#102A4C" }}>Orte</Link>
-          <Link href="/community" style={{ textDecoration: "none", color: "#102A4C" }}>Community</Link>
-          <Link href="/leads" style={{ textDecoration: "none", color: "#102A4C" }}>Leads</Link>
-          <Link href="/funnel" style={{ textDecoration: "none", color: "#102A4C" }}>Funnel-Mails</Link>
-          <Link href="/email-test" style={{ textDecoration: "none", color: "#102A4C" }}>E-Mail-Test</Link>
+      <body>
+        <nav className="au-nav">
+          <Link href="/" className="au-nav-brand">AgencyUplifted</Link>
+          {NAV_LINKS.map((l) => (
+            <Link key={l.href} href={l.href} className="au-nav-link">{l.label}</Link>
+          ))}
           {benutzer && (
-            <span style={{ marginLeft: "auto", display: "flex", gap: "0.75rem", alignItems: "center" }}>
-              <span style={{ fontSize: "0.85rem", color: "#666" }}>Eingeloggt als {benutzer.name}</span>
+            <span className="au-nav-spacer">
+              <span className="au-nav-user">Eingeloggt als {benutzer.name}</span>
               <form action={logoutAction}>
-                <button type="submit" style={{ background: "transparent", border: "1px solid #102A4C", color: "#102A4C", padding: "0.3rem 0.7rem", cursor: "pointer", fontSize: "0.8rem" }}>
-                  Abmelden
-                </button>
+                <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Abmelden</button>
               </form>
             </span>
           )}
         </nav>
-        <div style={{ padding: "2rem", maxWidth: 960, margin: "0 auto" }}>{children}</div>
+        <div className="au-container">{children}</div>
       </body>
     </html>
   );

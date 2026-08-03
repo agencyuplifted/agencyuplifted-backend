@@ -4,15 +4,17 @@ import { useRef } from "react";
 
 const btnStyle: React.CSSProperties = {
   fontWeight: 700,
-  border: "1px solid #ccc",
+  border: "1px solid var(--color-border-strong)",
   background: "#fff",
-  padding: "0.15rem 0.55rem",
+  borderRadius: "var(--radius-sm)",
+  padding: "0.15rem 0.6rem",
   cursor: "pointer",
   marginRight: "0.5rem",
+  color: "var(--color-accent)",
 };
-const hintStyle: React.CSSProperties = { fontSize: "0.75rem", color: "#888" };
-const wrapStyle: React.CSSProperties = { marginBottom: "0.75rem" };
-const toolbarStyle: React.CSSProperties = { display: "flex", alignItems: "center", marginBottom: "0.3rem" };
+const hintStyle: React.CSSProperties = { fontSize: "0.75rem", color: "var(--color-text-faint)" };
+const wrapStyle: React.CSSProperties = { marginBottom: "0.9rem" };
+const toolbarStyle: React.CSSProperties = { display: "flex", alignItems: "center", marginBottom: "0.35rem" };
 
 function toggleFett(el: HTMLTextAreaElement | HTMLInputElement) {
   const start = el.selectionStart ?? 0;
@@ -57,7 +59,7 @@ export function FettTextarea({
         placeholder={placeholder}
         rows={rows}
         required={required}
-        style={{ display: "block", width: "100%", padding: "0.5rem" }}
+        className="au-textarea"
       />
     </div>
   );
@@ -86,7 +88,7 @@ export function FettInput({
         defaultValue={defaultValue}
         placeholder={placeholder}
         required={required}
-        style={{ display: "block", width: "100%", padding: "0.5rem" }}
+        className="au-input"
       />
     </div>
   );

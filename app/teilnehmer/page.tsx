@@ -4,9 +4,6 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createTeilnehmer } from "@/lib/actions";
 import TeilnehmerTable from "./TeilnehmerTable";
 
-const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
-const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
-
 export default async function TeilnehmerPage() {
   const supabase = getSupabaseAdmin();
   const { data: teilnehmer } = await supabase
@@ -38,24 +35,24 @@ export default async function TeilnehmerPage() {
 
       <TeilnehmerTable teilnehmer={rows} />
 
-      <h2>Neuer Teilnehmer</h2>
-      <form action={createTeilnehmer} style={{ maxWidth: 420 }}>
-        <label style={labelStyle}>Vorname</label>
-        <input style={inputStyle} name="vorname" required />
-        <label style={labelStyle}>Nachname</label>
-        <input style={inputStyle} name="nachname" required />
-        <label style={labelStyle}>E-Mail</label>
-        <input style={inputStyle} name="email" type="email" required />
-        <label style={labelStyle}>Telefon</label>
-        <input style={inputStyle} name="telefon" />
-        <label style={labelStyle}>LinkedIn-URL</label>
-        <input style={inputStyle} name="linkedin_url" />
-        <label style={labelStyle}>Ernährung / Sonderwünsche</label>
-        <input style={inputStyle} name="ernaehrung" />
-        <button type="submit" style={{ background: "#102A4C", color: "white", padding: "0.6rem 1.2rem", border: "none", cursor: "pointer" }}>
-          Anlegen
-        </button>
-      </form>
+      <div className="au-card" style={{ maxWidth: 460 }}>
+        <h2>Neuer Teilnehmer</h2>
+        <form action={createTeilnehmer}>
+          <label className="au-label">Vorname</label>
+          <input className="au-input" name="vorname" required />
+          <label className="au-label">Nachname</label>
+          <input className="au-input" name="nachname" required />
+          <label className="au-label">E-Mail</label>
+          <input className="au-input" name="email" type="email" required />
+          <label className="au-label">Telefon</label>
+          <input className="au-input" name="telefon" />
+          <label className="au-label">LinkedIn-URL</label>
+          <input className="au-input" name="linkedin_url" />
+          <label className="au-label">Ernährung / Sonderwünsche</label>
+          <input className="au-input" name="ernaehrung" />
+          <button type="submit" className="au-btn au-btn-primary">Anlegen</button>
+        </form>
+      </div>
     </main>
   );
 }

@@ -4,9 +4,6 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createOrganisation } from "@/lib/actions";
 import OrganisationenTable from "./OrganisationenTable";
 
-const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
-const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
-
 export default async function OrganisationenPage() {
   const supabase = getSupabaseAdmin();
   const { data: orgs } = await supabase
@@ -37,24 +34,24 @@ export default async function OrganisationenPage() {
 
       <OrganisationenTable organisationen={rows} />
 
-      <h2>Neue Organisation</h2>
-      <form action={createOrganisation} style={{ maxWidth: 420 }}>
-        <label style={labelStyle}>Name</label>
-        <input style={inputStyle} name="name" required />
-        <label style={labelStyle}>Straße</label>
-        <input style={inputStyle} name="strasse" />
-        <label style={labelStyle}>PLZ</label>
-        <input style={inputStyle} name="plz" />
-        <label style={labelStyle}>Ort</label>
-        <input style={inputStyle} name="ort" />
-        <label style={labelStyle}>USt-ID (falls Ausland)</label>
-        <input style={inputStyle} name="ust_id" />
-        <label style={labelStyle}>Branche</label>
-        <input style={inputStyle} name="branche" />
-        <button type="submit" style={{ background: "#102A4C", color: "white", padding: "0.6rem 1.2rem", border: "none", cursor: "pointer" }}>
-          Anlegen
-        </button>
-      </form>
+      <div className="au-card" style={{ maxWidth: 460 }}>
+        <h2>Neue Organisation</h2>
+        <form action={createOrganisation}>
+          <label className="au-label">Name</label>
+          <input className="au-input" name="name" required />
+          <label className="au-label">Straße</label>
+          <input className="au-input" name="strasse" />
+          <label className="au-label">PLZ</label>
+          <input className="au-input" name="plz" />
+          <label className="au-label">Ort</label>
+          <input className="au-input" name="ort" />
+          <label className="au-label">USt-ID (falls Ausland)</label>
+          <input className="au-input" name="ust_id" />
+          <label className="au-label">Branche</label>
+          <input className="au-input" name="branche" />
+          <button type="submit" className="au-btn au-btn-primary">Anlegen</button>
+        </form>
+      </div>
     </main>
   );
 }
