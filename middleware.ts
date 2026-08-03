@@ -9,6 +9,13 @@ const USER = process.env.BASIC_AUTH_USER || "agencyuplifted";
 const PASS = process.env.BASIC_AUTH_PASSWORD || "Seminare-2026-Intern!";
 
 export function middleware(request: NextRequest) {
+  // Der Cron-Job (und jeder andere Server-zu-Server-Aufruf mit Bearer-Token)
+  // authentifiziert sich selbst ueber CRON_SECRET in der Route -- Basic Auth
+  // wuerde hier faelschlich mit 401 blocken, bevor die Route das prueft.
+  if (request.nextUrl.pathname.startsWith("/api/cron/")) {
+    return NextResponse.next();
+  }
+
   const authHeader = request.headers.get("authorization");
 
   if (authHeader) {
