@@ -17,9 +17,8 @@ export default async function EmailTestPage({
     <main>
       <h1>E-Mail-Versand testen</h1>
       <p style={{ color: "#666" }}>
-        Testet die Resend-Integration. Solange keine eigene Domain bei Resend verifiziert ist
-        (resend.com/domains), kann nur an die E-Mail-Adresse verschickt werden, mit der der
-        Resend-Account registriert wurde — perfekt, um den Versand einmal durchzutesten.
+        Testet die Resend-Integration. Absender: hallo@agencyuplifted.de (verifizierte Domain) — Mails
+        koennen an beliebige Empfaenger verschickt werden.
       </p>
 
       {erfolg && (

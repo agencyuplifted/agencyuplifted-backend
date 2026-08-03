@@ -12,7 +12,6 @@ export function getResend(): Resend {
   return new Resend(apiKey);
 }
 
-// Solange keine eigene Domain bei Resend verifiziert ist (resend.com/domains),
-// funktioniert nur die Test-Adresse onboarding@resend.dev, und Mails koennen
-// nur an die E-Mail-Adresse des Resend-Accounts selbst verschickt werden.
-export const ABSENDER = process.env.RESEND_FROM || "AgencyUplifted <onboarding@resend.dev>";
+// agencyuplifted.de ist bei Resend verifiziert (DKIM + SPF ueber die
+// send.agencyuplifted.de Subdomain) -- Versand an beliebige Empfaenger moeglich.
+export const ABSENDER = process.env.RESEND_FROM || "AgencyUplifted <hallo@agencyuplifted.de>";
