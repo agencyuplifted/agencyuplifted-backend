@@ -711,3 +711,64 @@ export async function sendeTestMail(formData: FormData) {
   }
   redirect("/email-test?erfolg=1");
 }
+
+export async function createFunnelMail(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("funnel_mails").insert({
+    name: String(formData.get("name")),
+    trigger_typ: String(formData.get("trigger_typ")),
+    versatz_tage: Number(formData.get("versatz_tage") || 0),
+    betreff: String(formData.get("betreff")),
+    inhalt: String(formData.get("inhalt")),
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/funnel");
+  redirect("/funnel");
+}
+
+export async function updateFunnelMail(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const id = String(formData.get("id"));
+  const { error } = await supabase
+    .from("funnel_mails")
+    .update({
+      name: String(formData.get("name")),
+      trigger_typ: String(formData.get("trigger_typ")),
+      versatz_tage: Number(formData.get("versatz_tage") || 0),
+      betreff: String(formData.get("betreff")),
+      inhalt: String(formData.get("inhalt")),
+      aktualisiert_am: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/funnel");
+  redirect("/funnel");
+}
+
+export async function toggleFunnelMailAktiv(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const id = String(formData.get("id"));
+  const aktivNeu = String(formData.get("aktiv_neu")) === "true";
+  const { error } = await supabase.from("funnel_mails").update({ aktiv: aktivNeu }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/funnel");
+  redirect("/funnel");
+}
+
+export async function deleteFunnelMail(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const id = String(formData.get("id"));
+  const { error } = await supabase.from("funnel_mails").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/funnel");
+  redirect("/funnel");
+}
+
+export async function funnelVersandJetzt() {
+  const { pruefeUndSendeFaelligeFunnelMails } = await import("./funnel");
+  const ergebnis = await pruefeUndSendeFaelligeFunnelMails();
+  revalidatePath("/funnel");
+  redirect(
+    `/funnel?lauf=1&gesendet=${ergebnis.gesendet}&fehler=${ergebnis.fehler}&uebersprungen=${ergebnis.uebersprungen}&geprueft=${ergebnis.geprueft}`
+  );
+}
