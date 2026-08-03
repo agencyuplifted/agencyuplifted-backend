@@ -8,6 +8,7 @@ import { getResend, ABSENDER } from "./email";
 import { signSession, SESSION_COOKIE_NAME, SESSION_TTL } from "./session";
 import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
+import { TERMIN_FELD_LABELS } from "./format";
 
 export async function createOrganisation(formData: FormData) {
   const supabase = getSupabaseAdmin();
@@ -163,39 +164,101 @@ export async function createSeminartermin(formData: FormData) {
   redirect(`/termine/${termin.id}`);
 }
 
+// Schreibt die eingereichten Formulardaten nicht in die DB, sondern leitet zur
+// Vorschau-/Bestätigungsseite weiter (doppelte Freigabe für Termin-Änderungen).
+export async function previewSeminarterminUpdate(formData: FormData) {
+  const id = String(formData.get("seminartermin_id"));
+  const params = new URLSearchParams();
+  for (const [key, value] of formData.entries()) {
+    if (typeof value === "string") params.set(key, value);
+  }
+  redirect(`/termine/${id}/bestaetigen?${params.toString()}`);
+}
+
 export async function updateSeminartermin(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("seminartermin_id"));
   const datumStart = String(formData.get("datum_start"));
   const datumEnde = formData.get("datum_ende") || datumStart;
-  const { error } = await supabase
+
+  const { data: alterTermin } = await supabase
     .from("seminartermine")
-    .update({
-      titel: formData.get("titel") || null,
-      datum_start: datumStart,
-      zeit_start: formData.get("zeit_start") || null,
-      datum_ende: datumEnde,
-      zeit_ende: formData.get("zeit_ende") || null,
-      vorabend_anreise_datum: formData.get("vorabend_anreise_datum") || null,
-      vorabend_anreise_uhrzeit: formData.get("vorabend_anreise_uhrzeit") || null,
-      format: String(formData.get("format") || "praesenz"),
-      veranstaltungsort_id: formData.get("veranstaltungsort_id") || null,
-      trainer_id: formData.get("trainer_id") || null,
-      kapazitaet: Number(formData.get("kapazitaet") || 12),
-      mindestteilnehmerzahl: Number(formData.get("mindestteilnehmerzahl") || 5),
-      ueberbuchungspuffer: Number(formData.get("ueberbuchungspuffer") || 3),
-      angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
-        ? Number(formData.get("angezeigte_restplaetze"))
-        : null,
-      zusatzteilnehmer_preis: formData.get("zusatzteilnehmer_preis")
-        ? Number(formData.get("zusatzteilnehmer_preis"))
-        : null,
-      zusatzteilnehmer_rabatt_prozent: formData.get("zusatzteilnehmer_rabatt_prozent")
-        ? Number(formData.get("zusatzteilnehmer_rabatt_prozent"))
-        : null,
-    })
-    .eq("id", id);
+    .select("*, veranstaltungsorte(name), trainer(name)")
+    .eq("id", id)
+    .single();
+
+  const neuerOrtId = formData.get("veranstaltungsort_id");
+  const neuerTrainerId = formData.get("trainer_id");
+  const neuerOrt = neuerOrtId
+    ? (await supabase.from("veranstaltungsorte").select("name").eq("id", String(neuerOrtId)).single()).data?.name
+    : null;
+  const neuerTrainer = neuerTrainerId
+    ? (await supabase.from("trainer").select("name").eq("id", String(neuerTrainerId)).single()).data?.name
+    : null;
+
+  const update = {
+    titel: formData.get("titel") || null,
+    datum_start: datumStart,
+    zeit_start: formData.get("zeit_start") || null,
+    datum_ende: datumEnde,
+    zeit_ende: formData.get("zeit_ende") || null,
+    vorabend_anreise_datum: formData.get("vorabend_anreise_datum") || null,
+    vorabend_anreise_uhrzeit: formData.get("vorabend_anreise_uhrzeit") || null,
+    format: String(formData.get("format") || "praesenz"),
+    veranstaltungsort_id: formData.get("veranstaltungsort_id") || null,
+    trainer_id: formData.get("trainer_id") || null,
+    kapazitaet: Number(formData.get("kapazitaet") || 12),
+    mindestteilnehmerzahl: Number(formData.get("mindestteilnehmerzahl") || 5),
+    ueberbuchungspuffer: Number(formData.get("ueberbuchungspuffer") || 3),
+    angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
+      ? Number(formData.get("angezeigte_restplaetze"))
+      : null,
+    zusatzteilnehmer_preis: formData.get("zusatzteilnehmer_preis")
+      ? Number(formData.get("zusatzteilnehmer_preis"))
+      : null,
+    zusatzteilnehmer_rabatt_prozent: formData.get("zusatzteilnehmer_rabatt_prozent")
+      ? Number(formData.get("zusatzteilnehmer_rabatt_prozent"))
+      : null,
+  };
+
+  const { error } = await supabase.from("seminartermine").update(update).eq("id", id);
   if (error) throw new Error(error.message);
+
+  if (alterTermin) {
+    const neuAnzeige = (feld: string): string => {
+      if (feld === "veranstaltungsort_id") return neuerOrt || "—";
+      if (feld === "trainer_id") return neuerTrainer || "—";
+      const wert = (update as any)[feld];
+      return wert === null || wert === undefined || wert === "" ? "—" : String(wert);
+    };
+    const altAnzeige = (feld: string): string => {
+      if (feld === "veranstaltungsort_id") return (alterTermin as any).veranstaltungsorte?.name || "—";
+      if (feld === "trainer_id") return (alterTermin as any).trainer?.name || "—";
+      const wert = (alterTermin as any)[feld];
+      return wert === null || wert === undefined || wert === "" ? "—" : String(wert);
+    };
+
+    const geaenderteFelder = Object.keys(update).filter((feld) => {
+      const alt = (alterTermin as any)[feld] ?? null;
+      const neu = (update as any)[feld] ?? null;
+      return String(alt ?? "") !== String(neu ?? "");
+    });
+
+    if (geaenderteFelder.length > 0) {
+      const beschreibung = geaenderteFelder
+        .map((feld) => `${TERMIN_FELD_LABELS[feld] || feld}: "${altAnzeige(feld)}" → "${neuAnzeige(feld)}"`)
+        .join("; ");
+
+      const benutzer = await getAktuellerBenutzer();
+      await supabase.from("aenderungsprotokoll").insert({
+        bezug_typ: "seminartermin",
+        bezug_id: id,
+        ereignis: "aktualisierung",
+        beschreibung,
+        bearbeiter: benutzer?.name || "Unbekannt",
+      });
+    }
+  }
 
   revalidatePath("/termine");
   revalidatePath(`/termine/${id}`);

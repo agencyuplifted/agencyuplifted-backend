@@ -77,6 +77,14 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
 
   const umsatzNetto = (positionen || []).reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0);
 
+  const { data: naechsteTermine } = await supabase
+    .from("seminartermine")
+    .select("id, titel, datum_start, zeit_start, format, seminartypen(name), veranstaltungsorte(name)")
+    .gte("datum_start", heute)
+    .in("status", ["geplant", "bestaetigt", "unterbesetzt"])
+    .order("datum_start", { ascending: true })
+    .limit(5);
+
   return (
     <>
       <div className="au-kpi-grid">
@@ -107,6 +115,35 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
         <div className="au-kpi-card">
           <div className="au-kpi-value">{legacyCount ?? 0}</div>
           <div className="au-kpi-label">Historische Teilnahmen (Altdaten)</div>
+        </div>
+      </div>
+      <div className="au-card">
+        <h2>Nächste Termine</h2>
+        {!naechsteTermine?.length && <p style={{ margin: 0 }}>Keine anstehenden Termine.</p>}
+        {!!naechsteTermine?.length && (
+          <table className="au-table">
+            <thead>
+              <tr>
+                <th>Titel</th>
+                <th>Datum</th>
+                <th>Ort</th>
+                <th>Format</th>
+              </tr>
+            </thead>
+            <tbody>
+              {naechsteTermine.map((t: any) => (
+                <tr key={t.id}>
+                  <td><Link href={`/termine/${t.id}`}>{t.titel || t.seminartypen?.name}</Link></td>
+                  <td>{formatDatum(t.datum_start)}{t.zeit_start ? `, ${t.zeit_start.slice(0, 5)} Uhr` : ""}</td>
+                  <td>{t.veranstaltungsorte?.name || "—"}</td>
+                  <td>{t.format}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div style={{ marginTop: "0.75rem" }}>
+          <Link href="/termine" className="au-btn au-btn-secondary au-btn-sm">Alle Termine ansehen →</Link>
         </div>
       </div>
       <div className="au-card">

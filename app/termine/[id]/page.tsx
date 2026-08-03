@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import {
   createPreisstaffel,
   createUrgencyStufe,
-  updateSeminartermin,
+  previewSeminarterminUpdate,
   createSeminarOption,
   createOptionFeature,
   duplicateSeminartermin,
@@ -69,6 +69,13 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
     .eq("seminartermin_id", id)
     .order("erstellt_am", { ascending: true });
 
+  const { data: protokoll } = await supabase
+    .from("aenderungsprotokoll")
+    .select("*")
+    .eq("bezug_typ", "seminartermin")
+    .eq("bezug_id", id)
+    .order("erstellt_am", { ascending: false });
+
   if (!termin) return <main><p>Termin nicht gefunden.</p></main>;
 
   const titelAnzeige = termin.titel || termin.seminartypen?.name;
@@ -108,7 +115,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
 
       <div className="au-card">
         <h2>Termin bearbeiten</h2>
-        <form action={updateSeminartermin} style={{ maxWidth: 560 }}>
+        <form action={previewSeminarterminUpdate} style={{ maxWidth: 560 }}>
           <input type="hidden" name="seminartermin_id" value={id} />
           <label className="au-label">Titel des Seminars</label>
           <input className="au-input" name="titel" defaultValue={termin.titel || ""} placeholder="z. B. Preisfindung Intensiv – Herbst 2026" required />
@@ -495,6 +502,33 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             </button>
           </div>
         </form>
+      </div>
+
+      <div className="au-card">
+        <h2>Änderungsprotokoll</h2>
+        <table className="au-table">
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Ereignis</th>
+              <th>Beschreibung</th>
+              <th>Bearbeiter</th>
+            </tr>
+          </thead>
+          <tbody>
+            {protokoll?.map((e) => (
+              <tr key={e.id}>
+                <td>{formatDatum(e.erstellt_am)}</td>
+                <td>{e.ereignis}</td>
+                <td>{e.beschreibung}</td>
+                <td>{e.bearbeiter || "—"}</td>
+              </tr>
+            ))}
+            {!protokoll?.length && (
+              <tr><td colSpan={4} style={{ color: "var(--color-text-faint)" }}>Noch keine Einträge.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </main>
   );

@@ -19,3 +19,31 @@ export function splitName(vollerName: string): { vorname: string; nachname: stri
   if (teile.length <= 1) return { vorname: teile[0] || "", nachname: "" };
   return { vorname: teile[0], nachname: teile.slice(1).join(" ") };
 }
+
+const MONATSNAMEN = [
+  "Januar", "Februar", "März", "April", "Mai", "Juni",
+  "Juli", "August", "September", "Oktober", "November", "Dezember",
+];
+
+export function monatsName(monatIndex: number): string {
+  return MONATSNAMEN[monatIndex] || "";
+}
+
+export const TERMIN_FELD_LABELS: Record<string, string> = {
+  titel: "Titel",
+  datum_start: "Startdatum",
+  zeit_start: "Startuhrzeit",
+  datum_ende: "Enddatum",
+  zeit_ende: "Enduhrzeit",
+  vorabend_anreise_datum: "Vorabendanreise-Tag",
+  vorabend_anreise_uhrzeit: "Vorabendanreise-Uhrzeit",
+  format: "Format",
+  veranstaltungsort_id: "Ort",
+  trainer_id: "Trainer",
+  kapazitaet: "Kapazität",
+  mindestteilnehmerzahl: "Mindestteilnehmerzahl",
+  ueberbuchungspuffer: "Überbuchungspuffer (intern)",
+  angezeigte_restplaetze: "Angezeigte Restplätze (Urgency)",
+  zusatzteilnehmer_preis: "Zusatzteilnehmer-Festpreis",
+  zusatzteilnehmer_rabatt_prozent: "Zusatzteilnehmer-Rabatt (%)",
+};
