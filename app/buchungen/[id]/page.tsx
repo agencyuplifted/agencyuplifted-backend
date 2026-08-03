@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { stornoBuchung, umbuchenBuchung } from "@/lib/actions";
-import { formatDatum, formatEUR } from "@/lib/format";
+import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
 
 const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
@@ -53,7 +53,8 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
             <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
               <th style={{ padding: "0.4rem" }}>Teilnehmer</th>
               <th style={{ padding: "0.4rem" }}>Leistung</th>
-              <th style={{ padding: "0.4rem" }}>Preis</th>
+              <th style={{ padding: "0.4rem" }}>Preis (netto)</th>
+              <th style={{ padding: "0.4rem" }}>Preis (brutto)</th>
             </tr>
           </thead>
           <tbody>
@@ -66,6 +67,7 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
                     : `${p.beschreibung} (individuell${p.startdatum ? `, ab ${formatDatum(p.startdatum)}` : ""})`}
                 </td>
                 <td style={{ padding: "0.4rem" }}>{formatEUR(Number(p.preis || 0))}</td>
+                <td style={{ padding: "0.4rem" }}>{formatEURBrutto(Number(p.preis || 0))}</td>
               </tr>
             ))}
           </tbody>

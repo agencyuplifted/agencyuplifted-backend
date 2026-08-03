@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatDatum, formatEUR } from "@/lib/format";
+import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
 
 const card: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1.25rem", marginBottom: "1.5rem" };
 const dl: React.CSSProperties = { display: "grid", gridTemplateColumns: "220px 1fr", rowGap: "0.6rem", columnGap: "1rem" };
@@ -21,6 +21,12 @@ export default async function OrganisationDetailPage({ params }: { params: Promi
     )
     .eq("organisation_id", id)
     .order("gebucht_am", { ascending: false });
+
+  const { data: legacyBuchungen } = await supabase
+    .from("legacy_buchungen")
+    .select("*, seminartypen(name)")
+    .eq("organisation_id", id)
+    .order("jahr", { ascending: false });
 
   if (!o) return <main><p>Organisation nicht gefunden.</p></main>;
 
@@ -63,7 +69,8 @@ export default async function OrganisationDetailPage({ params }: { params: Promi
               <th style={{ padding: "0.4rem" }}>Buchungsnr.</th>
               <th style={{ padding: "0.4rem" }}>Teilnehmer</th>
               <th style={{ padding: "0.4rem" }}>Leistung</th>
-              <th style={{ padding: "0.4rem" }}>Preis</th>
+              <th style={{ padding: "0.4rem" }}>Preis (netto)</th>
+              <th style={{ padding: "0.4rem" }}>Preis (brutto)</th>
               <th style={{ padding: "0.4rem" }}>Status</th>
             </tr>
           </thead>
@@ -81,16 +88,44 @@ export default async function OrganisationDetailPage({ params }: { params: Promi
                       : `${p.beschreibung} (individuell)`}
                   </td>
                   <td style={{ padding: "0.4rem" }}>{formatEUR(Number(p.preis || 0))}</td>
+                  <td style={{ padding: "0.4rem" }}>{formatEURBrutto(Number(p.preis || 0))}</td>
                   <td style={{ padding: "0.4rem" }}>{b.status}</td>
                 </tr>
               ))
             )}
             {!buchungen?.length && (
-              <tr><td colSpan={5} style={{ padding: "0.4rem", color: "#888" }}>Noch keine Buchungen.</td></tr>
+              <tr><td colSpan={6} style={{ padding: "0.4rem", color: "#888" }}>Noch keine Buchungen.</td></tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {!!legacyBuchungen?.length && (
+        <div style={card}>
+          <h2>Historische Seminare (Altdaten)</h2>
+          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+            Aus dem Pipedrive-Import übernommen — nicht als vollständige Buchung im neuen System erfasst.
+          </p>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+                <th style={{ padding: "0.4rem" }}>Jahr</th>
+                <th style={{ padding: "0.4rem" }}>Seminar</th>
+                <th style={{ padding: "0.4rem" }}>Quelle</th>
+              </tr>
+            </thead>
+            <tbody>
+              {legacyBuchungen.map((l: any) => (
+                <tr key={l.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                  <td style={{ padding: "0.4rem" }}>{l.jahr || "—"}</td>
+                  <td style={{ padding: "0.4rem" }}>{l.seminartypen?.name || l.kategorie_rohtext || "—"}</td>
+                  <td style={{ padding: "0.4rem" }}>{l.quelle || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </main>
   );
 }

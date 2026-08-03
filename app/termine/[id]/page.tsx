@@ -7,9 +7,13 @@ import {
   createSeminarOption,
   createOptionFeature,
   duplicateSeminartermin,
+  duplicateSeminarOption,
+  updateOptionBadge,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatDatum, formatEUR } from "@/lib/format";
+import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
+import { renderFett } from "@/lib/richtext";
+import { FettTextarea, FettInput } from "../BoldEditor";
 
 const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
@@ -18,6 +22,12 @@ const card: React.CSSProperties = { border: "1px solid #e2e2e2", padding: "1.25r
 const optionCard: React.CSSProperties = { border: "1px solid #cfd8e3", background: "#f7f9fc", padding: "1rem 1.25rem", marginBottom: "1rem" };
 const btn: React.CSSProperties = { background: "#102A4C", color: "white", padding: "0.55rem 1rem", border: "none", cursor: "pointer" };
 const btnSecondary: React.CSSProperties = { background: "transparent", color: "#102A4C", border: "1px solid #102A4C", padding: "0.4rem 0.8rem", cursor: "pointer", fontSize: "0.85rem" };
+const badgeStyle: React.CSSProperties = { display: "inline-block", background: "#c98a1f", color: "white", fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: 3, marginLeft: "0.6rem", verticalAlign: "middle" };
+
+const badgeLabel: Record<string, string> = {
+  empfohlen: "Empfohlen",
+  meistgekauft: "Meistgekauft",
+};
 
 function formatZeit(t: string | null) {
   return t ? t.slice(0, 5) + " Uhr" : "";
@@ -203,8 +213,32 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
 
         {optionen?.map((opt: any) => (
           <div key={opt.id} style={optionCard}>
-            <strong>{opt.titel}</strong>
-            {opt.beschreibung && <p style={{ color: "#444", fontSize: "0.9rem", margin: "0.35rem 0" }}>{opt.beschreibung}</p>}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <strong>{opt.titel}</strong>
+                {opt.badge && <span style={badgeStyle}>{badgeLabel[opt.badge] || opt.badge}</span>}
+              </div>
+              <form action={duplicateSeminarOption}>
+                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                <input type="hidden" name="seminartermin_id" value={id} />
+                <button type="submit" style={btnSecondary} title="Legt eine Kopie dieser Option (inkl. Features und Preisstaffeln) an, z. B. als Basis für Option B">
+                  Option duplizieren
+                </button>
+              </form>
+            </div>
+            {opt.beschreibung && <p style={{ color: "#444", fontSize: "0.9rem", margin: "0.35rem 0" }}>{renderFett(opt.beschreibung)}</p>}
+
+            <form action={updateOptionBadge} style={{ display: "flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" }}>
+              <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+              <input type="hidden" name="seminartermin_id" value={id} />
+              <label style={{ ...labelStyle, marginBottom: 0 }}>Kennzeichnung</label>
+              <select name="badge" defaultValue={opt.badge || ""} style={{ padding: "0.35rem" }}>
+                <option value="">Keine</option>
+                <option value="empfohlen">Empfohlen</option>
+                <option value="meistgekauft">Meistgekauft</option>
+              </select>
+              <button type="submit" style={{ ...btnSecondary, padding: "0.3rem 0.6rem" }}>Speichern</button>
+            </form>
 
             <div style={{ marginTop: "0.75rem" }}>
               <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#666" }}>Features</span>
@@ -212,28 +246,29 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                 {opt.seminartermin_options_features
                   ?.sort((a: any, b: any) => a.sortierung - b.sortierung)
                   .map((f: any) => (
-                    <li key={f.id} style={{ fontSize: "0.9rem" }}>{f.text}</li>
+                    <li key={f.id} style={{ fontSize: "0.9rem" }}>{renderFett(f.text)}</li>
                   ))}
                 {!opt.seminartermin_options_features?.length && (
                   <li style={{ fontSize: "0.9rem", color: "#888", listStyle: "none", marginLeft: "-1.2rem" }}>Noch keine Features.</li>
                 )}
               </ul>
-              <form action={createOptionFeature} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+              <form action={createOptionFeature} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                 <input type="hidden" name="seminartermin_option_id" value={opt.id} />
                 <input type="hidden" name="seminartermin_id" value={id} />
-                <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} name="text" placeholder="z. B. Einzelcoaching inklusive" required />
+                <FettInput name="text" placeholder="z. B. Einzelcoaching inklusive" required />
                 <button type="submit" style={btnSecondary}>+ Feature</button>
               </form>
             </div>
 
             <div style={{ marginTop: "1rem" }}>
-              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#666" }}>Preisstaffeln</span>
+              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#666" }}>Preisstaffeln (Nettopreise, zzgl. gesetzlicher USt.)</span>
               <table style={{ width: "100%", borderCollapse: "collapse", margin: "0.35rem 0 0.5rem" }}>
                 <thead>
                   <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
                     <th style={{ padding: "0.3rem" }}>Name</th>
                     <th style={{ padding: "0.3rem" }}>Stichtag (Tage vorher)</th>
-                    <th style={{ padding: "0.3rem" }}>Preis</th>
+                    <th style={{ padding: "0.3rem" }}>Preis (netto)</th>
+                    <th style={{ padding: "0.3rem" }}>Preis (brutto, 19% USt.)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -244,10 +279,11 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                         <td style={{ padding: "0.3rem" }}>{p.name}</td>
                         <td style={{ padding: "0.3rem" }}>{p.stichtag_tage_vor_start}</td>
                         <td style={{ padding: "0.3rem" }}>{formatEUR(Number(p.preis))}</td>
+                        <td style={{ padding: "0.3rem", color: "#666" }}>{formatEURBrutto(Number(p.preis))}</td>
                       </tr>
                     ))}
                   {!opt.preisstaffeln?.length && (
-                    <tr><td colSpan={3} style={{ padding: "0.3rem", color: "#888" }}>Noch keine Preisstaffeln.</td></tr>
+                    <tr><td colSpan={4} style={{ padding: "0.3rem", color: "#888" }}>Noch keine Preisstaffeln.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -263,7 +299,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                   <input style={inputStyle} name="stichtag_tage_vor_start" type="number" required />
                 </div>
                 <div>
-                  <label style={labelStyle}>Preis (€)</label>
+                  <label style={labelStyle}>Preis (€, netto zzgl. USt.)</label>
                   <input style={inputStyle} name="preis" type="number" step="0.01" required />
                 </div>
                 <div style={{ display: "flex", alignItems: "flex-end" }}>
@@ -291,8 +327,14 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                 <input style={inputStyle} name="sortierung" type="number" defaultValue={(optionen?.length || 0)} />
               </div>
             </div>
+            <label style={labelStyle}>Kennzeichnung</label>
+            <select style={inputStyle} name="badge" defaultValue="">
+              <option value="">Keine</option>
+              <option value="empfohlen">Empfohlen</option>
+              <option value="meistgekauft">Meistgekauft</option>
+            </select>
             <label style={labelStyle}>Beschreibung</label>
-            <textarea style={{ ...inputStyle, minHeight: "4rem" }} name="beschreibung" placeholder="Kurze Beschreibung dieser Option" />
+            <FettTextarea name="beschreibung" placeholder="Kurze Beschreibung dieser Option" />
             <button type="submit" style={btn}>Option anlegen</button>
           </form>
         </div>

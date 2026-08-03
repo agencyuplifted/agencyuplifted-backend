@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createBuchung } from "@/lib/actions";
-import { formatDatum, formatEUR } from "@/lib/format";
+import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
 
 const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
 const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem", fontWeight: 600 };
@@ -101,6 +101,10 @@ export default function BuchungForm({
     <form action={createBuchung} style={{ maxWidth: 720 }}>
       <input type="hidden" name="modus" value={modus} />
 
+      <p style={{ color: "#666", fontSize: "0.85rem", background: "#f7f7f7", padding: "0.6rem 0.8rem", marginBottom: "1rem" }}>
+        Hinweis: Alle Preise werden netto (zzgl. gesetzlicher USt.) erfasst.
+      </p>
+
       <label style={labelStyle}>Art der Buchung</label>
       <div style={{ display: "flex", gap: "1.5rem", marginBottom: "1rem" }}>
         <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
@@ -160,7 +164,7 @@ export default function BuchungForm({
             <div style={{ ...teilnehmerRow, marginTop: "0.75rem", fontSize: "0.8rem", fontWeight: 600, color: "#666" }}>
               <span>Teilnehmer</span>
               <span>Option</span>
-              <span>Listenpreis (€)</span>
+              <span>Listenpreis (€, netto)</span>
               <span>Rabatt (€)</span>
               <span></span>
             </div>
@@ -189,15 +193,22 @@ export default function BuchungForm({
                     <option key={o.id} value={o.id}>{o.titel}</option>
                   ))}
                 </select>
-                <input
-                  style={{ ...inputStyle, marginBottom: 0 }}
-                  name={`listenpreis_${idx}`}
-                  type="number"
-                  step="0.01"
-                  required
-                  value={z.listenpreis}
-                  onChange={(e) => zeileAendern(z.key, "listenpreis", e.target.value)}
-                />
+                <div>
+                  <input
+                    style={{ ...inputStyle, marginBottom: "0.15rem" }}
+                    name={`listenpreis_${idx}`}
+                    type="number"
+                    step="0.01"
+                    required
+                    value={z.listenpreis}
+                    onChange={(e) => zeileAendern(z.key, "listenpreis", e.target.value)}
+                  />
+                  {!!Number(z.listenpreis) && (
+                    <span style={{ fontSize: "0.75rem", color: "#888" }}>
+                      brutto: {formatEURBrutto(Number(z.listenpreis))}
+                    </span>
+                  )}
+                </div>
                 <input
                   style={{ ...inputStyle, marginBottom: 0 }}
                   name={`rabatt_betrag_${idx}`}
@@ -254,7 +265,7 @@ export default function BuchungForm({
 
           <div style={row}>
             <div>
-              <label style={labelStyle}>Listenpreis (€)</label>
+              <label style={labelStyle}>Listenpreis (€, netto)</label>
               <input style={inputStyle} name="il_listenpreis" type="number" step="0.01" required />
             </div>
             <div>

@@ -173,6 +173,7 @@ export async function duplicateSeminartermin(formData: FormData) {
         seminartermin_id: neuerTermin.id,
         titel: opt.titel,
         beschreibung: opt.beschreibung,
+        badge: opt.badge,
         sortierung: opt.sortierung,
       })
       .select()
@@ -228,9 +229,77 @@ export async function createSeminarOption(formData: FormData) {
     seminartermin_id: seminarterminId,
     titel: String(formData.get("titel")),
     beschreibung: formData.get("beschreibung") || null,
+    badge: formData.get("badge") || null,
     sortierung: Number(formData.get("sortierung") || 0),
   });
   if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function updateOptionBadge(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const badge = formData.get("badge") || null;
+  const { error } = await supabase
+    .from("seminartermin_optionen")
+    .update({ badge })
+    .eq("id", optionId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function duplicateSeminarOption(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const sourceOptionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+
+  const { data: quelle, error: qErr } = await supabase
+    .from("seminartermin_optionen")
+    .select("*, seminartermin_options_features(*), preisstaffeln(*)")
+    .eq("id", sourceOptionId)
+    .single();
+  if (qErr || !quelle) throw new Error(qErr?.message || "Option nicht gefunden");
+
+  const { data: neueOption, error: insErr } = await supabase
+    .from("seminartermin_optionen")
+    .insert({
+      seminartermin_id: seminarterminId,
+      titel: `${(quelle as any).titel} (Kopie)`,
+      beschreibung: (quelle as any).beschreibung,
+      badge: null,
+      sortierung: ((quelle as any).sortierung ?? 0) + 1,
+    })
+    .select()
+    .single();
+  if (insErr) throw new Error(insErr.message);
+
+  const features = (quelle as any).seminartermin_options_features;
+  if (features?.length) {
+    await supabase.from("seminartermin_options_features").insert(
+      features.map((f: any) => ({
+        seminartermin_option_id: neueOption.id,
+        text: f.text,
+        sortierung: f.sortierung,
+      }))
+    );
+  }
+  const staffeln = (quelle as any).preisstaffeln;
+  if (staffeln?.length) {
+    await supabase.from("preisstaffeln").insert(
+      staffeln.map((p: any) => ({
+        seminartermin_option_id: neueOption.id,
+        name: p.name,
+        stichtag_tage_vor_start: p.stichtag_tage_vor_start,
+        preis: p.preis,
+        waehrung: p.waehrung,
+        sortierung: p.sortierung,
+      }))
+    );
+  }
+
   revalidatePath(`/termine/${seminarterminId}`);
   redirect(`/termine/${seminarterminId}`);
 }

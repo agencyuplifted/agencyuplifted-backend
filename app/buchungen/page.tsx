@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatEUR } from "@/lib/format";
+import { formatEUR, formatEURBrutto } from "@/lib/format";
 
 export default async function BuchungenPage() {
   const supabase = getSupabaseAdmin();
@@ -26,7 +26,8 @@ export default async function BuchungenPage() {
             <th style={{ padding: "0.5rem" }}>Buchungsnr.</th>
             <th style={{ padding: "0.5rem" }}>Rechnungsempfänger</th>
             <th style={{ padding: "0.5rem" }}>Seminar</th>
-            <th style={{ padding: "0.5rem" }}>Preis</th>
+            <th style={{ padding: "0.5rem" }}>Preis (netto)</th>
+            <th style={{ padding: "0.5rem" }}>Preis (brutto)</th>
             <th style={{ padding: "0.5rem" }}>Status</th>
           </tr>
         </thead>
@@ -43,11 +44,14 @@ export default async function BuchungenPage() {
               <td style={{ padding: "0.5rem" }}>
                 {formatEUR(b.buchungspositionen?.reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0) || 0)}
               </td>
+              <td style={{ padding: "0.5rem" }}>
+                {formatEURBrutto(b.buchungspositionen?.reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0) || 0)}
+              </td>
               <td style={{ padding: "0.5rem" }}>{b.status}</td>
             </tr>
           ))}
           {!buchungen?.length && (
-            <tr><td colSpan={5} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Buchungen erfasst.</td></tr>
+            <tr><td colSpan={6} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Buchungen erfasst.</td></tr>
           )}
         </tbody>
       </table>

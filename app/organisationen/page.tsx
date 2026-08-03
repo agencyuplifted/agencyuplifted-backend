@@ -11,17 +11,15 @@ export default async function OrganisationenPage() {
   const supabase = getSupabaseAdmin();
   const { data: orgs } = await supabase
     .from("organisationen")
-    .select("*, buchungen(buchungspositionen(seminartermine(seminartypen(name))))")
+    .select("*, buchungen(buchungspositionen(seminartermine(seminartypen(name)))), legacy_buchungen(seminartypen(name))")
     .order("erstellt_am", { ascending: false });
 
   const rows = (orgs || []).map((o: any) => {
     const seminare = Array.from(
-      new Set(
-        (o.buchungen || [])
-          .flatMap((b: any) => b.buchungspositionen || [])
-          .map((p: any) => p.seminartermine?.seminartypen?.name)
-          .filter(Boolean)
-      )
+      new Set([
+        ...(o.buchungen || []).flatMap((b: any) => b.buchungspositionen || []).map((p: any) => p.seminartermine?.seminartypen?.name),
+        ...(o.legacy_buchungen || []).map((l: any) => l.seminartypen?.name),
+      ].filter(Boolean))
     ) as string[];
     return {
       id: o.id,
