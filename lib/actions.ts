@@ -3,7 +3,11 @@
 import { getSupabaseAdmin } from "./supabase";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getResend, ABSENDER } from "./email";
+import { signSession, SESSION_COOKIE_NAME, SESSION_TTL } from "./session";
+import { hashePasswort, pruefePasswort } from "./passwort";
+import { getAktuellerBenutzer } from "./auth";
 
 export async function createOrganisation(formData: FormData) {
   const supabase = getSupabaseAdmin();
@@ -413,6 +417,7 @@ export async function stornoBuchung(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const buchungId = String(formData.get("buchung_id"));
   const grund = String(formData.get("grund") || "");
+  const benutzer = await getAktuellerBenutzer();
 
   const { error } = await supabase
     .from("buchungen")
@@ -425,7 +430,7 @@ export async function stornoBuchung(formData: FormData) {
     bezug_id: buchungId,
     ereignis: "storno",
     beschreibung: grund || "Storno ohne angegebenen Grund",
-    bearbeiter: "Markus Hartmann",
+    bearbeiter: benutzer?.name || "Unbekannt",
   });
 
   revalidatePath("/buchungen");
@@ -464,12 +469,13 @@ export async function umbuchenBuchung(formData: FormData) {
     ? `${(neuerTermin.seminartypen as any)?.name} – ${neuerTermin.datum_start}`
     : "unbekannt";
 
+  const benutzerUmbuchung = await getAktuellerBenutzer();
   await supabase.from("aenderungsprotokoll").insert({
     bezug_typ: "buchung",
     bezug_id: buchungId,
     ereignis: "umbuchung",
     beschreibung: `Von "${altBeschreibung}" auf "${neuBeschreibung}" umgebucht.`,
-    bearbeiter: "Markus Hartmann",
+    bearbeiter: benutzerUmbuchung?.name || "Unbekannt",
   });
 
   revalidatePath("/buchungen");
@@ -771,4 +777,71 @@ export async function funnelVersandJetzt() {
   redirect(
     `/funnel?lauf=1&gesendet=${ergebnis.gesendet}&fehler=${ergebnis.fehler}&uebersprungen=${ergebnis.uebersprungen}&geprueft=${ergebnis.geprueft}`
   );
+}
+
+export async function loginAction(formData: FormData) {
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const passwort = String(formData.get("passwort") || "");
+  const weiter = String(formData.get("weiter") || "/");
+
+  const supabase = getSupabaseAdmin();
+  const { data: mitarbeiter } = await supabase
+    .from("mitarbeiter")
+    .select("id, name, passwort_hash, aktiv")
+    .ilike("email", email)
+    .maybeSingle();
+
+  const gueltig =
+    !!mitarbeiter?.aktiv &&
+    !!mitarbeiter?.passwort_hash &&
+    (await pruefePasswort(passwort, mitarbeiter.passwort_hash));
+
+  if (!gueltig || !mitarbeiter) {
+    redirect(`/login?fehler=1&weiter=${encodeURIComponent(weiter)}`);
+  }
+
+  const token = await signSession({
+    mitarbeiterId: mitarbeiter.id,
+    name: mitarbeiter.name,
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL,
+  });
+
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_TTL,
+  });
+
+  redirect(weiter || "/");
+}
+
+export async function logoutAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete(SESSION_COOKIE_NAME);
+  redirect("/login");
+}
+
+export async function setMitarbeiterZugang(formData: FormData) {
+  const id = String(formData.get("id"));
+  const email = String(formData.get("email") || "").trim();
+  const neuesPasswort = String(formData.get("neues_passwort") || "");
+
+  const updates: Record<string, string> = {};
+  if (email) updates.email = email;
+  if (neuesPasswort) {
+    if (neuesPasswort.length < 8) throw new Error("Passwort muss mindestens 8 Zeichen haben.");
+    updates.passwort_hash = await hashePasswort(neuesPasswort);
+  }
+
+  if (Object.keys(updates).length) {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from("mitarbeiter").update(updates).eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath("/mitarbeiter");
+  redirect("/mitarbeiter");
 }

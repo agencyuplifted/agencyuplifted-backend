@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { createMitarbeiter, deaktiviereMitarbeiter } from "@/lib/actions";
+import { createMitarbeiter, deaktiviereMitarbeiter, setMitarbeiterZugang } from "@/lib/actions";
 import { formatDatum } from "@/lib/format";
 
 const inputStyle: React.CSSProperties = { display: "block", width: "100%", padding: "0.5rem", marginBottom: "0.75rem" };
@@ -31,17 +31,40 @@ export default async function MitarbeiterPage() {
             <th style={{ padding: "0.5rem" }}>Telefon</th>
             <th style={{ padding: "0.5rem" }}>Erfasst</th>
             <th style={{ padding: "0.5rem" }}>Status</th>
+            <th style={{ padding: "0.5rem" }}>Login-Zugang</th>
             <th style={{ padding: "0.5rem" }}></th>
           </tr>
         </thead>
         <tbody>
           {mitarbeiter?.map((m) => (
-            <tr key={m.id} style={{ borderBottom: "1px solid #e2e2e2", opacity: m.aktiv ? 1 : 0.5 }}>
+            <tr key={m.id} style={{ borderBottom: "1px solid #e2e2e2", opacity: m.aktiv ? 1 : 0.5, verticalAlign: "top" }}>
               <td style={{ padding: "0.5rem" }}>{m.name}</td>
               <td style={{ padding: "0.5rem" }}>{m.email || "—"}</td>
               <td style={{ padding: "0.5rem" }}>{m.telefon || "—"}</td>
               <td style={{ padding: "0.5rem" }}>{formatDatum(m.erstellt_am)}</td>
               <td style={{ padding: "0.5rem" }}>{m.aktiv ? "aktiv" : "deaktiviert"}</td>
+              <td style={{ padding: "0.5rem" }}>
+                {m.passwort_hash ? (
+                  <span style={{ color: "#245c24" }}>eingerichtet</span>
+                ) : (
+                  <span style={{ color: "#a15c00" }}>noch nicht eingerichtet</span>
+                )}
+                <details style={{ marginTop: "0.4rem" }}>
+                  <summary style={{ cursor: "pointer", color: "#102A4C", fontSize: "0.8rem" }}>
+                    {m.passwort_hash ? "Passwort ändern" : "Zugang einrichten"}
+                  </summary>
+                  <form action={setMitarbeiterZugang} style={{ marginTop: "0.5rem", minWidth: 220 }}>
+                    <input type="hidden" name="id" value={m.id} />
+                    <label style={labelStyle}>E-Mail (Login)</label>
+                    <input style={inputStyle} name="email" type="email" defaultValue={m.email || ""} placeholder="fuer Login erforderlich" />
+                    <label style={labelStyle}>Neues Passwort</label>
+                    <input style={inputStyle} name="neues_passwort" type="password" minLength={8} placeholder="mind. 8 Zeichen" />
+                    <button type="submit" style={{ background: "#102A4C", color: "white", padding: "0.4rem 0.8rem", border: "none", cursor: "pointer", fontSize: "0.8rem" }}>
+                      Speichern
+                    </button>
+                  </form>
+                </details>
+              </td>
               <td style={{ padding: "0.5rem" }}>
                 {m.aktiv && (
                   <form action={deaktiviereMitarbeiter}>
@@ -55,7 +78,7 @@ export default async function MitarbeiterPage() {
             </tr>
           ))}
           {!mitarbeiter?.length && (
-            <tr><td colSpan={6} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Mitarbeiter erfasst.</td></tr>
+            <tr><td colSpan={7} style={{ padding: "0.5rem", color: "#888" }}>Noch keine Mitarbeiter erfasst.</td></tr>
           )}
         </tbody>
       </table>

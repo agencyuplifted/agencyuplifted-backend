@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getAktuellerBenutzer } from "@/lib/auth";
+import { logoutAction } from "@/lib/actions";
 
 export const metadata = { title: "AgencyUplifted Backend" };
 
@@ -8,9 +10,12 @@ const navStyle: React.CSSProperties = {
   padding: "1rem 2rem",
   borderBottom: "1px solid #e2e2e2",
   fontFamily: "system-ui, sans-serif",
+  alignItems: "center",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const benutzer = await getAktuellerBenutzer();
+
   return (
     <html lang="de">
       <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", color: "#102A4C" }}>
@@ -31,6 +36,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/leads" style={{ textDecoration: "none", color: "#102A4C" }}>Leads</Link>
           <Link href="/funnel" style={{ textDecoration: "none", color: "#102A4C" }}>Funnel-Mails</Link>
           <Link href="/email-test" style={{ textDecoration: "none", color: "#102A4C" }}>E-Mail-Test</Link>
+          {benutzer && (
+            <span style={{ marginLeft: "auto", display: "flex", gap: "0.75rem", alignItems: "center" }}>
+              <span style={{ fontSize: "0.85rem", color: "#666" }}>Eingeloggt als {benutzer.name}</span>
+              <form action={logoutAction}>
+                <button type="submit" style={{ background: "transparent", border: "1px solid #102A4C", color: "#102A4C", padding: "0.3rem 0.7rem", cursor: "pointer", fontSize: "0.8rem" }}>
+                  Abmelden
+                </button>
+              </form>
+            </span>
+          )}
         </nav>
         <div style={{ padding: "2rem", maxWidth: 960, margin: "0 auto" }}>{children}</div>
       </body>

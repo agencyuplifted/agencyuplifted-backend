@@ -1,44 +1,26 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { verifySession, SESSION_COOKIE_NAME } from "@/lib/session";
 
-// Einfacher Passwortschutz (HTTP Basic Auth) fuer die gesamte Admin-App,
-// da hier echte Teilnehmer-/Organisationsdaten liegen. Zugangsdaten ueber
-// Vercel-Projekt-Umgebungsvariablen BASIC_AUTH_USER / BASIC_AUTH_PASSWORD
-// ueberschreibbar; Fallback-Werte greifen, falls diese nicht gesetzt sind.
-const USER = process.env.BASIC_AUTH_USER || "agencyuplifted";
-const PASS = process.env.BASIC_AUTH_PASSWORD || "Seminare-2026-Intern!";
+// Login-basierter Zugriffsschutz: jede Anfrage ausser /login, dem
+// Cron-Endpoint und statischen Assets braucht ein gueltiges, signiertes
+// Session-Cookie (gesetzt beim Login in lib/actions.ts::loginAction).
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-export function middleware(request: NextRequest) {
-  // Der Cron-Job (und jeder andere Server-zu-Server-Aufruf mit Bearer-Token)
-  // authentifiziert sich selbst ueber CRON_SECRET in der Route -- Basic Auth
-  // wuerde hier faelschlich mit 401 blocken, bevor die Route das prueft.
-  if (request.nextUrl.pathname.startsWith("/api/cron/")) {
+  if (pathname.startsWith("/api/cron/") || pathname === "/login") {
     return NextResponse.next();
   }
 
-  const authHeader = request.headers.get("authorization");
-
-  if (authHeader) {
-    const [scheme, encoded] = authHeader.split(" ");
-    if (scheme === "Basic" && encoded) {
-      try {
-        const decoded = atob(encoded);
-        const sepIndex = decoded.indexOf(":");
-        const user = decoded.slice(0, sepIndex);
-        const pass = decoded.slice(sepIndex + 1);
-        if (user === USER && pass === PASS) {
-          return NextResponse.next();
-        }
-      } catch {
-        // fällt durch zu 401
-      }
-    }
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const session = await verifySession(token);
+  if (!session) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("weiter", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  return new NextResponse("Zugriff geschützt – bitte anmelden.", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="AgencyUplifted Seminarverwaltung"' },
-  });
+  return NextResponse.next();
 }
 
 export const config = {
