@@ -3,6 +3,7 @@
 import { getSupabaseAdmin } from "./supabase";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getResend, ABSENDER } from "./email";
 
 export async function createOrganisation(formData: FormData) {
   const supabase = getSupabaseAdmin();
@@ -684,4 +685,29 @@ export async function deletePreisstaffel(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
   redirect(`/termine/${seminarterminId}`);
+}
+
+export async function sendeTestMail(formData: FormData) {
+  const an = String(formData.get("an") || "");
+  const betreff = String(formData.get("betreff") || "Test-Mail von AgencyUplifted");
+  const nachricht = String(formData.get("nachricht") || "Das ist eine Testmail aus der Seminarverwaltung.");
+
+  let fehlermeldung: string | null = null;
+  try {
+    const resend = getResend();
+    const { error } = await resend.emails.send({
+      from: ABSENDER,
+      to: [an],
+      subject: betreff,
+      html: `<p>${nachricht.replace(/\n/g, "<br/>")}</p>`,
+    });
+    if (error) fehlermeldung = error.message;
+  } catch (e: any) {
+    fehlermeldung = e?.message || "Unbekannter Fehler beim Versand.";
+  }
+
+  if (fehlermeldung) {
+    redirect(`/email-test?fehler=${encodeURIComponent(fehlermeldung)}`);
+  }
+  redirect("/email-test?erfolg=1");
 }
