@@ -60,9 +60,15 @@ export async function POST(request: NextRequest) {
 
   const { seminarterminId, tierId, mainContact, additionalParticipants, comment } = body || {};
 
-  if (!seminarterminId || !tierId || !mainContact?.firstName || !mainContact?.lastName || !mainContact?.email) {
+  if (!seminarterminId || !tierId || !mainContact?.firstName || !mainContact?.lastName || !mainContact?.email || !mainContact?.street || !mainContact?.postalCode || !mainContact?.city) {
     return withCors(NextResponse.json({ error: "missing_fields" }, { status: 400 }));
   }
+
+  const rechnungsadresse = {
+    strasse: String(mainContact.street).trim(),
+    plz: String(mainContact.postalCode).trim(),
+    ort: String(mainContact.city).trim(),
+  };
   if (body.privacyAccepted !== true) {
     return withCors(NextResponse.json({ error: "privacy_not_accepted" }, { status: 400 }));
   }
@@ -120,15 +126,32 @@ export async function POST(request: NextRequest) {
   if (personen[0].company) {
     const { data: bestehendeOrga } = await supabase
       .from("organisationen")
-      .select("id")
+      .select("id, rechnungsadresse_strasse, rechnungsadresse_plz, rechnungsadresse_ort")
       .ilike("name", personen[0].company)
       .maybeSingle();
     if (bestehendeOrga) {
       organisationId = bestehendeOrga.id;
+      // Rechnungsadresse nur nachtragen, wenn noch keine hinterlegt ist -
+      // eine bereits gepflegte Adresse wird durch eine neue Buchung nicht ueberschrieben.
+      if (!bestehendeOrga.rechnungsadresse_strasse && !bestehendeOrga.rechnungsadresse_plz && !bestehendeOrga.rechnungsadresse_ort) {
+        await supabase
+          .from("organisationen")
+          .update({
+            rechnungsadresse_strasse: rechnungsadresse.strasse,
+            rechnungsadresse_plz: rechnungsadresse.plz,
+            rechnungsadresse_ort: rechnungsadresse.ort,
+          })
+          .eq("id", organisationId);
+      }
     } else {
       const { data: neueOrga, error: orgaError } = await supabase
         .from("organisationen")
-        .insert({ name: personen[0].company })
+        .insert({
+          name: personen[0].company,
+          rechnungsadresse_strasse: rechnungsadresse.strasse,
+          rechnungsadresse_plz: rechnungsadresse.plz,
+          rechnungsadresse_ort: rechnungsadresse.ort,
+        })
         .select("id")
         .single();
       if (orgaError) {
@@ -140,15 +163,38 @@ export async function POST(request: NextRequest) {
 
   // Teilnehmer je Person anlegen/wiedererkennen (Abgleich per E-Mail).
   const teilnehmerIds: { id: string; email: string; vorname: string; roomOption?: string }[] = [];
-  for (const person of personen) {
+  for (let i = 0; i < personen.length; i++) {
+    const person = personen[i];
+    // Die Rechnungsadresse aus dem Formular gilt fuer die gesamte Buchung und
+    // wird - falls keine Organisation/Firma angegeben ist - beim Hauptkontakt
+    // (erste Person) als Privatadresse hinterlegt. Weitere Teilnehmer:innen
+    // bekommen keine eigene Adresse (kein Feld im Formular).
+    const istHauptkontaktOhneOrganisation = i === 0 && !organisationId;
+
     const { data: bestehenderTeilnehmer } = await supabase
       .from("teilnehmer")
-      .select("id")
+      .select("id, privatadresse_strasse, privatadresse_plz, privatadresse_ort")
       .ilike("email", person.email)
       .maybeSingle();
 
     if (bestehenderTeilnehmer) {
       teilnehmerIds.push({ id: bestehenderTeilnehmer.id, email: person.email, vorname: person.firstName, roomOption: person.roomOption });
+      if (
+        istHauptkontaktOhneOrganisation &&
+        !bestehenderTeilnehmer.privatadresse_strasse &&
+        !bestehenderTeilnehmer.privatadresse_plz &&
+        !bestehenderTeilnehmer.privatadresse_ort
+      ) {
+        await supabase
+          .from("teilnehmer")
+          .update({
+            privatadresse_strasse: rechnungsadresse.strasse,
+            privatadresse_plz: rechnungsadresse.plz,
+            privatadresse_ort: rechnungsadresse.ort,
+            privatadresse_land: "Deutschland",
+          })
+          .eq("id", bestehenderTeilnehmer.id);
+      }
       continue;
     }
 
@@ -162,6 +208,14 @@ export async function POST(request: NextRequest) {
         firma_freitext: person.company || null,
         marketing_consent_status: "unbekannt",
         marketing_consent_quelle: "onepage_buchungsformular",
+        ...(istHauptkontaktOhneOrganisation
+          ? {
+              privatadresse_strasse: rechnungsadresse.strasse,
+              privatadresse_plz: rechnungsadresse.plz,
+              privatadresse_ort: rechnungsadresse.ort,
+              privatadresse_land: "Deutschland",
+            }
+          : {}),
       })
       .select("id")
       .single();
