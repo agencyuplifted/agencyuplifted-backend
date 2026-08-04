@@ -20,7 +20,7 @@ export default async function NeueBuchungPage({
   return (
     <main>
       <h1>Neue Buchung</h1>
-      <p style={{ color: "#666" }}>Erfasst eine Buchung, wie sie z. B. per E-Mail reinkommt — ersetzt die Doppelerfassung in Pipedrive/FastBill.</p>
+      <p style={{ color: "#666" }}>Erfasst eine Buchung, wie sie z. B. per E-Mail reinkommt — ersetzt die Doppelerfassung zwischen Alt-System und FastBill.</p>
       <BuchungForm
         teilnehmer={teilnehmer || []}
         organisationen={organisationen || []}

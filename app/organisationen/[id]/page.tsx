@@ -98,7 +98,7 @@ export default async function OrganisationDetailPage({ params }: { params: Promi
         <div className="au-card">
           <h2>Historische Seminare (Altdaten)</h2>
           <p style={{ fontSize: "0.85rem" }}>
-            Aus dem Pipedrive-Import übernommen — nicht als vollständige Buchung im neuen System erfasst.
+            Aus dem Alt-System importiert — nicht als vollständige Buchung im neuen System erfasst.
           </p>
           <table className="au-table">
             <thead>

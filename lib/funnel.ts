@@ -37,7 +37,7 @@ function tageVerschieben(datumISO: string, tage: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function renderPlatzhalter(text: string, werte: Record<string, string>): string {
+export function renderPlatzhalter(text: string, werte: Record<string, string>): string {
   return text.replace(/\{\{(\w+)\}\}/g, (treffer, key) => (key in werte ? werte[key] : treffer));
 }
 

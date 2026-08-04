@@ -68,7 +68,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, seminartypen(name), veranstaltungsorte(name, ort), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, preis))"
+      "id, titel, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, seminartypen(name), veranstaltungsorte(name, ort), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, preis))"
     )
     .eq("id", id)
     .single();
@@ -143,6 +143,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         ? [(termin as any).veranstaltungsorte.name, (termin as any).veranstaltungsorte.ort].filter(Boolean).join(", ")
         : "Ort wird noch bekannt gegeben",
       datumsspanne_anzeige: formatDatumsspanne(termin.datum_start, termin.datum_ende),
+      zimmerupgrade: termin.zimmerupgrade_preis_netto
+        ? { beschreibung: termin.zimmerupgrade_beschreibung || "Zimmer-Upgrade", preis_netto: Number(termin.zimmerupgrade_preis_netto) }
+        : null,
       kapazitaet: termin.kapazitaet,
       freie_plaetze: freiePlaetze,
       belegt_prozent: Math.round(belegtProzent),

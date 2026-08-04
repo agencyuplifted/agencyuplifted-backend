@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { stornoBuchung, umbuchenBuchung } from "@/lib/actions";
+import { stornoBuchung, umbuchenBuchung, bestaetigeBuchung } from "@/lib/actions";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
 
 export default async function BuchungDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -84,6 +84,20 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
           </form>
         ))}
       </div>
+
+      {buchung.status === "angefragt" && (
+        <div className="au-card">
+          <h2>Bestätigen</h2>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
+            Setzt die Buchung auf „bestätigt" und verschickt sofort die Zahlungsbestätigungs-Mail an alle
+            Teilnehmer:innen dieser Buchung. Erst nach Zahlungseingang bestätigen.
+          </p>
+          <form action={bestaetigeBuchung}>
+            <input type="hidden" name="buchung_id" value={buchung.id} />
+            <button type="submit" className="au-btn au-btn-primary">Zahlung erhalten — Buchung bestätigen</button>
+          </form>
+        </div>
+      )}
 
       {buchung.status !== "storniert" && (
         <div className="au-card">

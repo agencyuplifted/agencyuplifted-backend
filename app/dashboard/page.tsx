@@ -37,7 +37,7 @@ export default async function DashboardPage({
   return (
     <main>
       <h1>Dashboard</h1>
-      <p>Auswertungen über Teilnehmer, Buchungen, Nachfrage und Vertrieb — kombiniert aus Altdaten (Pipedrive-Import) und dem neuen System.</p>
+      <p>Auswertungen über Teilnehmer, Buchungen, Nachfrage und Vertrieb — kombiniert aus Altdaten (Alt-System-Import) und dem neuen System.</p>
 
       <div className="au-tabs">
         {TABS.map((t) => (
@@ -149,7 +149,7 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
       <div className="au-card">
         <p style={{ fontSize: "0.85rem", margin: 0 }}>
           Hinweis: Der Umsatz-Wert bezieht sich nur auf Buchungen, die im neuen System erfasst wurden — bei den
-          historischen Pipedrive-Altdaten wurden keine Preise übernommen. Alle Preise netto, zzgl. 19% USt. (brutto:{" "}
+          historischen Altdaten aus dem Alt-System wurden keine Preise übernommen. Alle Preise netto, zzgl. 19% USt. (brutto:{" "}
           {formatEURBrutto(umsatzNetto)}).
         </p>
       </div>
@@ -200,7 +200,7 @@ async function Nachfrage({ supabase }: { supabase: any }) {
     <div className="au-card">
       <h2>Nachfrage pro Seminarart & Jahr</h2>
       <p style={{ fontSize: "0.85rem" }}>
-        Anzahl Teilnahmen (Altdaten aus Pipedrive-Import + neue Buchungen, ohne stornierte). Zeigt, welche Formate am
+        Anzahl Teilnahmen (Altdaten aus dem Alt-System + neue Buchungen, ohne stornierte). Zeigt, welche Formate am
         meisten nachgefragt werden und wie sich die Nachfrage über die Jahre entwickelt.
       </p>
       <div style={{ overflowX: "auto" }}>

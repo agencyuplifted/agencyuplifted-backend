@@ -8,7 +8,8 @@ import { getResend, ABSENDER } from "./email";
 import { signSession, SESSION_COOKIE_NAME, SESSION_TTL } from "./session";
 import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
-import { TERMIN_FELD_LABELS } from "./format";
+import { TERMIN_FELD_LABELS, formatDatum } from "./format";
+import { renderPlatzhalter } from "./funnel";
 
 export async function createOrganisation(formData: FormData) {
   const supabase = getSupabaseAdmin();
@@ -562,6 +563,90 @@ export async function stornoBuchung(formData: FormData) {
     beschreibung: grund || "Storno ohne angegebenen Grund",
     bearbeiter: benutzer?.name || "Unbekannt",
   });
+
+  revalidatePath("/buchungen");
+  revalidatePath(`/buchungen/${buchungId}`);
+  redirect(`/buchungen/${buchungId}`);
+}
+
+const ZAHLUNGSBESTAETIGUNG_FUNNEL_MAIL_ID = "b8c1927c-c660-454c-bb02-e6db2d93e8c0";
+
+export async function bestaetigeBuchung(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const buchungId = String(formData.get("buchung_id"));
+  const benutzer = await getAktuellerBenutzer();
+
+  const { error } = await supabase.from("buchungen").update({ status: "bestaetigt" }).eq("id", buchungId);
+  if (error) throw new Error(error.message);
+
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "buchung",
+    bezug_id: buchungId,
+    ereignis: "bestaetigung",
+    beschreibung: "Zahlung erhalten, Buchung endgültig bestätigt.",
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
+
+  // Zahlungsbestaetigungs-Mail sofort an alle Teilnehmer dieser Buchung verschicken.
+  const { data: positionen } = await supabase
+    .from("buchungspositionen")
+    .select("teilnehmer(vorname, email), seminartermine(titel, datum_start, seminartypen(name))")
+    .eq("buchung_id", buchungId);
+
+  const ersteSeminarPosition = (positionen || []).find((p: any) => p.seminartermine);
+  const seminartitel =
+    (ersteSeminarPosition as any)?.seminartermine?.titel ||
+    (ersteSeminarPosition as any)?.seminartermine?.seminartypen?.name ||
+    "das Seminar";
+  const seminardatum = (ersteSeminarPosition as any)?.seminartermine?.datum_start
+    ? formatDatum((ersteSeminarPosition as any).seminartermine.datum_start)
+    : "";
+
+  const empfaengerMap = new Map<string, string>();
+  (positionen || []).forEach((p: any) => {
+    if (p.teilnehmer?.email) empfaengerMap.set(p.teilnehmer.email, p.teilnehmer.vorname || "");
+  });
+
+  const { data: funnelMail } = await supabase
+    .from("funnel_mails")
+    .select("betreff, inhalt")
+    .eq("id", ZAHLUNGSBESTAETIGUNG_FUNNEL_MAIL_ID)
+    .single();
+
+  if (funnelMail) {
+    for (const [email, vorname] of empfaengerMap) {
+      const werte = { vorname, seminartitel, seminardatum };
+      const betreff = renderPlatzhalter(funnelMail.betreff, werte);
+      const inhaltHtml = renderPlatzhalter(funnelMail.inhalt, werte).replace(/\n/g, "<br/>");
+
+      let status: "gesendet" | "fehler" = "gesendet";
+      let fehlermeldung: string | null = null;
+      let resendEmailId: string | null = null;
+      try {
+        const resend = getResend();
+        const { data, error: sendError } = await resend.emails.send({ from: ABSENDER, to: [email], subject: betreff, html: inhaltHtml });
+        if (sendError) {
+          status = "fehler";
+          fehlermeldung = sendError.message;
+        } else {
+          resendEmailId = data?.id || null;
+        }
+      } catch (e: any) {
+        status = "fehler";
+        fehlermeldung = e?.message || "Unbekannter Fehler beim Versand.";
+      }
+
+      await supabase.from("funnel_versand_log").insert({
+        funnel_mail_id: ZAHLUNGSBESTAETIGUNG_FUNNEL_MAIL_ID,
+        bezug_typ: "buchung",
+        bezug_id: buchungId,
+        empfaenger_email: email,
+        status,
+        fehlermeldung,
+        resend_email_id: resendEmailId,
+      });
+    }
+  }
 
   revalidatePath("/buchungen");
   revalidatePath(`/buchungen/${buchungId}`);
