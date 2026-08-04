@@ -1011,12 +1011,18 @@ export async function richteResendTrackingEin() {
       );
     }
 
-    const { error: updateFehler } = await resend.domains.update({
+    // trackingSubdomain nur mitschicken, wenn sie noch nicht gesetzt ist - bei
+    // einem erneuten Lauf mit unveraendertem Wert lehnt Resend das sonst mit
+    // "A tracking domain with the subdomain ... already exists" ab.
+    const domainUpdatePayload: { id: string; openTracking: boolean; clickTracking: boolean; trackingSubdomain?: string } = {
       id: domain.id,
       openTracking: true,
       clickTracking: true,
-      trackingSubdomain: RESEND_TRACKING_SUBDOMAIN,
-    });
+    };
+    if ((domain as any).tracking_subdomain !== RESEND_TRACKING_SUBDOMAIN) {
+      domainUpdatePayload.trackingSubdomain = RESEND_TRACKING_SUBDOMAIN;
+    }
+    const { error: updateFehler } = await resend.domains.update(domainUpdatePayload);
     if (updateFehler) throw new Error(updateFehler.message);
 
     const { data: domainDetails, error: domainDetailsFehler } = await resend.domains.get(domain.id);
