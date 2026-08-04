@@ -258,5 +258,40 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Interne Benachrichtigung an Markus, dass eine neue Buchung eingegangen ist.
+  // Bewusst in einem eigenen try/catch: ein Fehler hier darf die fuer den
+  // Teilnehmer bereits erfolgreiche Buchung nicht mehr gefaehrden.
+  try {
+    const resend = getResend();
+    const gesamtpreisNetto = positionen.reduce((summe, p) => summe + Number(p.listenpreis), 0);
+    const teilnehmerZeilen = teilnehmerIds
+      .map((t) => `<li>${t.vorname} (${t.email})${t.roomOption === "komfort" ? " – Komfortzimmer-Upgrade" : ""}</li>`)
+      .join("");
+    const adminLink = `https://agencyuplifted-backend.vercel.app/buchungen/${buchung.id}`;
+    const internHtml = `
+      <p style="font-size:1.1em;">🎉 Es ist eine neue Buchung eingegangen!</p>
+      <p>
+        <strong>Buchungsnummer:</strong> ${buchung.buchungsnummer}<br/>
+        <strong>Seminar:</strong> ${seminartitel}<br/>
+        <strong>Termin:</strong> ${seminardatum}<br/>
+        <strong>Option:</strong> ${option.titel}<br/>
+        <strong>Teilnehmer:innen:</strong> ${teilnehmerIds.length}<br/>
+        <strong>Gesamtpreis (netto):</strong> ${gesamtpreisNetto.toLocaleString("de-DE")} €
+      </p>
+      <p><strong>Teilnehmer:innen:</strong></p>
+      <ul>${teilnehmerZeilen}</ul>
+      ${comment ? `<p><strong>Anmerkung:</strong> ${String(comment)}</p>` : ""}
+      <p><a href="${adminLink}">Buchung in der Verwaltung ansehen</a></p>
+    `;
+    await resend.emails.send({
+      from: ABSENDER,
+      to: ["markus@agencyuplifted.de"],
+      subject: `🎉 Neue Buchung eingegangen: ${buchung.buchungsnummer}`,
+      html: internHtml,
+    });
+  } catch (e: any) {
+    console.error("Interne Buchungs-Benachrichtigung fehlgeschlagen:", e?.message);
+  }
+
   return withCors(NextResponse.json({ ok: true, buchungId: buchung.id, buchungsnummer: buchung.buchungsnummer }));
 }
