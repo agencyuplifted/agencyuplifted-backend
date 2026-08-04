@@ -11,6 +11,7 @@ import { getAktuellerBenutzer } from "./auth";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter } from "./funnel";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
+import { randomUUID } from "crypto";
 
 export async function createOrganisation(formData: FormData) {
   const supabase = getSupabaseAdmin();
@@ -195,6 +196,98 @@ export async function setMarketingConsentStatus(formData: FormData) {
 
   revalidatePath(`/teilnehmer/${id}`);
   redirect(`/teilnehmer/${id}`);
+}
+
+const REFERENZEN_BUCKET = "referenzen";
+
+async function ladeReferenzBildHoch(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  teilnehmerId: string,
+  datei: File | null
+): Promise<string | null> {
+  if (!datei || datei.size === 0) return null;
+  const endungRoh = datei.name.includes(".") ? datei.name.split(".").pop() : null;
+  const endung = endungRoh && endungRoh.length <= 5 ? endungRoh : "png";
+  const pfad = `${teilnehmerId}/${randomUUID()}.${endung}`;
+  const { error } = await supabase.storage.from(REFERENZEN_BUCKET).upload(pfad, datei, {
+    contentType: datei.type || "image/png",
+    upsert: false,
+  });
+  if (error) throw new Error(error.message);
+  return pfad;
+}
+
+// Referenzen/Testimonials pro Teilnehmer (Phase 1 - reines Sammeln in der
+// Verwaltung; Ausspielen auf der Website via Onepage ist bewusst noch nicht
+// gebaut, siehe Backlog). Bilder landen im oeffentlichen Storage-Bucket
+// "referenzen" (Pfad statt fertiger URL gespeichert, damit sich eine
+// Public-URL jederzeit frisch ableiten laesst und Loeschen sauber funktioniert).
+export async function createTeilnehmerReferenz(formData: FormData) {
+  const teilnehmerId = String(formData.get("teilnehmer_id"));
+  const redirectTo = String(formData.get("redirect_to") || `/teilnehmer/${teilnehmerId}`);
+  const supabase = getSupabaseAdmin();
+
+  const profilfoto = formData.get("profilfoto") as File | null;
+  const agenturLogo = formData.get("agentur_logo") as File | null;
+
+  const profilfotoPfad = await ladeReferenzBildHoch(supabase, teilnehmerId, profilfoto);
+  const agenturLogoPfad = await ladeReferenzBildHoch(supabase, teilnehmerId, agenturLogo);
+  const text = formData.get("text");
+
+  const { error } = await supabase.from("teilnehmer_referenzen").insert({
+    teilnehmer_id: teilnehmerId,
+    profilfoto_pfad: profilfotoPfad,
+    agentur_logo_pfad: agenturLogoPfad,
+    text: text ? String(text) : null,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/teilnehmer/${teilnehmerId}`);
+  revalidatePath("/referenzen");
+  redirect(redirectTo);
+}
+
+export async function deleteTeilnehmerReferenz(formData: FormData) {
+  const id = String(formData.get("id"));
+  const teilnehmerId = String(formData.get("teilnehmer_id"));
+  const redirectTo = String(formData.get("redirect_to") || `/teilnehmer/${teilnehmerId}`);
+  const supabase = getSupabaseAdmin();
+
+  const { data: referenz } = await supabase
+    .from("teilnehmer_referenzen")
+    .select("profilfoto_pfad, agentur_logo_pfad")
+    .eq("id", id)
+    .single();
+
+  const { error } = await supabase.from("teilnehmer_referenzen").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+
+  const zuLoeschendePfade = [referenz?.profilfoto_pfad, referenz?.agentur_logo_pfad].filter(Boolean) as string[];
+  if (zuLoeschendePfade.length) {
+    await supabase.storage.from(REFERENZEN_BUCKET).remove(zuLoeschendePfade);
+  }
+
+  revalidatePath(`/teilnehmer/${teilnehmerId}`);
+  revalidatePath("/referenzen");
+  redirect(redirectTo);
+}
+
+export async function toggleReferenzFreigabe(formData: FormData) {
+  const id = String(formData.get("id"));
+  const teilnehmerId = String(formData.get("teilnehmer_id"));
+  const neuerWert = formData.get("neuer_wert") === "true";
+  const redirectTo = String(formData.get("redirect_to") || `/teilnehmer/${teilnehmerId}`);
+  const supabase = getSupabaseAdmin();
+
+  const { error } = await supabase
+    .from("teilnehmer_referenzen")
+    .update({ freigegeben_fuer_onepage: neuerWert, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/teilnehmer/${teilnehmerId}`);
+  revalidatePath("/referenzen");
+  redirect(redirectTo);
 }
 
 export async function createTrainer(formData: FormData) {

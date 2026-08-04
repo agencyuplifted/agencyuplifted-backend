@@ -3,13 +3,18 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
+import { renderTextMitLinks } from "@/lib/richtext";
 import {
   setMarketingConsentStatus,
   updateTeilnehmerStammdaten,
   verknuepfeTeilnehmerOrganisation,
   entferneTeilnehmerOrganisation,
   setzeHauptorganisation,
+  createTeilnehmerReferenz,
+  deleteTeilnehmerReferenz,
+  toggleReferenzFreigabe,
 } from "@/lib/actions";
+import PasteImageField from "../PasteImageField";
 
 const consentBadgeClass: Record<string, string> = {
   abonniert: "au-badge-success",
@@ -50,6 +55,18 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
     .select("id, name")
     .order("name", { ascending: true });
   const waehlbareOrganisationen = (alleOrganisationen || []).filter((o) => !verknuepfteOrgIds.has(o.id));
+
+  const { data: referenzen } = await supabase
+    .from("teilnehmer_referenzen")
+    .select("*")
+    .eq("teilnehmer_id", id)
+    .order("erstellt_am", { ascending: false });
+
+  const referenzenMitUrls = (referenzen || []).map((r: any) => ({
+    ...r,
+    profilfotoUrl: r.profilfoto_pfad ? supabase.storage.from("referenzen").getPublicUrl(r.profilfoto_pfad).data.publicUrl : null,
+    agenturLogoUrl: r.agentur_logo_pfad ? supabase.storage.from("referenzen").getPublicUrl(r.agentur_logo_pfad).data.publicUrl : null,
+  }));
 
   if (!t) return <main><p>Teilnehmer nicht gefunden.</p></main>;
 
@@ -184,6 +201,69 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
             <button type="submit" className="au-btn au-btn-primary au-btn-sm">Verknüpfen</button>
           </form>
         )}
+      </div>
+
+      <div className="au-card">
+        <h2>Referenzen &amp; Testimonials</h2>
+        <p style={{ fontSize: "0.85rem", color: "var(--color-text-faint)" }}>
+          Freitext, Profilfoto, Agentur-Logo und Links (z. B. LinkedIn-Post, Video) — später Grundlage für Testimonials auf der Website.
+        </p>
+
+        {referenzenMitUrls.map((r: any) => (
+          <div key={r.id} className="au-subcard" style={{ marginBottom: "0.9rem" }}>
+            <div style={{ display: "flex", gap: "0.9rem", alignItems: "flex-start" }}>
+              <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+                {r.profilfotoUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.profilfotoUrl} alt="Profilfoto" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: "50%" }} />
+                )}
+                {r.agenturLogoUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.agenturLogoUrl} alt="Agentur-Logo" style={{ width: 56, height: 56, objectFit: "contain", borderRadius: "6px", background: "#fff", border: "1px solid var(--color-border)" }} />
+                )}
+              </div>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, fontSize: "0.9rem" }}>{renderTextMitLinks(r.text)}</p>
+                <p style={{ margin: "0.4rem 0 0", fontSize: "0.75rem", color: "var(--color-text-faint)" }}>
+                  {formatDatum(r.erstellt_am)}
+                </p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", flexShrink: 0 }}>
+                <form action={toggleReferenzFreigabe}>
+                  <input type="hidden" name="id" value={r.id} />
+                  <input type="hidden" name="teilnehmer_id" value={id} />
+                  <input type="hidden" name="redirect_to" value={`/teilnehmer/${id}`} />
+                  <input type="hidden" name="neuer_wert" value={(!r.freigegeben_fuer_onepage).toString()} />
+                  <button type="submit" className={`au-btn au-btn-sm ${r.freigegeben_fuer_onepage ? "au-btn-secondary" : "au-btn-primary"}`}>
+                    {r.freigegeben_fuer_onepage ? "Freigegeben ✓" : "Für Onepage freigeben"}
+                  </button>
+                </form>
+                <form action={deleteTeilnehmerReferenz}>
+                  <input type="hidden" name="id" value={r.id} />
+                  <input type="hidden" name="teilnehmer_id" value={id} />
+                  <input type="hidden" name="redirect_to" value={`/teilnehmer/${id}`} />
+                  <button type="submit" className="au-btn au-btn-danger au-btn-sm">Löschen</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        ))}
+        {!referenzenMitUrls.length && (
+          <p style={{ fontSize: "0.85rem", color: "var(--color-text-faint)" }}>Noch keine Referenz erfasst.</p>
+        )}
+
+        <details style={{ marginTop: "0.9rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.9rem" }}>+ Neue Referenz erfassen</summary>
+          <form action={createTeilnehmerReferenz} style={{ maxWidth: 480, marginTop: "0.9rem" }}>
+            <input type="hidden" name="teilnehmer_id" value={id} />
+            <input type="hidden" name="redirect_to" value={`/teilnehmer/${id}`} />
+            <PasteImageField name="profilfoto" label="Profilfoto" />
+            <PasteImageField name="agentur_logo" label="Agentur-Logo" />
+            <label className="au-label">Text (Freitext, Links werden automatisch klickbar)</label>
+            <textarea className="au-textarea" name="text" placeholder="Zitat, Kontext, Link zum LinkedIn-Post oder Video ..." />
+            <button type="submit" className="au-btn au-btn-primary au-btn-sm">Referenz speichern</button>
+          </form>
+        </details>
       </div>
 
       <div className="au-card">
