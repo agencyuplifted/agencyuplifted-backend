@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { MWST_SATZ } from "@/lib/format";
+import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
 
 // Oeffentliche, rein lesende Schnittstelle fuer die Onepage-Website.
 // Gibt bewusst nur die Felder zurueck, die auf der Website angezeigt werden
@@ -24,6 +24,30 @@ export async function OPTIONS() {
 
 function brutto(netto: number): number {
   return Math.round(netto * (1 + MWST_SATZ) * 100) / 100;
+}
+
+// Menschenlesbare Datumsspanne fuer die Website-Anzeige, z.B.
+// "14.-15. August 2026" (gleicher Monat), "30. September - 2. Oktober 2026"
+// (unterschiedliche Monate) oder "30. Dezember 2026 - 2. Januar 2027"
+// (unterschiedliche Jahre). Bei nur einem Tag: "14. August 2026".
+function formatDatumsspanne(datumStart: string, datumEnde: string): string {
+  const start = new Date(datumStart);
+  const ende = new Date(datumEnde);
+  const monatStart = MONATSNAMEN[start.getMonth()];
+  const monatEnde = MONATSNAMEN[ende.getMonth()];
+  const jahrStart = start.getFullYear();
+  const jahrEnde = ende.getFullYear();
+
+  if (datumStart === datumEnde) {
+    return `${start.getDate()}. ${monatStart} ${jahrStart}`;
+  }
+  if (jahrStart !== jahrEnde) {
+    return `${start.getDate()}. ${monatStart} ${jahrStart} - ${ende.getDate()}. ${monatEnde} ${jahrEnde}`;
+  }
+  if (monatStart !== monatEnde) {
+    return `${start.getDate()}. ${monatStart} - ${ende.getDate()}. ${monatEnde} ${jahrStart}`;
+  }
+  return `${start.getDate()}.-${ende.getDate()}. ${monatStart} ${jahrStart}`;
 }
 
 function aktuellerPreisNetto(preisstaffeln: { stichtag_tage_vor_start: number; preis: number }[], datumStart: string): number | null {
@@ -115,6 +139,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       ort: (termin as any).veranstaltungsorte
         ? { name: (termin as any).veranstaltungsorte.name, ort: (termin as any).veranstaltungsorte.ort }
         : null,
+      ort_anzeige: (termin as any).veranstaltungsorte
+        ? [(termin as any).veranstaltungsorte.name, (termin as any).veranstaltungsorte.ort].filter(Boolean).join(", ")
+        : "Ort wird noch bekannt gegeben",
+      datumsspanne_anzeige: formatDatumsspanne(termin.datum_start, termin.datum_ende),
       kapazitaet: termin.kapazitaet,
       freie_plaetze: freiePlaetze,
       belegt_prozent: Math.round(belegtProzent),

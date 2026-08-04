@@ -28,7 +28,7 @@ export function splitName(vollerName: string): { vorname: string; nachname: stri
   return { vorname: teile[0], nachname: teile.slice(1).join(" ") };
 }
 
-const MONATSNAMEN = [
+export const MONATSNAMEN = [
   "Januar", "Februar", "März", "April", "Mai", "Juni",
   "Juli", "August", "September", "Oktober", "November", "Dezember",
 ];
