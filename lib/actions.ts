@@ -10,6 +10,7 @@ import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter } from "./funnel";
+import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
 
 export async function createOrganisation(formData: FormData) {
   const supabase = getSupabaseAdmin();
@@ -76,6 +77,100 @@ export async function updateTeilnehmerStammdaten(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath(`/teilnehmer/${id}`);
   redirect(`/teilnehmer/${id}`);
+}
+
+// Verknuepft einen Teilnehmer mit einer Organisation (M:N, siehe
+// teilnehmer_organisationen). Ein Teilnehmer kann mehrere Organisationen
+// haben (z.B. bei mehreren moeglichen Rechnungsempfaengern) - eine davon ist
+// als "Hauptorganisation" markiert. Ist es die erste Verknuepfung, wird sie
+// automatisch zur Hauptorganisation.
+export async function verknuepfeTeilnehmerOrganisation(formData: FormData) {
+  const teilnehmerId = String(formData.get("teilnehmer_id"));
+  const organisationId = String(formData.get("organisation_id"));
+  if (!organisationId) throw new Error("Bitte eine Organisation auswaehlen.");
+
+  const supabase = getSupabaseAdmin();
+  const { count } = await supabase
+    .from("teilnehmer_organisationen")
+    .select("id", { count: "exact", head: true })
+    .eq("teilnehmer_id", teilnehmerId);
+
+  const { error } = await supabase.from("teilnehmer_organisationen").insert({
+    teilnehmer_id: teilnehmerId,
+    organisation_id: organisationId,
+    ist_hauptorganisation: (count || 0) === 0,
+    quelle: "manuell",
+  });
+  if (error) {
+    if (error.code === "23505") throw new Error("Diese Organisation ist bereits verknuepft.");
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/teilnehmer/${teilnehmerId}`);
+  redirect(`/teilnehmer/${teilnehmerId}`);
+}
+
+export async function entferneTeilnehmerOrganisation(formData: FormData) {
+  const teilnehmerId = String(formData.get("teilnehmer_id"));
+  const organisationId = String(formData.get("organisation_id"));
+
+  const supabase = getSupabaseAdmin();
+  const { data: verknuepfung } = await supabase
+    .from("teilnehmer_organisationen")
+    .select("ist_hauptorganisation")
+    .eq("teilnehmer_id", teilnehmerId)
+    .eq("organisation_id", organisationId)
+    .single();
+
+  const { error } = await supabase
+    .from("teilnehmer_organisationen")
+    .delete()
+    .eq("teilnehmer_id", teilnehmerId)
+    .eq("organisation_id", organisationId);
+  if (error) throw new Error(error.message);
+
+  // War es die Hauptorganisation, automatisch eine verbleibende zur neuen
+  // Hauptorganisation machen (falls noch welche uebrig sind).
+  if (verknuepfung?.ist_hauptorganisation) {
+    const { data: verbleibende } = await supabase
+      .from("teilnehmer_organisationen")
+      .select("id")
+      .eq("teilnehmer_id", teilnehmerId)
+      .order("erstellt_am", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (verbleibende) {
+      await supabase.from("teilnehmer_organisationen").update({ ist_hauptorganisation: true }).eq("id", verbleibende.id);
+    }
+  }
+
+  revalidatePath(`/teilnehmer/${teilnehmerId}`);
+  redirect(`/teilnehmer/${teilnehmerId}`);
+}
+
+export async function setzeHauptorganisation(formData: FormData) {
+  const teilnehmerId = String(formData.get("teilnehmer_id"));
+  const organisationId = String(formData.get("organisation_id"));
+
+  const supabase = getSupabaseAdmin();
+  // Erst alle Verknuepfungen dieses Teilnehmers auf false setzen, dann die
+  // gewaehlte auf true - vermeidet einen Konflikt mit dem Unique-Index
+  // (genau eine Hauptorganisation pro Teilnehmer).
+  const { error: resetError } = await supabase
+    .from("teilnehmer_organisationen")
+    .update({ ist_hauptorganisation: false })
+    .eq("teilnehmer_id", teilnehmerId);
+  if (resetError) throw new Error(resetError.message);
+
+  const { error } = await supabase
+    .from("teilnehmer_organisationen")
+    .update({ ist_hauptorganisation: true })
+    .eq("teilnehmer_id", teilnehmerId)
+    .eq("organisation_id", organisationId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/teilnehmer/${teilnehmerId}`);
+  redirect(`/teilnehmer/${teilnehmerId}`);
 }
 
 export async function setMarketingConsentStatus(formData: FormData) {
@@ -538,6 +633,22 @@ export async function createBuchung(formData: FormData) {
       }))
     );
     if (posError) throw new Error(posError.message);
+  }
+
+  // Bei Buchung ueber eine Organisation: alle beteiligten Teilnehmer
+  // automatisch mit dieser Organisation verknuepfen (siehe
+  // teilnehmer_organisationen), damit die Stammdaten nicht wieder veralten.
+  if (organisationId) {
+    const teilnehmerIds = new Set<string>();
+    let i = 0;
+    while (formData.has(`teilnehmer_id_${i}`)) {
+      teilnehmerIds.add(String(formData.get(`teilnehmer_id_${i}`)));
+      i++;
+    }
+    if (teilnehmerIds.size === 0) teilnehmerIds.add(ersterTeilnehmerId);
+    for (const tId of teilnehmerIds) {
+      await verknuepfeTeilnehmerMitOrganisationAutomatisch(supabase, tId, String(organisationId));
+    }
   }
 
   revalidatePath("/buchungen");

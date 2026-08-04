@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getResend, ABSENDER } from "@/lib/email";
 import { formatDatum } from "@/lib/format";
 import { renderPlatzhalter } from "@/lib/funnel";
+import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "@/lib/organisationsverknuepfung";
 
 // Oeffentliche, schreibende Schnittstelle fuer das Onepage-Buchungsformular.
 // Ersetzt den fruehreren Umweg ueber Pipedrive bzw. das Onepage-eigene CRM:
@@ -215,6 +216,15 @@ export async function POST(request: NextRequest) {
   const { error: positionenError } = await supabase.from("buchungspositionen").insert(positionen);
   if (positionenError) {
     return withCors(NextResponse.json({ error: "positionen_fehler", detail: positionenError.message }, { status: 500 }));
+  }
+
+  // Bei Buchung ueber eine Organisation: alle beteiligten Teilnehmer
+  // automatisch mit dieser Organisation verknuepfen (siehe
+  // teilnehmer_organisationen), damit die Stammdaten nicht wieder veralten.
+  if (organisationId) {
+    for (const t of teilnehmerIds) {
+      await verknuepfeTeilnehmerMitOrganisationAutomatisch(supabase, t.id, organisationId);
+    }
   }
 
   // Reservierungsbestaetigung sofort an alle Teilnehmer verschicken (transaktional,

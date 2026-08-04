@@ -24,6 +24,12 @@ export default async function OrganisationDetailPage({ params }: { params: Promi
     .eq("organisation_id", id)
     .order("jahr", { ascending: false });
 
+  const { data: verknuepfteTeilnehmer } = await supabase
+    .from("teilnehmer_organisationen")
+    .select("id, ist_hauptorganisation, teilnehmer(id, vorname, nachname, email)")
+    .eq("organisation_id", id)
+    .order("ist_hauptorganisation", { ascending: false });
+
   if (!o) return <main><p>Organisation nicht gefunden.</p></main>;
 
   const adresse = [o.rechnungsadresse_strasse, [o.rechnungsadresse_plz, o.rechnungsadresse_ort].filter(Boolean).join(" "), o.rechnungsadresse_land]
@@ -55,6 +61,34 @@ export default async function OrganisationDetailPage({ params }: { params: Promi
             </>
           )}
         </div>
+      </div>
+
+      <div className="au-card">
+        <h2>Teilnehmer</h2>
+        <p style={{ fontSize: "0.85rem", color: "var(--color-text-faint)" }}>
+          Über die Organisation verknüpfte Teilnehmer (Stammdaten). Verwaltet wird das auf der jeweiligen Teilnehmerseite.
+        </p>
+        <table className="au-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>E-Mail</th>
+              <th>Hauptorganisation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {verknuepfteTeilnehmer?.map((v: any) => (
+              <tr key={v.id}>
+                <td><Link href={`/teilnehmer/${v.teilnehmer?.id}`}>{v.teilnehmer?.vorname} {v.teilnehmer?.nachname}</Link></td>
+                <td>{v.teilnehmer?.email}</td>
+                <td>{v.ist_hauptorganisation ? <span className="au-badge au-badge-success">Haupt</span> : "—"}</td>
+              </tr>
+            ))}
+            {!verknuepfteTeilnehmer?.length && (
+              <tr className="au-table-empty"><td colSpan={3}>Noch kein Teilnehmer verknüpft.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       <div className="au-card">

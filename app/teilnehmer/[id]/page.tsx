@@ -3,7 +3,13 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
-import { setMarketingConsentStatus, updateTeilnehmerStammdaten } from "@/lib/actions";
+import {
+  setMarketingConsentStatus,
+  updateTeilnehmerStammdaten,
+  verknuepfeTeilnehmerOrganisation,
+  entferneTeilnehmerOrganisation,
+  setzeHauptorganisation,
+} from "@/lib/actions";
 
 export default async function TeilnehmerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,6 +30,19 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
     .select("*, seminartypen(name)")
     .eq("teilnehmer_id", id)
     .order("jahr", { ascending: false });
+
+  const { data: verknuepfteOrgs } = await supabase
+    .from("teilnehmer_organisationen")
+    .select("id, ist_hauptorganisation, quelle, organisationen(id, name)")
+    .eq("teilnehmer_id", id)
+    .order("ist_hauptorganisation", { ascending: false });
+
+  const verknuepfteOrgIds = new Set((verknuepfteOrgs || []).map((v: any) => v.organisationen?.id));
+  const { data: alleOrganisationen } = await supabase
+    .from("organisationen")
+    .select("id, name")
+    .order("name", { ascending: true });
+  const waehlbareOrganisationen = (alleOrganisationen || []).filter((o) => !verknuepfteOrgIds.has(o.id));
 
   if (!t) return <main><p>Teilnehmer nicht gefunden.</p></main>;
 
@@ -149,6 +168,64 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
           Erfasst am {formatDatum(t.erstellt_am)}
           {t.deaktiviert_am ? ` · Deaktiviert am ${formatDatum(t.deaktiviert_am)}` : ""}
         </p>
+      </div>
+
+      <div className="au-card">
+        <h2>Organisationen</h2>
+        <p style={{ fontSize: "0.85rem", color: "var(--color-text-faint)" }}>
+          Ein Teilnehmer kann mehreren Organisationen zugeordnet sein (z. B. mehrere mögliche Rechnungsempfänger). Eine davon ist als Hauptorganisation markiert.
+        </p>
+        <table className="au-table">
+          <thead>
+            <tr>
+              <th>Organisation</th>
+              <th>Hauptorganisation</th>
+              <th>Quelle</th>
+              <th>Aktion</th>
+            </tr>
+          </thead>
+          <tbody>
+            {verknuepfteOrgs?.map((v: any) => (
+              <tr key={v.id}>
+                <td><Link href={`/organisationen/${v.organisationen?.id}`}>{v.organisationen?.name}</Link></td>
+                <td>
+                  {v.ist_hauptorganisation ? (
+                    <span className="au-badge au-badge-success">Haupt</span>
+                  ) : (
+                    <form action={setzeHauptorganisation}>
+                      <input type="hidden" name="teilnehmer_id" value={id} />
+                      <input type="hidden" name="organisation_id" value={v.organisationen?.id} />
+                      <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Als Haupt setzen</button>
+                    </form>
+                  )}
+                </td>
+                <td>{v.quelle}</td>
+                <td>
+                  <form action={entferneTeilnehmerOrganisation}>
+                    <input type="hidden" name="teilnehmer_id" value={id} />
+                    <input type="hidden" name="organisation_id" value={v.organisationen?.id} />
+                    <button type="submit" className="au-btn au-btn-danger au-btn-sm">Entfernen</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+            {!verknuepfteOrgs?.length && (
+              <tr className="au-table-empty"><td colSpan={4}>Noch keine Organisation verknüpft.</td></tr>
+            )}
+          </tbody>
+        </table>
+        {!!waehlbareOrganisationen.length && (
+          <form action={verknuepfeTeilnehmerOrganisation} style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.9rem" }}>
+            <input type="hidden" name="teilnehmer_id" value={id} />
+            <select name="organisation_id" className="au-select" style={{ marginBottom: 0, width: "auto", minWidth: "260px" }} required>
+              <option value="">— Organisation wählen —</option>
+              {waehlbareOrganisationen.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+            <button type="submit" className="au-btn au-btn-primary au-btn-sm">Verknüpfen</button>
+          </form>
+        )}
       </div>
 
       <div className="au-card">
