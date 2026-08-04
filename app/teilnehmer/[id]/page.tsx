@@ -11,6 +11,13 @@ import {
   setzeHauptorganisation,
 } from "@/lib/actions";
 
+const consentBadgeClass: Record<string, string> = {
+  abonniert: "au-badge-success",
+  abgemeldet: "au-badge-danger",
+  keine_zustimmung: "au-badge-neutral",
+  unbekannt: "au-badge-neutral",
+};
+
 export default async function TeilnehmerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -46,10 +53,138 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
 
   if (!t) return <main><p>Teilnehmer nicht gefunden.</p></main>;
 
+  const hauptOrg: any = verknuepfteOrgs?.find((v: any) => v.ist_hauptorganisation);
+  const consentStatus = t.marketing_consent_status || "unbekannt";
+  const hatWeitereAngaben = !!(
+    t.privatadresse_strasse ||
+    t.privatadresse_plz ||
+    t.privatadresse_ort ||
+    t.linkedin_url ||
+    t.ernaehrung_sonderwuensche ||
+    t.notizen
+  );
+
   return (
     <main>
       <p><Link href="/teilnehmer">← Zurück zur Liste</Link></p>
       <h1>{t.vorname} {t.nachname}</h1>
+      <p style={{ color: "var(--color-text-muted)", display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+        {hauptOrg ? (
+          <Link href={`/organisationen/${hauptOrg.organisationen?.id}`}>{hauptOrg.organisationen?.name}</Link>
+        ) : (
+          <span>Keine Organisation verknüpft</span>
+        )}
+        <span>·</span>
+        <span>{t.email}</span>
+        {t.telefon && (
+          <>
+            <span>·</span>
+            <span>{t.telefon}</span>
+          </>
+        )}
+        <span className={`au-badge ${consentBadgeClass[consentStatus]}`}>{consentStatus}</span>
+        {t.teilnehmerliste_opt_out && <span className="au-badge au-badge-warning">Listen-Opt-out</span>}
+      </p>
+
+      <div className="au-card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.9rem" }}>
+          <h2 style={{ margin: 0 }}>Buchungen</h2>
+          <Link href={`/buchungen/neu?teilnehmer_id=${id}`} className="au-btn au-btn-primary au-btn-sm">
+            + Neue Buchung anlegen
+          </Link>
+        </div>
+        <table className="au-table">
+          <thead>
+            <tr>
+              <th>Buchungsnr.</th>
+              <th>Leistung</th>
+              <th>Organisation</th>
+              <th>Preis (netto)</th>
+              <th>Preis (brutto)</th>
+              <th>Status</th>
+              <th>Aktion</th>
+            </tr>
+          </thead>
+          <tbody>
+            {positionen?.map((p: any) => (
+              <tr key={p.id}>
+                <td>{p.buchungen?.buchungsnummer}</td>
+                <td>
+                  {p.seminartermine
+                    ? `${p.seminartermine.seminartypen?.name} – ${formatDatum(p.seminartermine.datum_start)}${p.seminartermin_optionen?.titel ? ` (${p.seminartermin_optionen.titel})` : ""}`
+                    : `${p.beschreibung} (individuell${p.startdatum ? `, ab ${formatDatum(p.startdatum)}` : ""})`}
+                </td>
+                <td>{p.buchungen?.organisationen?.name || "—"}</td>
+                <td>{formatEUR(Number(p.preis || 0))}</td>
+                <td>{formatEURBrutto(Number(p.preis || 0))}</td>
+                <td>{p.buchungen?.status}</td>
+                <td><Link href={`/buchungen/${p.buchungen?.id}`}>Bearbeiten / Umbuchen / Stornieren →</Link></td>
+              </tr>
+            ))}
+            {!positionen?.length && (
+              <tr className="au-table-empty"><td colSpan={7}>Noch keine Buchungen.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="au-card">
+        <h2>Organisationen</h2>
+        <p style={{ fontSize: "0.85rem", color: "var(--color-text-faint)" }}>
+          Ein Teilnehmer kann mehreren Organisationen zugeordnet sein (z. B. mehrere mögliche Rechnungsempfänger). Eine davon ist als Hauptorganisation markiert.
+        </p>
+        <table className="au-table">
+          <thead>
+            <tr>
+              <th>Organisation</th>
+              <th>Hauptorganisation</th>
+              <th>Quelle</th>
+              <th>Aktion</th>
+            </tr>
+          </thead>
+          <tbody>
+            {verknuepfteOrgs?.map((v: any) => (
+              <tr key={v.id}>
+                <td><Link href={`/organisationen/${v.organisationen?.id}`}>{v.organisationen?.name}</Link></td>
+                <td>
+                  {v.ist_hauptorganisation ? (
+                    <span className="au-badge au-badge-success">Haupt</span>
+                  ) : (
+                    <form action={setzeHauptorganisation}>
+                      <input type="hidden" name="teilnehmer_id" value={id} />
+                      <input type="hidden" name="organisation_id" value={v.organisationen?.id} />
+                      <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Als Haupt setzen</button>
+                    </form>
+                  )}
+                </td>
+                <td>{v.quelle}</td>
+                <td>
+                  <form action={entferneTeilnehmerOrganisation}>
+                    <input type="hidden" name="teilnehmer_id" value={id} />
+                    <input type="hidden" name="organisation_id" value={v.organisationen?.id} />
+                    <button type="submit" className="au-btn au-btn-danger au-btn-sm">Entfernen</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+            {!verknuepfteOrgs?.length && (
+              <tr className="au-table-empty"><td colSpan={4}>Noch keine Organisation verknüpft.</td></tr>
+            )}
+          </tbody>
+        </table>
+        {!!waehlbareOrganisationen.length && (
+          <form action={verknuepfeTeilnehmerOrganisation} style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.9rem" }}>
+            <input type="hidden" name="teilnehmer_id" value={id} />
+            <select name="organisation_id" className="au-select" style={{ marginBottom: 0, width: "auto", minWidth: "260px" }} required>
+              <option value="">— Organisation wählen —</option>
+              {waehlbareOrganisationen.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+            <button type="submit" className="au-btn au-btn-primary au-btn-sm">Verknüpfen</button>
+          </form>
+        )}
+      </div>
 
       <div className="au-card">
         <h2>Stammdaten</h2>
@@ -116,27 +251,34 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
             </div>
           </div>
 
-          <label className="au-label">LinkedIn-URL</label>
-          <input className="au-input" name="linkedin_url" defaultValue={t.linkedin_url || ""} />
-
-          <label className="au-label">Privatadresse (für Hotel-Meldeschein & Rechnungen an Einzelpersonen)</label>
-          <input className="au-input" name="privatadresse_strasse" placeholder="Straße, Hausnummer" defaultValue={t.privatadresse_strasse || ""} />
-          <div className="au-row-2">
-            <input className="au-input" name="privatadresse_plz" placeholder="PLZ" defaultValue={t.privatadresse_plz || ""} />
-            <input className="au-input" name="privatadresse_ort" placeholder="Ort" defaultValue={t.privatadresse_ort || ""} />
-          </div>
-          <input className="au-input" name="privatadresse_land" placeholder="Land" defaultValue={t.privatadresse_land || "Deutschland"} />
-
-          <label className="au-label">Ernährung / Sonderwünsche</label>
-          <input className="au-input" name="ernaehrung_sonderwuensche" defaultValue={t.ernaehrung_sonderwuensche || ""} />
-
-          <label className="au-label">Notizen (intern)</label>
-          <textarea className="au-textarea" name="notizen" defaultValue={t.notizen || ""} />
-
           <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 400, marginBottom: "1rem", fontSize: "0.9rem" }}>
             <input type="checkbox" name="teilnehmerliste_opt_out" defaultChecked={t.teilnehmerliste_opt_out} />
             Nicht auf Teilnehmerlisten aufführen (Opt-out)
           </label>
+
+          <details open={hatWeitereAngaben} style={{ marginBottom: "1.1rem" }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.9rem", marginBottom: "0.75rem" }}>
+              Weitere Angaben (Adresse, LinkedIn, Ernährung, Notizen)
+            </summary>
+            <div style={{ marginTop: "0.9rem" }}>
+              <label className="au-label">LinkedIn-URL</label>
+              <input className="au-input" name="linkedin_url" defaultValue={t.linkedin_url || ""} />
+
+              <label className="au-label">Privatadresse (für Hotel-Meldeschein & Rechnungen an Einzelpersonen)</label>
+              <input className="au-input" name="privatadresse_strasse" placeholder="Straße, Hausnummer" defaultValue={t.privatadresse_strasse || ""} />
+              <div className="au-row-2">
+                <input className="au-input" name="privatadresse_plz" placeholder="PLZ" defaultValue={t.privatadresse_plz || ""} />
+                <input className="au-input" name="privatadresse_ort" placeholder="Ort" defaultValue={t.privatadresse_ort || ""} />
+              </div>
+              <input className="au-input" name="privatadresse_land" placeholder="Land" defaultValue={t.privatadresse_land || "Deutschland"} />
+
+              <label className="au-label">Ernährung / Sonderwünsche</label>
+              <input className="au-input" name="ernaehrung_sonderwuensche" defaultValue={t.ernaehrung_sonderwuensche || ""} />
+
+              <label className="au-label">Notizen (intern)</label>
+              <textarea className="au-textarea" name="notizen" defaultValue={t.notizen || ""} />
+            </div>
+          </details>
 
           <button type="submit" className="au-btn au-btn-primary">Stammdaten speichern</button>
         </form>
@@ -168,106 +310,6 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
           Erfasst am {formatDatum(t.erstellt_am)}
           {t.deaktiviert_am ? ` · Deaktiviert am ${formatDatum(t.deaktiviert_am)}` : ""}
         </p>
-      </div>
-
-      <div className="au-card">
-        <h2>Organisationen</h2>
-        <p style={{ fontSize: "0.85rem", color: "var(--color-text-faint)" }}>
-          Ein Teilnehmer kann mehreren Organisationen zugeordnet sein (z. B. mehrere mögliche Rechnungsempfänger). Eine davon ist als Hauptorganisation markiert.
-        </p>
-        <table className="au-table">
-          <thead>
-            <tr>
-              <th>Organisation</th>
-              <th>Hauptorganisation</th>
-              <th>Quelle</th>
-              <th>Aktion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {verknuepfteOrgs?.map((v: any) => (
-              <tr key={v.id}>
-                <td><Link href={`/organisationen/${v.organisationen?.id}`}>{v.organisationen?.name}</Link></td>
-                <td>
-                  {v.ist_hauptorganisation ? (
-                    <span className="au-badge au-badge-success">Haupt</span>
-                  ) : (
-                    <form action={setzeHauptorganisation}>
-                      <input type="hidden" name="teilnehmer_id" value={id} />
-                      <input type="hidden" name="organisation_id" value={v.organisationen?.id} />
-                      <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Als Haupt setzen</button>
-                    </form>
-                  )}
-                </td>
-                <td>{v.quelle}</td>
-                <td>
-                  <form action={entferneTeilnehmerOrganisation}>
-                    <input type="hidden" name="teilnehmer_id" value={id} />
-                    <input type="hidden" name="organisation_id" value={v.organisationen?.id} />
-                    <button type="submit" className="au-btn au-btn-danger au-btn-sm">Entfernen</button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-            {!verknuepfteOrgs?.length && (
-              <tr className="au-table-empty"><td colSpan={4}>Noch keine Organisation verknüpft.</td></tr>
-            )}
-          </tbody>
-        </table>
-        {!!waehlbareOrganisationen.length && (
-          <form action={verknuepfeTeilnehmerOrganisation} style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.9rem" }}>
-            <input type="hidden" name="teilnehmer_id" value={id} />
-            <select name="organisation_id" className="au-select" style={{ marginBottom: 0, width: "auto", minWidth: "260px" }} required>
-              <option value="">— Organisation wählen —</option>
-              {waehlbareOrganisationen.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-            <button type="submit" className="au-btn au-btn-primary au-btn-sm">Verknüpfen</button>
-          </form>
-        )}
-      </div>
-
-      <div className="au-card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.9rem" }}>
-          <h2 style={{ margin: 0 }}>Buchungen</h2>
-          <Link href={`/buchungen/neu?teilnehmer_id=${id}`} className="au-btn au-btn-primary au-btn-sm">
-            + Neue Buchung anlegen
-          </Link>
-        </div>
-        <table className="au-table">
-          <thead>
-            <tr>
-              <th>Buchungsnr.</th>
-              <th>Leistung</th>
-              <th>Organisation</th>
-              <th>Preis (netto)</th>
-              <th>Preis (brutto)</th>
-              <th>Status</th>
-              <th>Aktion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {positionen?.map((p: any) => (
-              <tr key={p.id}>
-                <td>{p.buchungen?.buchungsnummer}</td>
-                <td>
-                  {p.seminartermine
-                    ? `${p.seminartermine.seminartypen?.name} – ${formatDatum(p.seminartermine.datum_start)}${p.seminartermin_optionen?.titel ? ` (${p.seminartermin_optionen.titel})` : ""}`
-                    : `${p.beschreibung} (individuell${p.startdatum ? `, ab ${formatDatum(p.startdatum)}` : ""})`}
-                </td>
-                <td>{p.buchungen?.organisationen?.name || "—"}</td>
-                <td>{formatEUR(Number(p.preis || 0))}</td>
-                <td>{formatEURBrutto(Number(p.preis || 0))}</td>
-                <td>{p.buchungen?.status}</td>
-                <td><Link href={`/buchungen/${p.buchungen?.id}`}>Bearbeiten / Umbuchen / Stornieren →</Link></td>
-              </tr>
-            ))}
-            {!positionen?.length && (
-              <tr className="au-table-empty"><td colSpan={7}>Noch keine Buchungen.</td></tr>
-            )}
-          </tbody>
-        </table>
       </div>
 
       {!!legacyBuchungen?.length && (
