@@ -76,6 +76,68 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
     .eq("bezug_id", id)
     .order("erstellt_am", { ascending: false });
 
+  const { data: buchungsPositionen } = await supabase
+    .from("buchungspositionen")
+    .select(
+      "teilnehmer_id, seminartermin_option_id, beschreibung, buchungen(status, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext)"
+    )
+    .eq("seminartermin_id", id);
+
+  const { data: legacyTeilnehmer } = await supabase
+    .from("legacy_buchungen")
+    .select("teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext), organisationen(name)")
+    .eq("seminartermin_id", id);
+
+  type TeilnehmerZeile = {
+    id: string;
+    name: string;
+    orga: string;
+    telefon: string;
+    email: string;
+    zimmer: string;
+    essen: string;
+    quelle: "aktuell" | "legacy";
+  };
+
+  const teilnehmerMap = new Map<string, TeilnehmerZeile>();
+
+  (buchungsPositionen || []).forEach((p: any) => {
+    if (p.buchungen?.status === "storniert") return;
+    if (!p.teilnehmer) return;
+    const bestehend = teilnehmerMap.get(p.teilnehmer.id);
+    const hatZimmerUpgrade = p.seminartermin_option_id === null;
+    if (bestehend) {
+      if (hatZimmerUpgrade) bestehend.zimmer = p.beschreibung || "Ja";
+      return;
+    }
+    teilnehmerMap.set(p.teilnehmer.id, {
+      id: p.teilnehmer.id,
+      name: `${p.teilnehmer.vorname} ${p.teilnehmer.nachname}`,
+      orga: p.buchungen?.organisationen?.name || p.teilnehmer.firma_freitext || "—",
+      telefon: p.teilnehmer.telefon || p.teilnehmer.mobiltelefon || "—",
+      email: p.teilnehmer.email || "—",
+      zimmer: hatZimmerUpgrade ? (p.beschreibung || "Ja") : "—",
+      essen: p.teilnehmer.ernaehrung_sonderwuensche || "—",
+      quelle: "aktuell",
+    });
+  });
+
+  (legacyTeilnehmer || []).forEach((l: any) => {
+    if (!l.teilnehmer || teilnehmerMap.has(l.teilnehmer.id)) return;
+    teilnehmerMap.set(l.teilnehmer.id, {
+      id: l.teilnehmer.id,
+      name: `${l.teilnehmer.vorname} ${l.teilnehmer.nachname}`,
+      orga: l.organisationen?.name || l.teilnehmer.firma_freitext || "—",
+      telefon: l.teilnehmer.telefon || l.teilnehmer.mobiltelefon || "—",
+      email: l.teilnehmer.email || "—",
+      zimmer: "—",
+      essen: l.teilnehmer.ernaehrung_sonderwuensche || "—",
+      quelle: "legacy",
+    });
+  });
+
+  const teilnehmerListe = [...teilnehmerMap.values()].sort((a, b) => a.name.localeCompare(b.name, "de"));
+
   if (!termin) return <main><p>Termin nicht gefunden.</p></main>;
 
   const titelAnzeige = termin.titel || termin.seminartypen?.name;
@@ -111,6 +173,43 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             </button>
           </form>
         </div>
+      </div>
+
+      <div className="au-card">
+        <h2>Teilnehmer · {teilnehmerListe.length}</h2>
+        <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>
+          Alle Personen, die für diesen Termin gebucht haben oder (aus Alt-Daten) hatten — inklusive zugeordneter Legacy-Buchungen.
+          {" "}<Link href={`/termine/${id}/teilnehmerliste`}>Hotel-Liste zum Kopieren →</Link>
+        </p>
+        <table className="au-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Organisation</th>
+              <th>Telefon</th>
+              <th>E-Mail</th>
+              <th>Zimmer</th>
+              <th>Essen</th>
+              <th>Quelle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {teilnehmerListe.map((t) => (
+              <tr key={t.id}>
+                <td><Link href={`/teilnehmer/${t.id}`}>{t.name}</Link></td>
+                <td>{t.orga}</td>
+                <td>{t.telefon}</td>
+                <td>{t.email}</td>
+                <td>{t.zimmer}</td>
+                <td>{t.essen}</td>
+                <td>{t.quelle === "legacy" ? <span className="au-badge">Alt-Daten</span> : "Aktuell"}</td>
+              </tr>
+            ))}
+            {!teilnehmerListe.length && (
+              <tr className="au-table-empty"><td colSpan={7}>Noch keine Teilnehmer für diesen Termin.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       <div className="au-card">
