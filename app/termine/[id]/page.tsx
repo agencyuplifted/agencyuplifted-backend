@@ -16,6 +16,8 @@ import {
   deletePreisstaffel,
   addMitarbeiterZuTermin,
   removeMitarbeiterVonTermin,
+  setzeZimmerpartner,
+  entferneZimmerpartner,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
@@ -80,13 +82,18 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
   const { data: buchungsPositionen } = await supabase
     .from("buchungspositionen")
     .select(
-      "teilnehmer_id, seminartermin_option_id, beschreibung, buchungen(status, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext)"
+      "teilnehmer_id, seminartermin_option_id, beschreibung, buchungen(status, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle)"
     )
     .eq("seminartermin_id", id);
 
   const { data: legacyTeilnehmer } = await supabase
     .from("legacy_buchungen")
-    .select("teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext), organisationen(name)")
+    .select("teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle), organisationen(name)")
+    .eq("seminartermin_id", id);
+
+  const { data: zimmerpartner } = await supabase
+    .from("seminartermin_zimmerpartner")
+    .select("id, teilnehmer_a:teilnehmer_id_a(id, vorname, nachname), teilnehmer_b:teilnehmer_id_b(id, vorname, nachname)")
     .eq("seminartermin_id", id);
 
   type TeilnehmerZeile = {
@@ -98,6 +105,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
     zimmer: string;
     essen: string;
     quelle: "aktuell" | "legacy";
+    rolle: string;
   };
 
   const teilnehmerMap = new Map<string, TeilnehmerZeile>();
@@ -120,6 +128,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
       zimmer: hatZimmerUpgrade ? (p.beschreibung || "Ja") : "—",
       essen: p.teilnehmer.ernaehrung_sonderwuensche || "—",
       quelle: "aktuell",
+      rolle: p.teilnehmer.rolle || "teilnehmer",
     });
   });
 
@@ -134,10 +143,31 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
       zimmer: "—",
       essen: l.teilnehmer.ernaehrung_sonderwuensche || "—",
       quelle: "legacy",
+      rolle: l.teilnehmer.rolle || "teilnehmer",
     });
   });
 
   const teilnehmerListe = [...teilnehmerMap.values()].sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const echteTeilnehmerAnzahl = teilnehmerListe.filter((t) => t.rolle === "teilnehmer").length;
+
+  const rolleBadge: Record<string, string> = {
+    mitarbeiter: "Mitarbeiter",
+    organisator: "Organisator",
+  };
+
+  const partnerVonTeilnehmer = new Map<string, { name: string; zuordnungId: string }>();
+  (zimmerpartner || []).forEach((z: any) => {
+    if (!z.teilnehmer_a || !z.teilnehmer_b) return;
+    partnerVonTeilnehmer.set(z.teilnehmer_a.id, {
+      name: `${z.teilnehmer_b.vorname} ${z.teilnehmer_b.nachname}`,
+      zuordnungId: z.id,
+    });
+    partnerVonTeilnehmer.set(z.teilnehmer_b.id, {
+      name: `${z.teilnehmer_a.vorname} ${z.teilnehmer_a.nachname}`,
+      zuordnungId: z.id,
+    });
+  });
+  const anzahlZimmer = teilnehmerListe.length - (zimmerpartner?.length || 0);
 
   if (!termin) return <main><p>Termin nicht gefunden.</p></main>;
 
@@ -183,9 +213,10 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
       </div>
 
       <div className="au-card">
-        <h2>Teilnehmer · {teilnehmerListe.length}</h2>
+        <h2>Teilnehmer · {echteTeilnehmerAnzahl}</h2>
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>
           Alle Personen, die für diesen Termin gebucht haben oder (aus Alt-Daten) hatten — inklusive zugeordneter Legacy-Buchungen.
+          {zimmerpartner && zimmerpartner.length > 0 && <> · {anzahlZimmer} Zimmer benötigt ({zimmerpartner.length} geteilt)</>}
           {" "}<Link href={`/termine/${id}/teilnehmerliste`}>Hotel-Liste zum Kopieren →</Link>
         </p>
         <table className="au-table">
@@ -203,11 +234,28 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
           <tbody>
             {teilnehmerListe.map((t) => (
               <tr key={t.id}>
-                <td><Link href={`/teilnehmer/${t.id}`}>{t.name}</Link></td>
+                <td>
+                  <Link href={`/teilnehmer/${t.id}`}>{t.name}</Link>
+                  {rolleBadge[t.rolle] && (
+                    <span className="au-badge au-badge-gold" style={{ marginLeft: "0.5rem", fontSize: "0.72rem" }}>
+                      {rolleBadge[t.rolle]}
+                    </span>
+                  )}
+                </td>
                 <td>{t.orga}</td>
                 <td>{t.telefon}</td>
                 <td>{t.email}</td>
-                <td>{t.zimmer}</td>
+                <td>
+                  {t.zimmer}
+                  {partnerVonTeilnehmer.has(t.id) && (
+                    <>
+                      {t.zimmer !== "—" ? " · " : ""}
+                      <span style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+                        teilt Zimmer mit {partnerVonTeilnehmer.get(t.id)!.name}
+                      </span>
+                    </>
+                  )}
+                </td>
                 <td>{t.essen}</td>
                 <td>{t.quelle === "legacy" ? <span className="au-badge">Alt-Daten</span> : "Aktuell"}</td>
               </tr>
@@ -217,6 +265,67 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="au-card">
+        <h2>Zimmerpartner</h2>
+        <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>
+          Für Paare (z. B. Ehepaare), die sich ein Zimmer teilen — reduziert die Zimmerzahl automatisch, beide Personen bleiben in der Teilnehmerliste sichtbar.
+        </p>
+        {zimmerpartner && zimmerpartner.length > 0 && (
+          <table className="au-table" style={{ marginBottom: "1rem" }}>
+            <thead>
+              <tr>
+                <th>Person A</th>
+                <th>Person B</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {zimmerpartner.map((z: any) => (
+                <tr key={z.id}>
+                  <td>{z.teilnehmer_a ? `${z.teilnehmer_a.vorname} ${z.teilnehmer_a.nachname}` : "—"}</td>
+                  <td>{z.teilnehmer_b ? `${z.teilnehmer_b.vorname} ${z.teilnehmer_b.nachname}` : "—"}</td>
+                  <td>
+                    <form action={entferneZimmerpartner} style={{ display: "inline" }}>
+                      <input type="hidden" name="zuordnung_id" value={z.id} />
+                      <input type="hidden" name="seminartermin_id" value={id} />
+                      <button type="submit" className="au-link-danger">entfernen</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {teilnehmerListe.length >= 2 ? (
+          <form action={setzeZimmerpartner} className="au-row-2">
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <div>
+              <label className="au-label">Person A</label>
+              <select className="au-input" name="teilnehmer_id_a" required>
+                <option value="">— wählen —</option>
+                {teilnehmerListe.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="au-label">Person B</label>
+              <select className="au-input" name="teilnehmer_id_b" required>
+                <option value="">— wählen —</option>
+                {teilnehmerListe.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <button type="submit" className="au-btn au-btn-primary">Als Zimmerpartner verknüpfen</button>
+            </div>
+          </form>
+        ) : (
+          <p style={{ color: "var(--color-text-faint)", fontSize: "0.85rem" }}>Mindestens 2 Teilnehmer nötig.</p>
+        )}
       </div>
 
       <div className="au-card">

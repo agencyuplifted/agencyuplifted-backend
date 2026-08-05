@@ -4,7 +4,7 @@ import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, splitName } from "@/lib/format";
 
-type Zeile = { vorname: string; nachname: string; typ: "Teilnehmer" | "Mitarbeiter"; info: string };
+type Zeile = { teilnehmerId: string | null; vorname: string; nachname: string; typ: "Teilnehmer" | "Mitarbeiter"; info: string; zimmerpartner: string | null };
 
 export default async function TeilnehmerlistePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -18,7 +18,12 @@ export default async function TeilnehmerlistePage({ params }: { params: Promise<
 
   const { data: positionen } = await supabase
     .from("buchungspositionen")
-    .select("teilnehmer(vorname, nachname), buchungen(status), seminartermin_optionen(titel)")
+    .select("teilnehmer(id, vorname, nachname), buchungen(status), seminartermin_optionen(titel)")
+    .eq("seminartermin_id", id);
+
+  const { data: zimmerpartner } = await supabase
+    .from("seminartermin_zimmerpartner")
+    .select("teilnehmer_a:teilnehmer_id_a(id, vorname, nachname), teilnehmer_b:teilnehmer_id_b(id, vorname, nachname)")
     .eq("seminartermin_id", id);
 
   const { data: terminMitarbeiter } = await supabase
@@ -34,18 +39,33 @@ export default async function TeilnehmerlistePage({ params }: { params: Promise<
     if (p.buchungen?.status === "storniert") return;
     if (!p.teilnehmer) return;
     zeilen.push({
+      teilnehmerId: p.teilnehmer.id,
       vorname: p.teilnehmer.vorname,
       nachname: p.teilnehmer.nachname,
       typ: "Teilnehmer",
       info: p.seminartermin_optionen?.titel || "",
+      zimmerpartner: null,
     });
   });
 
   (terminMitarbeiter || []).forEach((tm: any) => {
     if (!tm.mitarbeiter?.name) return;
     const { vorname, nachname } = splitName(tm.mitarbeiter.name);
-    zeilen.push({ vorname, nachname, typ: "Mitarbeiter", info: tm.rolle || "" });
+    zeilen.push({ teilnehmerId: null, vorname, nachname, typ: "Mitarbeiter", info: tm.rolle || "", zimmerpartner: null });
   });
+
+  const partnerName = new Map<string, string>();
+  (zimmerpartner || []).forEach((z: any) => {
+    if (!z.teilnehmer_a || !z.teilnehmer_b) return;
+    partnerName.set(z.teilnehmer_a.id, `${z.teilnehmer_b.vorname} ${z.teilnehmer_b.nachname}`);
+    partnerName.set(z.teilnehmer_b.id, `${z.teilnehmer_a.vorname} ${z.teilnehmer_a.nachname}`);
+  });
+  zeilen.forEach((z) => {
+    if (z.teilnehmerId && partnerName.has(z.teilnehmerId)) {
+      z.zimmerpartner = partnerName.get(z.teilnehmerId)!;
+    }
+  });
+  const anzahlZimmer = zeilen.length - (zimmerpartner?.length || 0);
 
   zeilen.sort((a, b) => a.nachname.localeCompare(b.nachname, "de") || a.vorname.localeCompare(b.vorname, "de"));
 
@@ -59,7 +79,8 @@ export default async function TeilnehmerlistePage({ params }: { params: Promise<
       <p>
         {titelAnzeige} · {formatDatum(termin.datum_start)}
         {termin.datum_ende && termin.datum_ende !== termin.datum_start ? ` – ${formatDatum(termin.datum_ende)}` : ""}
-        {" "}· {zeilen.length} Personen (Teilnehmer + Mitarbeiter — alle benötigen ein Zimmer)
+        {" "}· {zeilen.length} Personen (Teilnehmer + Mitarbeiter) · {anzahlZimmer} Zimmer benötigt
+        {(zimmerpartner?.length || 0) > 0 && <> ({zimmerpartner!.length} geteilt)</>}
       </p>
 
       <div className="au-card">
@@ -85,6 +106,7 @@ export default async function TeilnehmerlistePage({ params }: { params: Promise<
               <th>Nachname</th>
               <th>Typ</th>
               <th>Option / Rolle</th>
+              <th>Zimmer</th>
             </tr>
           </thead>
           <tbody>
@@ -94,10 +116,11 @@ export default async function TeilnehmerlistePage({ params }: { params: Promise<
                 <td>{z.nachname}</td>
                 <td>{z.typ}</td>
                 <td>{z.info || "—"}</td>
+                <td>{z.zimmerpartner ? `teilt mit ${z.zimmerpartner}` : "—"}</td>
               </tr>
             ))}
             {!zeilen.length && (
-              <tr className="au-table-empty"><td colSpan={4}>Noch keine Teilnehmer oder Mitarbeiter für diesen Termin.</td></tr>
+              <tr className="au-table-empty"><td colSpan={5}>Noch keine Teilnehmer oder Mitarbeiter für diesen Termin.</td></tr>
             )}
           </tbody>
         </table>

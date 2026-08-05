@@ -1068,6 +1068,41 @@ export async function removeMitarbeiterVonTermin(formData: FormData) {
   redirect(`/termine/${seminarterminId}`);
 }
 
+export async function setzeZimmerpartner(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const teilnehmerA = String(formData.get("teilnehmer_id_a"));
+  const teilnehmerB = String(formData.get("teilnehmer_id_b"));
+  if (!teilnehmerA || !teilnehmerB || teilnehmerA === teilnehmerB) {
+    throw new Error("Bitte zwei unterschiedliche Personen auswählen.");
+  }
+  const [a, b] = [teilnehmerA, teilnehmerB].sort();
+  const { error } = await supabase.from("seminartermin_zimmerpartner").upsert(
+    {
+      seminartermin_id: seminarterminId,
+      teilnehmer_id_a: a,
+      teilnehmer_id_b: b,
+    },
+    { onConflict: "seminartermin_id,teilnehmer_id_a,teilnehmer_id_b" }
+  );
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function entferneZimmerpartner(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const zuordnungId = String(formData.get("zuordnung_id"));
+  const { error } = await supabase
+    .from("seminartermin_zimmerpartner")
+    .delete()
+    .eq("id", zuordnungId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
 export async function updateSeminarOption(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
