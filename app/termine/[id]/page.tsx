@@ -7,6 +7,7 @@ import {
   createSeminarOption,
   createOptionFeature,
   duplicateSeminartermin,
+  previewSeminarterminLoeschen,
   duplicateSeminarOption,
   updateOptionBadge,
   updateSeminarOption,
@@ -170,6 +171,12 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             <input type="hidden" name="seminartermin_id" value={id} />
             <button type="submit" className="au-btn au-btn-secondary" title="Legt eine Kopie dieses Termins inkl. Optionen, Featurelisten, Preisstaffeln und Urgency-Stufen an">
               Termin duplizieren
+            </button>
+          </form>
+          <form action={previewSeminarterminLoeschen}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <button type="submit" className="au-btn au-btn-danger" title="Führt zu einer Bestätigungsseite, bevor der Termin wirklich gelöscht wird">
+              Termin löschen
             </button>
           </form>
         </div>

@@ -1406,3 +1406,52 @@ export async function ordneLegacyGruppeZu(formData: FormData) {
   revalidatePath("/buchungen/alte-seminare");
   revalidatePath("/termine");
 }
+
+// Schritt 1 der doppelten Freigabe fürs Löschen eines Termins: leitet nur zur
+// Vorschauseite weiter, löscht noch nichts.
+export async function previewSeminarterminLoeschen(formData: FormData) {
+  const id = String(formData.get("seminartermin_id"));
+  redirect(`/termine/${id}/loeschen`);
+}
+
+// Schritt 2: löscht den Termin endgültig — nur wenn serverseitig bestätigt keine
+// Buchungspositionen (auch keine stornierten) mehr daran hängen. Legacy-Zuordnungen
+// werden vorher automatisch gelöst (nur eine Anzeige-Verknüpfung, keine echte Buchung).
+export async function loescheSeminartermin(formData: FormData) {
+  const id = String(formData.get("seminartermin_id"));
+  const supabase = getSupabaseAdmin();
+
+  const { data: termin } = await supabase
+    .from("seminartermine")
+    .select("titel, kennung, seminartypen(name)")
+    .eq("id", id)
+    .single();
+
+  const { count: positionenCount } = await supabase
+    .from("buchungspositionen")
+    .select("id", { count: "exact", head: true })
+    .eq("seminartermin_id", id);
+
+  if ((positionenCount || 0) > 0) {
+    throw new Error(
+      `Termin kann nicht gelöscht werden: Es hängen noch ${positionenCount} Buchungsposition(en) daran (auch stornierte zählen). Bitte zuerst die zugehörigen Buchungen bereinigen.`
+    );
+  }
+
+  await supabase.from("legacy_buchungen").update({ seminartermin_id: null }).eq("seminartermin_id", id);
+
+  const benutzer = await getAktuellerBenutzer();
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "seminartermin",
+    bezug_id: id,
+    ereignis: "loeschung",
+    beschreibung: `Termin gelöscht: ${termin?.kennung ? termin.kennung + " – " : ""}${termin?.titel || (termin as any)?.seminartypen?.name || "(ohne Titel)"}`,
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
+
+  const { error } = await supabase.from("seminartermine").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/termine");
+  redirect("/termine");
+}
