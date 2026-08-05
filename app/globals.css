@@ -549,3 +549,117 @@ details summary {
   cursor: pointer;
   user-select: none;
 }
+
+/* ---------- PWA / iOS Home-Bildschirm & mobile Ansicht ---------- */
+
+.au-mobile-topbar {
+  display: none;
+}
+
+.au-mobile-overlay {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .au-app {
+    flex-direction: column;
+    min-height: 100dvh;
+  }
+
+  .au-mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--color-border);
+    padding: calc(0.75rem + env(safe-area-inset-top)) 1rem 0.75rem;
+  }
+
+  .au-mobile-menu-btn {
+    appearance: none;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface);
+    border-radius: var(--radius-sm);
+    width: 36px;
+    height: 36px;
+    font-size: 1.05rem;
+    line-height: 1;
+    color: var(--color-accent);
+  }
+
+  .au-mobile-topbar-title {
+    font-weight: 700;
+    color: var(--color-accent);
+    letter-spacing: -0.01em;
+  }
+
+  .au-mobile-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 24, 40, 0.45);
+    z-index: 45;
+  }
+
+  .au-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    width: 82%;
+    max-width: 300px;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    z-index: 50;
+    box-shadow: 0 0 24px rgba(16, 24, 40, 0.18);
+    padding-top: calc(1.5rem + env(safe-area-inset-top));
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .au-sidebar-open {
+    transform: translateX(0);
+  }
+
+  .au-main {
+    width: 100%;
+  }
+
+  .au-container {
+    max-width: 100%;
+    padding: 1.1rem 1rem calc(2.5rem + env(safe-area-inset-bottom));
+  }
+
+  .au-row-2,
+  .au-row-3 {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 1.3rem;
+  }
+
+  .au-card {
+    padding: 1.1rem;
+  }
+
+  .au-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+}
+
+/* Verhindert Zoom beim Fokussieren von Inputs auf iOS (Mindestschriftgröße 16px) */
+@media (max-width: 860px) {
+  .au-input,
+  .au-select,
+  .au-textarea {
+    font-size: 16px;
+  }
+}

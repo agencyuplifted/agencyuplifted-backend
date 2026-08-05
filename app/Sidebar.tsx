@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/lib/actions";
@@ -47,39 +48,60 @@ const GROUPS: NavGroup[] = [
 
 export default function Sidebar({ benutzerName }: { benutzerName?: string | null }) {
   const pathname = usePathname();
+  const [mobileOffen, setMobileOffen] = useState(false);
+
+  useEffect(() => {
+    setMobileOffen(false);
+  }, [pathname]);
 
   return (
-    <aside className="au-sidebar">
-      <Link href="/dashboard" className="au-sidebar-brand">AgencyUplifted</Link>
+    <>
+      <div className="au-mobile-topbar">
+        <button
+          type="button"
+          className="au-mobile-menu-btn"
+          onClick={() => setMobileOffen((v) => !v)}
+          aria-label="Menü öffnen"
+        >
+          ☰
+        </button>
+        <span className="au-mobile-topbar-title">AgencyUplifted</span>
+      </div>
 
-      {GROUPS.map((group, i) => (
-        <div className="au-sidebar-group" key={group.title || i}>
-          {group.title && <div className="au-sidebar-group-title">{group.title}</div>}
-          {group.links.map((l) => {
-            const aktiv = pathname === l.href || pathname?.startsWith(l.href + "/");
-            return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={`au-sidebar-link ${aktiv ? "au-sidebar-link-active" : ""}`}
-              >
-                {l.label}
-              </Link>
-            );
-          })}
-        </div>
-      ))}
+      {mobileOffen && <div className="au-mobile-overlay" onClick={() => setMobileOffen(false)} />}
 
-      {benutzerName && (
-        <div className="au-sidebar-footer">
-          <div className="au-sidebar-user">Eingeloggt als {benutzerName}</div>
-          <form action={logoutAction} style={{ padding: "0 0.6rem" }}>
-            <button type="submit" className="au-btn au-btn-secondary au-btn-sm" style={{ width: "100%" }}>
-              Abmelden
-            </button>
-          </form>
-        </div>
-      )}
-    </aside>
+      <aside className={`au-sidebar ${mobileOffen ? "au-sidebar-open" : ""}`}>
+        <Link href="/dashboard" className="au-sidebar-brand">AgencyUplifted</Link>
+
+        {GROUPS.map((group, i) => (
+          <div className="au-sidebar-group" key={group.title || i}>
+            {group.title && <div className="au-sidebar-group-title">{group.title}</div>}
+            {group.links.map((l) => {
+              const aktiv = pathname === l.href || pathname?.startsWith(l.href + "/");
+              return (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  className={`au-sidebar-link ${aktiv ? "au-sidebar-link-active" : ""}`}
+                >
+                  {l.label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
+
+        {benutzerName && (
+          <div className="au-sidebar-footer">
+            <div className="au-sidebar-user">Eingeloggt als {benutzerName}</div>
+            <form action={logoutAction} style={{ padding: "0 0.6rem" }}>
+              <button type="submit" className="au-btn au-btn-secondary au-btn-sm" style={{ width: "100%" }}>
+                Abmelden
+              </button>
+            </form>
+          </div>
+        )}
+      </aside>
+    </>
   );
 }
