@@ -153,6 +153,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
   const rolleBadge: Record<string, string> = {
     mitarbeiter: "Mitarbeiter",
     organisator: "Organisator",
+    gastreferent: "Gastreferent",
   };
 
   const partnerVonTeilnehmer = new Map<string, { name: string; zuordnungId: string }>();

@@ -56,6 +56,7 @@ export async function updateTeilnehmerStammdaten(formData: FormData) {
     .from("teilnehmer")
     .update({
       anrede: formData.get("anrede") || "keine_angabe",
+      rolle: formData.get("rolle") || "teilnehmer",
       vorname: String(formData.get("vorname")),
       nachname: String(formData.get("nachname")),
       email: String(formData.get("email")),

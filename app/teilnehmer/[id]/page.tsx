@@ -289,6 +289,21 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
 
           <div className="au-row-2">
             <div>
+              <label className="au-label">Rolle</label>
+              <select className="au-select" name="rolle" defaultValue={t.rolle || "teilnehmer"}>
+                <option value="teilnehmer">Teilnehmer</option>
+                <option value="mitarbeiter">Mitarbeiter</option>
+                <option value="gastreferent">Gastreferent</option>
+                <option value="organisator">Organisator</option>
+              </select>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+                Steuert, ob die Person in Teilnehmerlisten mitgezählt wird.
+              </p>
+            </div>
+          </div>
+
+          <div className="au-row-2">
+            <div>
               <label className="au-label">Vorname</label>
               <input className="au-input" name="vorname" defaultValue={t.vorname} required />
             </div>
