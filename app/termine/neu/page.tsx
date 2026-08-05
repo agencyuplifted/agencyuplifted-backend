@@ -13,8 +13,16 @@ export default async function NeuerTerminPage() {
     <main>
       <h1>Neuer Seminartermin</h1>
       <form action={createSeminartermin} style={{ maxWidth: 560 }}>
-        <label className="au-label">Titel des Seminars</label>
-        <input className="au-input" name="titel" placeholder="z. B. Preisfindung Intensiv – Herbst 2026" required />
+        <div className="au-row-2">
+          <div>
+            <label className="au-label">Titel des Seminars</label>
+            <input className="au-input" name="titel" placeholder="z. B. Preisfindung Intensiv – Herbst 2026" required />
+          </div>
+          <div>
+            <label className="au-label">Kennung (optional, z. B. SPS126)</label>
+            <input className="au-input" name="kennung" placeholder="z. B. SPS126" />
+          </div>
+        </div>
 
         <label className="au-label">Seminartyp (Kategorie)</label>
         <select className="au-input" name="seminartyp_id" required>

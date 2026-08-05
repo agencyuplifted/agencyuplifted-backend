@@ -87,7 +87,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
     <main>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <h1>{titelAnzeige}</h1>
+          <h1>{titelAnzeige}{termin.kennung ? <span className="au-badge" style={{ marginLeft: "0.6rem", fontSize: "0.8rem", verticalAlign: "middle" }}>{termin.kennung}</span> : null}</h1>
           <p style={{ color: "var(--color-text-muted)" }}>
             {termin.seminartypen?.name} · {zeitraum}
             {termin.vorabend_anreise_datum && (
@@ -117,8 +117,16 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
         <h2>Termin bearbeiten</h2>
         <form action={previewSeminarterminUpdate} style={{ maxWidth: 560 }}>
           <input type="hidden" name="seminartermin_id" value={id} />
-          <label className="au-label">Titel des Seminars</label>
-          <input className="au-input" name="titel" defaultValue={termin.titel || ""} placeholder="z. B. Preisfindung Intensiv – Herbst 2026" required />
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Titel des Seminars</label>
+              <input className="au-input" name="titel" defaultValue={termin.titel || ""} placeholder="z. B. Preisfindung Intensiv – Herbst 2026" required />
+            </div>
+            <div>
+              <label className="au-label">Kennung (optional, z. B. SPS126)</label>
+              <input className="au-input" name="kennung" defaultValue={termin.kennung || ""} placeholder="z. B. SPS126" />
+            </div>
+          </div>
 
           <div className="au-row-2">
             <div>

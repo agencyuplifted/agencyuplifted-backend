@@ -5,6 +5,87 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, monatsName } from "@/lib/format";
 import { duplicateSeminartermin } from "@/lib/actions";
 
+function gruppeProMonat(liste: any[]) {
+  const proMonat = new Map<string, any[]>();
+  liste.forEach((t: any) => {
+    const d = new Date(t.datum_start);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (!proMonat.has(key)) proMonat.set(key, []);
+    proMonat.get(key)!.push(t);
+  });
+  return proMonat;
+}
+
+function TerminTabelle({
+  termine,
+  gebuchtProTermin,
+  heuteISO,
+}: {
+  termine: any[];
+  gebuchtProTermin: Map<string, number>;
+  heuteISO: string;
+}) {
+  const proMonat = gruppeProMonat(termine);
+  const monatsSchluessel = [...proMonat.keys()];
+
+  return (
+    <>
+      {monatsSchluessel.map((key) => {
+        const [jahrStr, monatStr] = key.split("-");
+        const liste = proMonat.get(key)!;
+        return (
+          <div className="au-card" key={key}>
+            <h2>{monatsName(Number(monatStr))} {jahrStr}</h2>
+            <table className="au-table">
+              <thead>
+                <tr>
+                  <th>Titel</th>
+                  <th>Kennung</th>
+                  <th>Datum</th>
+                  <th>Ort</th>
+                  <th>Format</th>
+                  <th>Belegung</th>
+                  <th>Status</th>
+                  <th>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liste.map((t: any) => {
+                  const gebucht = gebuchtProTermin.get(t.id) || 0;
+                  const vergangen = t.datum_start < heuteISO;
+                  return (
+                    <tr key={t.id} style={vergangen ? { opacity: 0.6 } : undefined}>
+                      <td><Link href={`/termine/${t.id}`}>{t.titel || t.seminartypen?.name}</Link></td>
+                      <td>{t.kennung ? <span className="au-badge">{t.kennung}</span> : "—"}</td>
+                      <td>{formatDatum(t.datum_start)}{t.zeit_start ? `, ${t.zeit_start.slice(0, 5)} Uhr` : ""}</td>
+                      <td>{t.veranstaltungsorte?.name || "—"}</td>
+                      <td>{t.format}</td>
+                      <td>{gebucht} / {t.kapazitaet} (+{t.ueberbuchungspuffer} intern)</td>
+                      <td>{t.status}</td>
+                      <td>
+                        <form action={duplicateSeminartermin}>
+                          <input type="hidden" name="seminartermin_id" value={t.id} />
+                          <button
+                            type="submit"
+                            title="Termin inkl. Optionen, Preisstaffeln und Urgency-Stufen duplizieren"
+                            className="au-btn au-btn-secondary au-btn-sm"
+                          >
+                            Duplizieren
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export default async function TerminePage({
   searchParams,
 }: {
@@ -33,15 +114,11 @@ export default async function TerminePage({
     gebuchtProTermin.set(p.seminartermin_id, (gebuchtProTermin.get(p.seminartermin_id) || 0) + 1);
   });
 
-  const proMonat = new Map<number, any[]>();
-  (termine || []).forEach((t: any) => {
-    const monat = new Date(t.datum_start).getMonth();
-    if (!proMonat.has(monat)) proMonat.set(monat, []);
-    proMonat.get(monat)!.push(t);
-  });
-
-  const monateSortiert = [...proMonat.keys()].sort((a, b) => a - b);
   const heuteISO = heute.toISOString().slice(0, 10);
+  const anstehend = (termine || []).filter((t: any) => t.datum_start >= heuteISO);
+  const alt = (termine || [])
+    .filter((t: any) => t.datum_start < heuteISO)
+    .sort((a: any, b: any) => (a.datum_start < b.datum_start ? 1 : -1));
 
   return (
     <main>
@@ -62,52 +139,19 @@ export default async function TerminePage({
         </div>
       )}
 
-      {monateSortiert.map((monat) => (
-        <div className="au-card" key={monat}>
-          <h2>{monatsName(monat)} {jahr}</h2>
-          <table className="au-table">
-            <thead>
-              <tr>
-                <th>Titel</th>
-                <th>Datum</th>
-                <th>Ort</th>
-                <th>Format</th>
-                <th>Belegung</th>
-                <th>Status</th>
-                <th>Aktionen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {proMonat.get(monat)!.map((t: any) => {
-                const gebucht = gebuchtProTermin.get(t.id) || 0;
-                const vergangen = t.datum_start < heuteISO;
-                return (
-                  <tr key={t.id} style={vergangen ? { opacity: 0.6 } : undefined}>
-                    <td><Link href={`/termine/${t.id}`}>{t.titel || t.seminartypen?.name}</Link></td>
-                    <td>{formatDatum(t.datum_start)}{t.zeit_start ? `, ${t.zeit_start.slice(0, 5)} Uhr` : ""}</td>
-                    <td>{t.veranstaltungsorte?.name || "—"}</td>
-                    <td>{t.format}</td>
-                    <td>{gebucht} / {t.kapazitaet} (+{t.ueberbuchungspuffer} intern)</td>
-                    <td>{t.status}</td>
-                    <td>
-                      <form action={duplicateSeminartermin}>
-                        <input type="hidden" name="seminartermin_id" value={t.id} />
-                        <button
-                          type="submit"
-                          title="Termin inkl. Optionen, Preisstaffeln und Urgency-Stufen duplizieren"
-                          className="au-btn au-btn-secondary au-btn-sm"
-                        >
-                          Duplizieren
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ))}
+      {anstehend.length > 0 && (
+        <>
+          <h2 style={{ marginTop: "1.5rem" }}>Anstehende Seminare</h2>
+          <TerminTabelle termine={anstehend} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} />
+        </>
+      )}
+
+      {alt.length > 0 && (
+        <>
+          <h2 style={{ marginTop: "1.5rem", color: "var(--color-text-muted)" }}>Alte Seminare</h2>
+          <TerminTabelle termine={alt} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} />
+        </>
+      )}
     </main>
   );
 }

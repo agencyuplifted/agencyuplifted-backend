@@ -322,6 +322,7 @@ export async function createSeminartermin(formData: FormData) {
     .from("seminartermine")
     .insert({
       titel: formData.get("titel") || null,
+      kennung: formData.get("kennung") || null,
       seminartyp_id: String(formData.get("seminartyp_id")),
       datum_start: datumStart,
       zeit_start: formData.get("zeit_start") || null,
@@ -387,6 +388,7 @@ export async function updateSeminartermin(formData: FormData) {
 
   const update = {
     titel: formData.get("titel") || null,
+    kennung: formData.get("kennung") || null,
     datum_start: datumStart,
     zeit_start: formData.get("zeit_start") || null,
     datum_ende: datumEnde,
@@ -478,6 +480,7 @@ export async function duplicateSeminartermin(formData: FormData) {
     .insert({
       ...kopie,
       titel: kopie.titel ? `${kopie.titel} (Kopie)` : null,
+      kennung: null,
       status: "geplant",
       deaktiviert_am: null,
     })
@@ -1363,4 +1366,43 @@ export async function richteResendTrackingEin() {
 
   revalidatePath("/email-test/tracking-setup");
   redirect("/email-test/tracking-setup?erfolg=1");
+}
+
+// Ordnet eine einzelne Alt-Buchung (legacy_buchungen) manuell einem konkreten
+// Seminartermin zu (Zuordnungsmaske). Erzeugt keine neue "echte" Buchung/Position,
+// ergänzt nur die Verknüpfung für Anzeige/Statistik der historischen Daten.
+export async function ordneLegacyBuchungZu(formData: FormData) {
+  const legacyId = String(formData.get("legacy_buchung_id"));
+  const seminarterminIdRaw = formData.get("seminartermin_id");
+  const seminarterminId = seminarterminIdRaw ? String(seminarterminIdRaw) : null;
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("legacy_buchungen")
+    .update({ seminartermin_id: seminarterminId })
+    .eq("id", legacyId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/buchungen/alte-seminare");
+  revalidatePath("/termine");
+}
+
+// Ordnet alle Alt-Buchungen einer Gruppe (gleiches Jahr + gleicher Seminartyp)
+// gesammelt einem Termin zu. Einzelne Zeilen lassen sich in der Maske danach
+// weiterhin individuell überschreiben (z. B. Aufteilung auf zwei Termine im Jahr).
+export async function ordneLegacyGruppeZu(formData: FormData) {
+  const jahr = Number(formData.get("jahr"));
+  const seminartypIdRaw = formData.get("seminartyp_id");
+  const seminartypId = seminartypIdRaw ? String(seminartypIdRaw) : null;
+  const seminarterminIdRaw = formData.get("seminartermin_id");
+  const seminarterminId = seminarterminIdRaw ? String(seminarterminIdRaw) : null;
+
+  const supabase = getSupabaseAdmin();
+  let query = supabase.from("legacy_buchungen").update({ seminartermin_id: seminarterminId }).eq("jahr", jahr);
+  query = seminartypId ? query.eq("seminartyp_id", seminartypId) : query.is("seminartyp_id", null);
+  const { error } = await query;
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/buchungen/alte-seminare");
+  revalidatePath("/termine");
 }

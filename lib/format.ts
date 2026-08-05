@@ -39,6 +39,7 @@ export function monatsName(monatIndex: number): string {
 
 export const TERMIN_FELD_LABELS: Record<string, string> = {
   titel: "Titel",
+  kennung: "Kennung",
   datum_start: "Startdatum",
   zeit_start: "Startuhrzeit",
   datum_ende: "Enddatum",
