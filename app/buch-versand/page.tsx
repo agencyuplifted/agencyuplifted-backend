@@ -62,16 +62,14 @@ export default async function BuchVersandPage() {
 
       <div className="au-card">
         <h2>Neues Exemplar</h2>
-        <form action={legeBuchVersandAn} style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: 620 }}>
+        <form action={legeBuchVersandAn} style={{ maxWidth: 640 }}>
           <AdressParseFeld />
-          <label>
-            Grund
-            <select name="grund" defaultValue="rezension">
-              <option value="rezension">Rezensionsexemplar</option>
-              <option value="gratis">Gratisexemplar</option>
-            </select>
-          </label>
-          <button type="submit" className="au-btn au-btn-primary" style={{ alignSelf: "flex-start" }}>
+          <label className="au-label">Grund</label>
+          <select className="au-select" name="grund" defaultValue="rezension">
+            <option value="rezension">Rezensionsexemplar</option>
+            <option value="gratis">Gratisexemplar</option>
+          </select>
+          <button type="submit" className="au-btn au-btn-primary" style={{ marginTop: "0.25rem" }}>
             Anlegen
           </button>
         </form>
