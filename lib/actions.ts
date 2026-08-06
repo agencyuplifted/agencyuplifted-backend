@@ -1502,3 +1502,36 @@ export async function loescheSeminartermin(formData: FormData) {
   revalidatePath("/termine");
   redirect("/termine");
 }
+
+// ---------- Content Creation (Content-/GEO-Pflegeaufgaben) ----------
+
+export async function erledigtMarkierenContentAufgabe(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("content_aufgaben")
+    .update({ status: "erledigt", zuletzt_erledigt_am: new Date().toISOString().slice(0, 10) })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}
+
+export async function wiederEroeffnenContentAufgabe(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("content_aufgaben").update({ status: "offen" }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}
+
+export async function neueContentAufgabe(formData: FormData) {
+  const titel = String(formData.get("titel") || "").trim();
+  if (!titel) throw new Error("Titel darf nicht leer sein.");
+  const beschreibung = String(formData.get("beschreibung") || "").trim() || null;
+  const rhythmus = String(formData.get("rhythmus") || "einmalig");
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("content_aufgaben").insert({ titel, beschreibung, rhythmus });
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}

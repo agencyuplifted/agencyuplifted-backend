@@ -45,6 +45,12 @@ const GROUPS: NavGroup[] = [
       { href: "/email-test", label: "E-Mail-Test" },
     ],
   },
+  {
+    title: "Content & GEO",
+    links: [
+      { href: "/content-creation", label: "Content Creation" },
+    ],
+  },
 ];
 
 export default function Sidebar({ benutzerName }: { benutzerName?: string | null }) {
