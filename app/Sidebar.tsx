@@ -27,7 +27,6 @@ const GROUPS: NavGroup[] = [
     links: [
       { href: "/leads", label: "Leads" },
       { href: "/warteliste", label: "Warteliste" },
-      { href: "/buch-empfaenger", label: "Buch-Empfänger" },
     ],
   },
   {
@@ -47,10 +46,11 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "Content & GEO",
+    title: "Marketing",
     links: [
       { href: "/content-creation", label: "Content Creation" },
       { href: "/buch-versand", label: "Buch-Versand" },
+      { href: "/buch-empfaenger", label: "Buch-Empfänger" },
     ],
   },
 ];
