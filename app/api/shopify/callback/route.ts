@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+export const dynamic = "force-dynamic";
+
 // Schliesst die einmalige OAuth-Verbindung ab: tauscht den Code gegen ein
 // Access Token und speichert es in der Tabelle shopify_verbindung. Ab dann
 // laeuft alles automatisch - lib/shopify.ts liest das Token von dort.
