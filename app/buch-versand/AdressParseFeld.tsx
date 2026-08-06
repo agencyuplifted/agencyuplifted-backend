@@ -26,13 +26,14 @@ function parseAdresse(text: string) {
     }
   }
 
-  const strasseZeile = zeilen.find(
-    (z) =>
-      z !== plzOrtZeile &&
-      !z.includes("@") &&
-      /\d/.test(z) &&
-      /straße|strasse|str\.|weg|allee|platz|gasse|ring/i.test(z)
-  );
+  // Zeilen mit Zahl (Hausnummer), die nicht die PLZ/Ort-Zeile oder die
+  // E-Mail sind. Bevorzugt Zeilen mit typischem Straßen-Suffix (-straße,
+  // -weg, ...), fällt sonst auf die erste Zahl-Zeile zurück - deckt auch
+  // Straßennamen ohne Suffix ab, z.B. "Alt Lage 3b".
+  const strasseKandidaten = zeilen.filter((z) => z !== plzOrtZeile && !z.includes("@") && /\d/.test(z));
+  const strasseZeile =
+    strasseKandidaten.find((z) => /straße|strasse|str\.|weg|allee|platz|gasse|ring/i.test(z)) ||
+    strasseKandidaten[0];
 
   let land = "Deutschland";
   if (/österreich|austria/i.test(text)) land = "Österreich";
