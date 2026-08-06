@@ -27,6 +27,13 @@ export default async function BuchVersandPage() {
     .select("*")
     .order("erstellt_am", { ascending: false });
 
+  const { data: shopifyVerbindung } = await supabase
+    .from("shopify_verbindung")
+    .select("shop_domain, verbunden_am")
+    .order("verbunden_am", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   return (
     <main>
       <h1>Buch-Versand</h1>
@@ -34,6 +41,23 @@ export default async function BuchVersandPage() {
         Rezensions- und Gratisexemplare: Adresse einfügen, prüfen, anlegen. Die automatische Shopify-Bestellung
         wird aktiv, sobald Shopify verbunden ist – bis dahin landen Einträge als "Entwurf" hier zur Kontrolle.
       </p>
+
+      <div className="au-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+        {shopifyVerbindung ? (
+          <div>
+            <span className="au-badge au-badge-success">Shopify verbunden</span>{" "}
+            <span style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>{shopifyVerbindung.shop_domain}</span>
+          </div>
+        ) : (
+          <div>
+            <span className="au-badge au-badge-neutral">Shopify nicht verbunden</span>{" "}
+            <span style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>Automatischer Versand ist erst danach aktiv.</span>
+          </div>
+        )}
+        <a href="/api/shopify/install" className="au-btn au-btn-secondary au-btn-sm">
+          {shopifyVerbindung ? "Neu verbinden" : "Mit Shopify verbinden"}
+        </a>
+      </div>
 
       <div className="au-card">
         <h2>Neues Exemplar</h2>

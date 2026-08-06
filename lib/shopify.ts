@@ -1,6 +1,17 @@
 // Direkter Zugriff auf die Shopify Admin GraphQL API - unabhaengig von jeder
-// Chat-Sitzung. Braucht SHOPIFY_ADMIN_API_TOKEN und SHOPIFY_STORE_DOMAIN
-// (z.B. "hartmann-verlag.myshopify.com") als Vercel-Umgebungsvariablen.
+// Chat-Sitzung.
+//
+// Seit 1.1.2026 vergibt Shopify keine einfachen statischen Tokens mehr ueber
+// "Apps entwickeln" im Store-Admin. Neue Apps laufen nur noch ueber das Dev
+// Dashboard + OAuth. Deshalb holt sich diese Datei das Access Token entweder
+// aus einer Umgebungsvariable (falls doch mal ein statisches Token existiert)
+// oder aus der Tabelle "shopify_verbindung", die von /api/shopify/callback
+// nach dem einmaligen OAuth-Connect befuellt wird. Fuer eine private App auf
+// einem einzelnen Store ist dieses Token dauerhaft gueltig (bis zur
+// Deinstallation) - der OAuth-Tanz ist also ein einmaliger Vorgang, kein
+// wiederkehrender Login.
+
+import { getSupabaseAdmin } from "./supabase";
 
 const API_VERSION = "2025-01";
 
@@ -13,20 +24,38 @@ const LAND_ZU_COUNTRY_CODE: Record<string, string> = {
   Schweiz: "CH",
 };
 
-function shopifyKonfiguriert() {
-  return Boolean(process.env.SHOPIFY_ADMIN_API_TOKEN && process.env.SHOPIFY_STORE_DOMAIN);
+async function holeZugriff(): Promise<{ domain: string; token: string } | null> {
+  if (process.env.SHOPIFY_ADMIN_API_TOKEN && process.env.SHOPIFY_STORE_DOMAIN) {
+    return { domain: process.env.SHOPIFY_STORE_DOMAIN, token: process.env.SHOPIFY_ADMIN_API_TOKEN };
+  }
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("shopify_verbindung")
+    .select("shop_domain, access_token")
+    .order("verbunden_am", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  return { domain: data.shop_domain, token: data.access_token };
+}
+
+export async function shopifyKonfiguriert() {
+  return (await holeZugriff()) !== null;
 }
 
 async function adminGraphql(query: string, variables: Record<string, unknown>) {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const token = process.env.SHOPIFY_ADMIN_API_TOKEN;
-  if (!domain || !token) throw new Error("Shopify ist noch nicht konfiguriert (SHOPIFY_STORE_DOMAIN / SHOPIFY_ADMIN_API_TOKEN fehlen).");
+  const zugriff = await holeZugriff();
+  if (!zugriff) {
+    throw new Error(
+      "Shopify ist noch nicht verbunden. Unter /buch-versand auf 'Mit Shopify verbinden' klicken."
+    );
+  }
 
-  const res = await fetch(`https://${domain}/admin/api/${API_VERSION}/graphql.json`, {
+  const res = await fetch(`https://${zugriff.domain}/admin/api/${API_VERSION}/graphql.json`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token,
+      "X-Shopify-Access-Token": zugriff.token,
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -51,10 +80,6 @@ export type BuchVersandEintrag = {
 // wird direkt in der Bestellung angewandt) und schliesst sie sofort ab, damit
 // der normale Fulfillment-/Versandprozess in Shopify greift.
 export async function versendeAlsShopifyBestellung(eintrag: BuchVersandEintrag) {
-  if (!shopifyKonfiguriert()) {
-    throw new Error("Shopify ist noch nicht verbunden (Umgebungsvariablen fehlen). Eintrag bleibt als Entwurf.");
-  }
-
   const [vorname, ...restName] = eintrag.name.trim().split(" ");
   const nachname = restName.join(" ") || vorname;
 
