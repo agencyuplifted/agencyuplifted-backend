@@ -105,14 +105,29 @@ export default async function TerminePage({
 
   const { data: positionen } = await supabase
     .from("buchungspositionen")
-    .select("seminartermin_id, buchungen!inner(status)")
+    .select("seminartermin_id, teilnehmer_id, buchungen!inner(status), teilnehmer(rolle)")
     .neq("buchungen.status", "storniert");
 
+  const { data: legacyPositionen } = await supabase
+    .from("legacy_buchungen")
+    .select("seminartermin_id, teilnehmer_id, teilnehmer(rolle)")
+    .not("seminartermin_id", "is", null);
+
+  // Belegung = Anzahl unterschiedlicher Teilnehmer pro Termin (aktuell + Alt-Daten
+  // zusammengeführt, doppelt gezählte Personen vermieden). Mitarbeiter/Gastreferenten
+  // zaehlen nicht als belegter Platz.
+  const teilnehmerProTermin = new Map<string, Set<string>>();
+  const zaehleEin = (seminarterminId: string | null, teilnehmerId: string | null, rolle: string | null | undefined) => {
+    if (!seminarterminId || !teilnehmerId) return;
+    if (rolle && rolle !== "teilnehmer") return;
+    if (!teilnehmerProTermin.has(seminarterminId)) teilnehmerProTermin.set(seminarterminId, new Set());
+    teilnehmerProTermin.get(seminarterminId)!.add(teilnehmerId);
+  };
+  (positionen || []).forEach((p: any) => zaehleEin(p.seminartermin_id, p.teilnehmer_id, p.teilnehmer?.rolle));
+  (legacyPositionen || []).forEach((l: any) => zaehleEin(l.seminartermin_id, l.teilnehmer_id, l.teilnehmer?.rolle));
+
   const gebuchtProTermin = new Map<string, number>();
-  (positionen || []).forEach((p: any) => {
-    if (!p.seminartermin_id) return;
-    gebuchtProTermin.set(p.seminartermin_id, (gebuchtProTermin.get(p.seminartermin_id) || 0) + 1);
-  });
+  teilnehmerProTermin.forEach((set, id) => gebuchtProTermin.set(id, set.size));
 
   const heuteISO = heute.toISOString().slice(0, 10);
   const anstehend = (termine || []).filter((t: any) => t.datum_start >= heuteISO);
