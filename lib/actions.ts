@@ -1535,3 +1535,38 @@ export async function neueContentAufgabe(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/content-creation");
 }
+
+// ---------- Buch-Versand (Rezensions-/Gratisexemplare) ----------
+
+export async function legeBuchVersandAn(formData: FormData) {
+  const name = String(formData.get("name") || "").trim();
+  const strasse = String(formData.get("strasse") || "").trim();
+  const plz = String(formData.get("plz") || "").trim();
+  const ort = String(formData.get("ort") || "").trim();
+  const land = String(formData.get("land") || "Deutschland").trim();
+  const email = String(formData.get("email") || "").trim() || null;
+  const grund = String(formData.get("grund") || "rezension");
+  const rohtext = String(formData.get("rohtext") || "") || null;
+
+  if (!name || !strasse || !plz || !ort) {
+    throw new Error("Name, Straße, PLZ und Ort sind Pflichtfelder.");
+  }
+
+  const supabase = getSupabaseAdmin();
+  // Shopify-Anbindung folgt (Ticket #154) - bis dahin Status "entwurf",
+  // damit nichts fälschlich als versendet gilt.
+  const { error } = await supabase.from("buch_versand").insert({
+    name,
+    strasse,
+    plz,
+    ort,
+    land,
+    email,
+    grund,
+    rohtext,
+    status: "entwurf",
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/buch-versand");
+}

@@ -49,6 +49,7 @@ const GROUPS: NavGroup[] = [
     title: "Content & GEO",
     links: [
       { href: "/content-creation", label: "Content Creation" },
+      { href: "/buch-versand", label: "Buch-Versand" },
     ],
   },
 ];
