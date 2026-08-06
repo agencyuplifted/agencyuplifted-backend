@@ -23,7 +23,13 @@ export async function GET(req: NextRequest) {
   const clientId = process.env.SHOPIFY_CLIENT_ID;
   const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return NextResponse.json({ fehler: "SHOPIFY_CLIENT_ID/SECRET fehlt als Vercel-Umgebungsvariable." }, { status: 500 });
+    const fehlend: string[] = [];
+    if (!clientId) fehlend.push("SHOPIFY_CLIENT_ID");
+    if (!clientSecret) fehlend.push("SHOPIFY_CLIENT_SECRET");
+    return NextResponse.json(
+      { fehler: `Diese Vercel-Umgebungsvariable(n) fehlen oder sind leer: ${fehlend.join(", ")}` },
+      { status: 500 }
+    );
   }
 
   const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
