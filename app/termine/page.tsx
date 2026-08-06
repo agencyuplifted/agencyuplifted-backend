@@ -19,10 +19,12 @@ function gruppeProMonat(liste: any[]) {
 function TerminTabelle({
   termine,
   gebuchtProTermin,
+  gesamtProTermin,
   heuteISO,
 }: {
   termine: any[];
   gebuchtProTermin: Map<string, number>;
+  gesamtProTermin: Map<string, number>;
   heuteISO: string;
 }) {
   const proMonat = gruppeProMonat(termine);
@@ -52,6 +54,7 @@ function TerminTabelle({
               <tbody>
                 {liste.map((t: any) => {
                   const gebucht = gebuchtProTermin.get(t.id) || 0;
+                  const gesamt = gesamtProTermin.get(t.id) || 0;
                   const vergangen = t.datum_start < heuteISO;
                   return (
                     <tr key={t.id} style={vergangen ? { opacity: 0.6 } : undefined}>
@@ -60,7 +63,13 @@ function TerminTabelle({
                       <td>{formatDatum(t.datum_start)}{t.zeit_start ? `, ${t.zeit_start.slice(0, 5)} Uhr` : ""}</td>
                       <td>{t.veranstaltungsorte?.name || "—"}</td>
                       <td>{t.format}</td>
-                      <td>{gebucht} / {t.kapazitaet} (+{t.ueberbuchungspuffer} intern)</td>
+                      <td>
+                        TN {gebucht} von {t.kapazitaet}
+                        <br />
+                        <span style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+                          Gesamt (TN+MA+Gastreferent): {gesamt}
+                        </span>
+                      </td>
                       <td>{t.status}</td>
                       <td>
                         <form action={duplicateSeminartermin}>
@@ -129,6 +138,20 @@ export default async function TerminePage({
   const gebuchtProTermin = new Map<string, number>();
   teilnehmerProTermin.forEach((set, id) => gebuchtProTermin.set(id, set.size));
 
+  // Gesamtsumme (TN + Mitarbeiter + Gastreferent + Organisator) fuer die Zimmerplanung,
+  // unabhaengig von der Rolle - jede Person, die vor Ort ist, braucht ein Bett.
+  const alleProTermin = new Map<string, Set<string>>();
+  const zaehleAlleEin = (seminarterminId: string | null, teilnehmerId: string | null) => {
+    if (!seminarterminId || !teilnehmerId) return;
+    if (!alleProTermin.has(seminarterminId)) alleProTermin.set(seminarterminId, new Set());
+    alleProTermin.get(seminarterminId)!.add(teilnehmerId);
+  };
+  (positionen || []).forEach((p: any) => zaehleAlleEin(p.seminartermin_id, p.teilnehmer_id));
+  (legacyPositionen || []).forEach((l: any) => zaehleAlleEin(l.seminartermin_id, l.teilnehmer_id));
+
+  const gesamtProTermin = new Map<string, number>();
+  alleProTermin.forEach((set, id) => gesamtProTermin.set(id, set.size));
+
   const heuteISO = heute.toISOString().slice(0, 10);
   const anstehend = (termine || []).filter((t: any) => t.datum_start >= heuteISO);
   const alt = (termine || [])
@@ -157,14 +180,14 @@ export default async function TerminePage({
       {anstehend.length > 0 && (
         <>
           <h2 style={{ marginTop: "1.5rem" }}>Anstehende Seminare</h2>
-          <TerminTabelle termine={anstehend} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} />
+          <TerminTabelle termine={anstehend} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} heuteISO={heuteISO} />
         </>
       )}
 
       {alt.length > 0 && (
         <>
           <h2 style={{ marginTop: "1.5rem", color: "var(--color-text-muted)" }}>Alte Seminare</h2>
-          <TerminTabelle termine={alt} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} />
+          <TerminTabelle termine={alt} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} heuteISO={heuteISO} />
         </>
       )}
     </main>
