@@ -1570,3 +1570,29 @@ export async function legeBuchVersandAn(formData: FormData) {
 
   revalidatePath("/buch-versand");
 }
+
+export async function versendeBuchExemplarAction(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+
+  const { data: eintrag, error: ladeFehler } = await supabase
+    .from("buch_versand")
+    .select("id, name, email, strasse, plz, ort, land, grund")
+    .eq("id", id)
+    .single();
+  if (ladeFehler || !eintrag) throw new Error(ladeFehler?.message || "Eintrag nicht gefunden.");
+
+  try {
+    const { versendeAlsShopifyBestellung } = await import("./shopify");
+    const { shopifyOrderId, shopifyOrderName } = await versendeAlsShopifyBestellung(eintrag);
+    await supabase
+      .from("buch_versand")
+      .update({ status: "versendet", shopify_order_id: shopifyOrderName || shopifyOrderId, fehlermeldung: null })
+      .eq("id", id);
+  } catch (err: any) {
+    await supabase.from("buch_versand").update({ status: "fehler", fehlermeldung: err.message }).eq("id", id);
+    throw err;
+  }
+
+  revalidatePath("/buch-versand");
+}

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { legeBuchVersandAn } from "@/lib/actions";
+import { legeBuchVersandAn, versendeBuchExemplarAction } from "@/lib/actions";
 import AdressParseFeld from "./AdressParseFeld";
 
 const GRUND_LABEL: Record<string, string> = {
@@ -62,6 +62,7 @@ export default async function BuchVersandPage() {
               <th>Grund</th>
               <th>Status</th>
               <th>Angelegt</th>
+              <th>Aktion</th>
             </tr>
           </thead>
           <tbody>
@@ -75,12 +76,32 @@ export default async function BuchVersandPage() {
                 <td>{GRUND_LABEL[e.grund] || e.grund}</td>
                 <td>
                   <span className={`au-badge ${STATUS_BADGE[e.status] || "au-badge-neutral"}`}>{e.status}</span>
+                  {e.status === "versendet" && e.shopify_order_id && (
+                    <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "0.2rem" }}>
+                      Shopify: {e.shopify_order_id}
+                    </div>
+                  )}
+                  {e.status === "fehler" && e.fehlermeldung && (
+                    <div style={{ fontSize: "0.75rem", color: "var(--color-danger, #b42318)", marginTop: "0.2rem" }}>
+                      {e.fehlermeldung}
+                    </div>
+                  )}
                 </td>
                 <td>{formatDatum(e.erstellt_am)}</td>
+                <td>
+                  {e.status !== "versendet" && (
+                    <form action={versendeBuchExemplarAction}>
+                      <input type="hidden" name="id" value={e.id} />
+                      <button type="submit" className="au-btn au-btn-secondary au-btn-sm">
+                        Als Shopify-Bestellung anlegen
+                      </button>
+                    </form>
+                  )}
+                </td>
               </tr>
             ))}
             {!eintraege?.length && (
-              <tr className="au-table-empty"><td colSpan={5}>Noch keine Einträge.</td></tr>
+              <tr className="au-table-empty"><td colSpan={6}>Noch keine Einträge.</td></tr>
             )}
           </tbody>
         </table>
