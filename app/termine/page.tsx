@@ -16,6 +16,77 @@ function gruppeProMonat(liste: any[]) {
   return proMonat;
 }
 
+const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const MONATSKURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
+function isoDatum(jahr: number, monatIndex: number, tag: number) {
+  return `${jahr}-${String(monatIndex + 1).padStart(2, "0")}-${String(tag).padStart(2, "0")}`;
+}
+
+function MonatKarte({
+  jahr,
+  monatIndex,
+  termine,
+  gebuchtProTermin,
+  heuteISO,
+}: {
+  jahr: number;
+  monatIndex: number;
+  termine: any[];
+  gebuchtProTermin: Map<string, number>;
+  heuteISO: string;
+}) {
+  const ersterTag = new Date(jahr, monatIndex, 1);
+  const anzahlTage = new Date(jahr, monatIndex + 1, 0).getDate();
+  const startOffset = (ersterTag.getDay() + 6) % 7; // Montag = 0
+
+  const zellen: (number | null)[] = [];
+  for (let i = 0; i < startOffset; i++) zellen.push(null);
+  for (let d = 1; d <= anzahlTage; d++) zellen.push(d);
+  while (zellen.length % 7 !== 0) zellen.push(null);
+
+  const terminFuerTag = (iso: string) =>
+    termine.find((t: any) => iso >= t.datum_start && iso <= (t.datum_ende || t.datum_start));
+
+  return (
+    <div className="au-monat-karte">
+      <div className="au-monat-titel">{MONATSKURZ[monatIndex]} {jahr}</div>
+      <div className="au-monat-grid">
+        {WOCHENTAGE.map((w) => (
+          <div className="au-monat-wt" key={w}>{w}</div>
+        ))}
+        {zellen.map((d, i) => {
+          if (d === null) return <div className="au-monat-zelle au-monat-leer" key={i} />;
+          const iso = isoDatum(jahr, monatIndex, d);
+          const termin = terminFuerTag(iso);
+          const istHeute = iso === heuteISO;
+          if (!termin) {
+            return (
+              <div className={`au-monat-zelle${istHeute ? " au-monat-heute" : ""}`} key={i}>
+                <span className="au-monat-tag">{d}</span>
+              </div>
+            );
+          }
+          const farbe = termin.seminartypen?.farbe || "var(--color-accent)";
+          const gebucht = gebuchtProTermin.get(termin.id) || 0;
+          const label = termin.kennung || (termin.seminartypen?.name || "").slice(0, 4);
+          return (
+            <a
+              href={`/termine/${termin.id}`}
+              className={`au-monat-zelle au-monat-event${istHeute ? " au-monat-heute" : ""}`}
+              title={`${termin.titel || termin.seminartypen?.name || ""} — TN ${gebucht} von ${termin.kapazitaet}`}
+              key={i}
+            >
+              <span className="au-monat-tag">{d}</span>
+              <span className="au-monat-pill" style={{ background: farbe }}>{label}</span>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TerminTabelle({
   termine,
   gebuchtProTermin,
@@ -112,6 +183,22 @@ export default async function TerminePage({
     .lte("datum_start", `${jahr}-12-31`)
     .order("datum_start", { ascending: true });
 
+  // Monatsstreifen oben: unabhaengig vom Jahres-Filter, 2 Monate zurueck bis 6 Monate voraus.
+  const monatsFensterStart = new Date(heute.getFullYear(), heute.getMonth() - 2, 1);
+  const monatsFensterEnde = new Date(heute.getFullYear(), heute.getMonth() + 7, 0);
+  const { data: kalenderTermine } = await supabase
+    .from("seminartermine")
+    .select("id, titel, kennung, datum_start, datum_ende, kapazitaet, seminartypen(name, farbe)")
+    .gte("datum_start", monatsFensterStart.toISOString().slice(0, 10))
+    .lte("datum_start", monatsFensterEnde.toISOString().slice(0, 10))
+    .order("datum_start", { ascending: true });
+
+  const monatsKarten: { jahr: number; monatIndex: number }[] = [];
+  for (let i = -2; i <= 6; i++) {
+    const d = new Date(heute.getFullYear(), heute.getMonth() + i, 1);
+    monatsKarten.push({ jahr: d.getFullYear(), monatIndex: d.getMonth() });
+  }
+
   const { data: positionen } = await supabase
     .from("buchungspositionen")
     .select("seminartermin_id, teilnehmer_id, buchungen!inner(status), teilnehmer(rolle)")
@@ -163,6 +250,25 @@ export default async function TerminePage({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>Seminartermine</h1>
         <Link href="/termine/neu" className="au-btn au-btn-primary">+ Neuer Termin</Link>
+      </div>
+
+      <div className="au-card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+          <h2 style={{ margin: 0 }}>Monatsübersicht</h2>
+          <Link href="/seminartypen" className="au-btn au-btn-secondary au-btn-sm">Farben verwalten</Link>
+        </div>
+        <div className="au-monat-streifen">
+          {monatsKarten.map(({ jahr: mJahr, monatIndex }) => (
+            <MonatKarte
+              key={`${mJahr}-${monatIndex}`}
+              jahr={mJahr}
+              monatIndex={monatIndex}
+              termine={kalenderTermine || []}
+              gebuchtProTermin={gebuchtProTermin}
+              heuteISO={heuteISO}
+            />
+          ))}
+        </div>
       </div>
 
       <div className="au-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

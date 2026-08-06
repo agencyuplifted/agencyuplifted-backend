@@ -49,6 +49,17 @@ export async function createTeilnehmer(formData: FormData) {
   redirect("/teilnehmer");
 }
 
+export async function updateSeminartypFarbe(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const id = String(formData.get("seminartyp_id"));
+  const farbe = String(formData.get("farbe") || "#102A4C");
+  const { error } = await supabase.from("seminartypen").update({ farbe }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/seminartypen");
+  revalidatePath("/termine");
+  redirect("/seminartypen");
+}
+
 export async function updateTeilnehmerStammdaten(formData: FormData) {
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
