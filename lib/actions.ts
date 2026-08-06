@@ -1547,6 +1547,8 @@ export async function legeBuchVersandAn(formData: FormData) {
   const email = String(formData.get("email") || "").trim() || null;
   const grund = String(formData.get("grund") || "rezension");
   const rohtext = String(formData.get("rohtext") || "") || null;
+  const empfaengerTyp = String(formData.get("empfaenger_typ") || "agenturunternehmer");
+  const empfaengerStatus = empfaengerTyp === "agenturunternehmer" ? String(formData.get("empfaenger_status") || "neu") : null;
 
   if (!name || !strasse || !plz || !ort) {
     throw new Error("Name, Straße, PLZ und Ort sind Pflichtfelder.");
@@ -1555,20 +1557,36 @@ export async function legeBuchVersandAn(formData: FormData) {
   const supabase = getSupabaseAdmin();
   // Shopify-Anbindung folgt (Ticket #154) - bis dahin Status "entwurf",
   // damit nichts fälschlich als versendet gilt.
-  const { error } = await supabase.from("buch_versand").insert({
-    name,
-    strasse,
-    plz,
-    ort,
-    land,
-    email,
-    grund,
-    rohtext,
-    status: "entwurf",
-  });
+  const { data: neuerEintrag, error } = await supabase
+    .from("buch_versand")
+    .insert({
+      name,
+      strasse,
+      plz,
+      ort,
+      land,
+      email,
+      grund,
+      rohtext,
+      status: "entwurf",
+    })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
 
+  // Getrennt von der Teilnehmer-Liste: jeder Buch-Empfänger landet zusätzlich
+  // in einer eigenen, getaggten Kontaktliste (potenzielle Leads).
+  const { error: empfaengerFehler } = await supabase.from("buch_empfaenger").insert({
+    buch_versand_id: neuerEintrag?.id || null,
+    name,
+    email,
+    typ: empfaengerTyp,
+    status: empfaengerStatus,
+  });
+  if (empfaengerFehler) throw new Error(empfaengerFehler.message);
+
   revalidatePath("/buch-versand");
+  revalidatePath("/buch-empfaenger");
 }
 
 export async function versendeBuchExemplarAction(formData: FormData) {

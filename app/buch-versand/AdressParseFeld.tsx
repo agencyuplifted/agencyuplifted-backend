@@ -60,6 +60,8 @@ function parseAdresse(text: string) {
 export default function AdressParseFeld() {
   const [rohtext, setRohtext] = useState("");
   const [felder, setFelder] = useState({ name: "", strasse: "", plz: "", ort: "", land: "Deutschland", email: "" });
+  const [typ, setTyp] = useState("agenturunternehmer");
+  const [status, setStatus] = useState("neu");
 
   function onRohtextChange(value: string) {
     setRohtext(value);
@@ -111,6 +113,25 @@ export default function AdressParseFeld() {
           Land
           <input type="text" name="land" required value={felder.land} onChange={(e) => setFelder({ ...felder, land: e.target.value })} />
         </label>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: typ === "agenturunternehmer" ? "1fr 1fr" : "1fr", gap: "0.75rem", marginTop: "0.75rem" }}>
+        <label>
+          Empfänger ist
+          <select name="empfaenger_typ" value={typ} onChange={(e) => setTyp(e.target.value)}>
+            <option value="agenturunternehmer">Agenturunternehmer</option>
+            <option value="mitarbeiter">Mitarbeiter</option>
+          </select>
+        </label>
+        {typ === "agenturunternehmer" && (
+          <label>
+            Kundenstatus
+            <select name="empfaenger_status" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="neu">Neu (potenzieller Kunde)</option>
+              <option value="bestand">Bestand (schon Kunde)</option>
+            </select>
+          </label>
+        )}
       </div>
     </>
   );

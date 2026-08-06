@@ -27,6 +27,7 @@ const GROUPS: NavGroup[] = [
     links: [
       { href: "/leads", label: "Leads" },
       { href: "/warteliste", label: "Warteliste" },
+      { href: "/buch-empfaenger", label: "Buch-Empfänger" },
     ],
   },
   {
