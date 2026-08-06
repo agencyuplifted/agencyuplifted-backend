@@ -1591,7 +1591,9 @@ export async function versendeBuchExemplarAction(formData: FormData) {
       .eq("id", id);
   } catch (err: any) {
     await supabase.from("buch_versand").update({ status: "fehler", fehlermeldung: err.message }).eq("id", id);
-    throw err;
+    // Bewusst kein erneutes throw: der Fehler steht jetzt in der Tabelle und wird
+    // in der UI angezeigt. Ein throw hier wuerde die ganze Seite mit Next.js'
+    // generischer "Application error"-Seite abstuerzen lassen.
   }
 
   revalidatePath("/buch-versand");
