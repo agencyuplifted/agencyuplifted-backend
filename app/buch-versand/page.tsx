@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { legeBuchVersandAn, versendeBuchExemplarAction } from "@/lib/actions";
 import AdressParseFeld from "./AdressParseFeld";
+import SendButton from "./SendButton";
 
 const GRUND_LABEL: Record<string, string> = {
   rezension: "Rezensionsexemplar",
@@ -116,9 +117,7 @@ export default async function BuchVersandPage() {
                   {e.status !== "versendet" && (
                     <form action={versendeBuchExemplarAction}>
                       <input type="hidden" name="id" value={e.id} />
-                      <button type="submit" className="au-btn au-btn-secondary au-btn-sm">
-                        Als Shopify-Bestellung anlegen
-                      </button>
+                      <SendButton />
                     </form>
                   )}
                 </td>

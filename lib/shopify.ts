@@ -61,8 +61,14 @@ async function adminGraphql(query: string, variables: Record<string, unknown>) {
   });
 
   const json = await res.json();
-  if (json.errors?.length) throw new Error(json.errors.map((e: any) => e.message).join("; "));
-  return json.data;
+  // Shopify kann bei Feld-Berechtigungsfehlern (z.B. fehlendes read_orders)
+  // trotzdem brauchbare Teil-Daten zurueckgeben (die Mutation selbst lief
+  // durch, nur ein Unterfeld fehlt). Deshalb hier nicht hart abbrechen,
+  // sondern beides zurueckgeben und den Aufrufer entscheiden lassen.
+  if (json.errors?.length && !json.data) {
+    throw new Error(json.errors.map((e: any) => e.message).join("; "));
+  }
+  return { data: json.data, errors: json.errors as { message: string }[] | undefined };
 }
 
 export type BuchVersandEintrag = {
@@ -92,7 +98,7 @@ export async function versendeAlsShopifyBestellung(eintrag: BuchVersandEintrag) 
     countryCode: LAND_ZU_COUNTRY_CODE[eintrag.land] || "DE",
   };
 
-  const createResult = await adminGraphql(
+  const { data: createData, errors: createErrors } = await adminGraphql(
     `mutation draftOrderCreate($input: DraftOrderInput!) {
       draftOrderCreate(input: $input) {
         draftOrder { id }
@@ -117,12 +123,21 @@ export async function versendeAlsShopifyBestellung(eintrag: BuchVersandEintrag) 
     }
   );
 
-  const draftErrors = createResult.draftOrderCreate.userErrors;
+  if (!createData?.draftOrderCreate?.draftOrder) {
+    const msg = createErrors?.map((e) => e.message).join("; ") || "Draft Order konnte nicht angelegt werden.";
+    throw new Error(msg);
+  }
+  const draftErrors = createData.draftOrderCreate.userErrors;
   if (draftErrors?.length) throw new Error(draftErrors.map((e: any) => e.message).join("; "));
 
-  const draftOrderId = createResult.draftOrderCreate.draftOrder.id;
+  const draftOrderId = createData.draftOrderCreate.draftOrder.id;
 
-  const completeResult = await adminGraphql(
+  // WICHTIG: Ab hier ist die Bestellung in Shopify real angelegt. Alles was
+  // danach noch schiefgeht (z.B. fehlende Leserechte fuer "order") darf NICHT
+  // mehr als Fehlschlag gewertet werden - sonst denkt das Backend, der Versand
+  // sei fehlgeschlagen, obwohl in Shopify schon eine echte Bestellung + Mail
+  // rausgegangen ist, und ein erneuter Klick wuerde ein Duplikat anlegen.
+  const { data: completeData, errors: completeErrors } = await adminGraphql(
     `mutation draftOrderComplete($id: ID!) {
       draftOrderComplete(id: $id) {
         draftOrder { id order { id name } }
@@ -132,9 +147,19 @@ export async function versendeAlsShopifyBestellung(eintrag: BuchVersandEintrag) 
     { id: draftOrderId }
   );
 
-  const completeErrors = completeResult.draftOrderComplete.userErrors;
-  if (completeErrors?.length) throw new Error(completeErrors.map((e: any) => e.message).join("; "));
+  const draftOrderResult = completeData?.draftOrderComplete?.draftOrder;
+  const userErrors = completeData?.draftOrderComplete?.userErrors;
+  if (userErrors?.length) throw new Error(userErrors.map((e: any) => e.message).join("; "));
 
-  const order = completeResult.draftOrderComplete.draftOrder.order;
-  return { shopifyOrderId: order.id, shopifyOrderName: order.name };
+  if (!draftOrderResult) {
+    // draftOrderComplete selbst ist fehlgeschlagen (nicht nur das order-Unterfeld).
+    const msg = completeErrors?.map((e) => e.message).join("; ") || "Draft Order konnte nicht abgeschlossen werden.";
+    throw new Error(msg);
+  }
+
+  const order = draftOrderResult.order;
+  return {
+    shopifyOrderId: order?.id || draftOrderId,
+    shopifyOrderName: order?.name || "siehe Shopify (Bestellnummer nicht lesbar – read_orders-Scope fehlt)",
+  };
 }
