@@ -73,8 +73,8 @@ export default async function InsightsDetailPage({
           <label className="au-label">Titel</label>
           <input className="au-input" name="titel" defaultValue={eintrag.titel} required />
 
-          <label className="au-label">Kurzfassung (Meta-Description / Teaser)</label>
-          <textarea className="au-textarea" name="kurzfassung" rows={2} defaultValue={eintrag.kurzfassung || ""} />
+          <label className="au-label">Einleitung (Teaser auf der Seite &amp; Meta-Description für Google)</label>
+          <textarea className="au-textarea" name="kurzfassung" rows={3} defaultValue={eintrag.kurzfassung || ""} />
 
           <div className="au-row-2">
             <div>

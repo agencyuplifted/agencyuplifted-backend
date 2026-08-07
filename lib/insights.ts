@@ -105,3 +105,115 @@ export async function eindeutigerSlug(basisSlug: string, typ: InsightsTyp, ausge
     zaehler += 1;
   }
 }
+
+// ---- Leichte Text-Auszeichnung <-> Bloecke (fuer den Editor) ----
+// Erlaubt: ## / ### / #### Ueberschriften, > Zitat (+ optional "— Quelle"),
+// - Liste, 1. Liste, ![Alt](URL "Bildunterschrift") Bild, **fett** Inline.
+// FAQ-Bloecke werden getrennt verwaltet (eigene Frage/Antwort-Liste im Editor).
+
+export function serialisiereBloeckeZuText(bloecke: Block[]): string {
+  const zeilen: string[] = [];
+  for (const b of bloecke) {
+    if (b.typ === "faq") continue;
+    if (b.typ === "absatz") {
+      zeilen.push(b.text);
+    } else if (b.typ === "ueberschrift") {
+      zeilen.push(`${"#".repeat(b.ebene)} ${b.text}`);
+    } else if (b.typ === "liste") {
+      b.punkte.forEach((p, idx) => {
+        zeilen.push(b.stil === "geordnet" ? `${idx + 1}. ${p}` : `- ${p}`);
+      });
+    } else if (b.typ === "zitat") {
+      zeilen.push(`> ${b.text}`);
+      if (b.quelle) zeilen.push(`— ${b.quelle}`);
+    } else if (b.typ === "bild") {
+      zeilen.push(`![${b.alt}](${b.url}${b.bildunterschrift ? ` "${b.bildunterschrift}"` : ""})`);
+    }
+    zeilen.push("");
+  }
+  return zeilen.join("\n").trim();
+}
+
+export function parseTextZuBloecke(text: string): Block[] {
+  const zeilen = text.replace(/\r\n/g, "\n").split("\n");
+  const bloecke: Block[] = [];
+  let absatzPuffer: string[] = [];
+  let i = 0;
+
+  function flushAbsatz() {
+    if (absatzPuffer.length) {
+      const t = absatzPuffer.join(" ").trim();
+      if (t) bloecke.push({ typ: "absatz", text: t });
+      absatzPuffer = [];
+    }
+  }
+
+  while (i < zeilen.length) {
+    const roh = zeilen[i];
+    const z = roh.trim();
+
+    if (z === "") {
+      flushAbsatz();
+      i++;
+      continue;
+    }
+
+    const h4 = z.match(/^####\s+(.*)$/);
+    const h3 = z.match(/^###\s+(.*)$/);
+    const h2 = z.match(/^##\s+(.*)$/);
+    if (h4) { flushAbsatz(); bloecke.push({ typ: "ueberschrift", ebene: 4, text: h4[1] }); i++; continue; }
+    if (h3) { flushAbsatz(); bloecke.push({ typ: "ueberschrift", ebene: 3, text: h3[1] }); i++; continue; }
+    if (h2) { flushAbsatz(); bloecke.push({ typ: "ueberschrift", ebene: 2, text: h2[1] }); i++; continue; }
+
+    const bild = z.match(/^!\[(.*?)\]\((\S+?)(?:\s+"(.*?)")?\)$/);
+    if (bild) {
+      flushAbsatz();
+      bloecke.push({ typ: "bild", alt: bild[1], url: bild[2], bildunterschrift: bild[3] || undefined });
+      i++;
+      continue;
+    }
+
+    if (z.startsWith("> ")) {
+      flushAbsatz();
+      const zitatZeilen: string[] = [];
+      while (i < zeilen.length && zeilen[i].trim().startsWith("> ")) {
+        zitatZeilen.push(zeilen[i].trim().slice(2));
+        i++;
+      }
+      let quelle: string | undefined;
+      if (i < zeilen.length && zeilen[i].trim().startsWith("— ")) {
+        quelle = zeilen[i].trim().slice(2);
+        i++;
+      }
+      bloecke.push({ typ: "zitat", text: zitatZeilen.join(" "), quelle });
+      continue;
+    }
+
+    if (/^-\s+/.test(z)) {
+      flushAbsatz();
+      const punkte: string[] = [];
+      while (i < zeilen.length && /^-\s+/.test(zeilen[i].trim())) {
+        punkte.push(zeilen[i].trim().replace(/^-\s+/, ""));
+        i++;
+      }
+      bloecke.push({ typ: "liste", stil: "ungeordnet", punkte });
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(z)) {
+      flushAbsatz();
+      const punkte: string[] = [];
+      while (i < zeilen.length && /^\d+\.\s+/.test(zeilen[i].trim())) {
+        punkte.push(zeilen[i].trim().replace(/^\d+\.\s+/, ""));
+        i++;
+      }
+      bloecke.push({ typ: "liste", stil: "geordnet", punkte });
+      continue;
+    }
+
+    absatzPuffer.push(z);
+    i++;
+  }
+  flushAbsatz();
+  return bloecke;
+}
