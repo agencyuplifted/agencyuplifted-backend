@@ -99,6 +99,8 @@ export default function BlockEditor({ name, initial }: { name: string; initial: 
   const [haupttext, setHaupttext] = useState(initialText);
   const [faqs, setFaqs] = useState<Faq[]>(initialFaqs);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const historieRef = useRef<string[]>([]);
+  const [historieVorhanden, setHistorieVorhanden] = useState(false);
 
   const bloecke = useMemo(() => {
     const textBloecke = parseTextZuBloecke(haupttext);
@@ -109,7 +111,16 @@ export default function BlockEditor({ name, initial }: { name: string; initial: 
   }, [haupttext, faqs]);
 
   function mitTextarea(fn: (el: HTMLTextAreaElement, setText: (v: string) => void) => void) {
-    if (textareaRef.current) fn(textareaRef.current, setHaupttext);
+    if (!textareaRef.current) return;
+    historieRef.current = [...historieRef.current.slice(-19), haupttext];
+    setHistorieVorhanden(true);
+    fn(textareaRef.current, setHaupttext);
+  }
+
+  function rueckgaengig() {
+    const letztes = historieRef.current.pop();
+    if (letztes !== undefined) setHaupttext(letztes);
+    setHistorieVorhanden(historieRef.current.length > 0);
   }
 
   return (
@@ -137,6 +148,14 @@ export default function BlockEditor({ name, initial }: { name: string; initial: 
         </button>
         <button type="button" style={werkzeugBtn} onClick={() => mitTextarea((el, s) => fuegeBildEin(el, s))}>
           Bild einfügen
+        </button>
+        <button
+          type="button"
+          style={{ ...werkzeugBtn, opacity: historieVorhanden ? 1 : 0.4 }}
+          onClick={rueckgaengig}
+          disabled={!historieVorhanden}
+        >
+          ↺ Rückgängig
         </button>
       </div>
 
