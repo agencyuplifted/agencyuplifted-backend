@@ -13,6 +13,7 @@ import { renderPlatzhalter } from "./funnel";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
+import { erzeugeSlug, eindeutigerSlug } from "./insights";
 
 // Ermittelt Anrede + Quelle fuer ein Formularfeld: explizite Angabe (Herr/Frau/
 // Divers) gilt als 'manuell' und wird nie durch die Namens-Heuristik ersetzt.
@@ -1719,4 +1720,102 @@ export async function loescheKampagnenEntwurf(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/kampagnen");
   redirect("/kampagnen");
+}
+
+// ---- Insights (Wissenshub v0.1) ----
+
+export async function erstelleInsightsEintrag(formData: FormData) {
+  const typ = String(formData.get("typ") || "artikel");
+  const titel = String(formData.get("titel") || "").trim();
+  if (!titel) throw new Error("Bitte einen Titel angeben.");
+
+  const basisSlug = erzeugeSlug(titel);
+  const slug = await eindeutigerSlug(basisSlug, typ as any);
+
+  const supabase = getSupabaseAdmin();
+  const benutzer = await getAktuellerBenutzer();
+  const { data, error } = await supabase
+    .from("insights_eintraege")
+    .insert({
+      typ,
+      slug,
+      titel,
+      bloecke: [],
+      status: "entwurf",
+      autor_id: benutzer?.id || null,
+      quelle_typ: "manuell",
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/insights");
+  redirect(`/insights/${data.id}`);
+}
+
+export async function speichereInsightsEintrag(formData: FormData) {
+  const id = String(formData.get("id"));
+  const titel = String(formData.get("titel") || "").trim();
+  const kurzfassung = String(formData.get("kurzfassung") || "").trim() || null;
+  const titelbildUrl = String(formData.get("titelbild_url") || "").trim() || null;
+  const titelbildAlt = String(formData.get("titelbild_alt") || "").trim() || null;
+  const bloeckeRoh = String(formData.get("bloecke") || "[]");
+  const hauptkategorieId = String(formData.get("hauptkategorie_id") || "") || null;
+  if (!titel) throw new Error("Bitte einen Titel angeben.");
+
+  let bloecke: unknown;
+  try {
+    bloecke = JSON.parse(bloeckeRoh);
+  } catch {
+    throw new Error("Die Bausteine konnten nicht gelesen werden.");
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  // Versions-Snapshot vor dem Ueberschreiben sichern
+  const { data: bisher } = await supabase.from("insights_eintraege").select("titel, bloecke").eq("id", id).single();
+  if (bisher) {
+    const benutzer = await getAktuellerBenutzer();
+    await supabase.from("insights_eintrag_versionen").insert({
+      eintrag_id: id,
+      titel: bisher.titel,
+      bloecke: bisher.bloecke,
+      erstellt_von: benutzer?.id || null,
+    });
+  }
+
+  const { error } = await supabase
+    .from("insights_eintraege")
+    .update({ titel, kurzfassung, titelbild_url: titelbildUrl, titelbild_alt: titelbildAlt, bloecke })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  if (hauptkategorieId) {
+    await supabase.from("insights_eintrag_kategorien").delete().eq("eintrag_id", id);
+    await supabase
+      .from("insights_eintrag_kategorien")
+      .insert({ eintrag_id: id, kategorie_id: hauptkategorieId, ist_hauptkategorie: true });
+  }
+
+  revalidatePath("/insights");
+  revalidatePath(`/insights/${id}`);
+  redirect(`/insights/${id}?gespeichert=1`);
+}
+
+export async function setzeInsightsStatus(formData: FormData) {
+  const id = String(formData.get("id"));
+  const status = String(formData.get("status"));
+  if (!["entwurf", "review", "veroeffentlicht", "archiviert"].includes(status)) {
+    throw new Error("Unbekannter Status.");
+  }
+  const supabase = getSupabaseAdmin();
+  const felder: Record<string, unknown> = { status };
+  if (status === "veroeffentlicht") {
+    const { data: bisher } = await supabase.from("insights_eintraege").select("veroeffentlicht_am").eq("id", id).single();
+    if (!bisher?.veroeffentlicht_am) felder.veroeffentlicht_am = new Date().toISOString();
+  }
+  const { error } = await supabase.from("insights_eintraege").update(felder).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/insights");
+  revalidatePath(`/insights/${id}`);
+  redirect(`/insights/${id}?gespeichert=1`);
 }

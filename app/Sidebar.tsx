@@ -10,6 +10,7 @@ type NavGroup = { title?: string; links: NavLink[] };
 
 const GROUPS: NavGroup[] = [
   { links: [{ href: "/dashboard", label: "Dashboard" }] },
+  { links: [{ href: "/insights", label: "Insights" }] },
   {
     title: "Verwaltung",
     links: [
