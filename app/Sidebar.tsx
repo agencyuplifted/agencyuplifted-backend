@@ -42,6 +42,7 @@ const GROUPS: NavGroup[] = [
     links: [
       { href: "/community", label: "Community" },
       { href: "/funnel", label: "Funnel-Mails" },
+      { href: "/kampagnen", label: "Kampagnen" },
       { href: "/email-test", label: "E-Mail-Test" },
     ],
   },

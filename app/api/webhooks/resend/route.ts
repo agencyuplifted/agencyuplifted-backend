@@ -52,11 +52,27 @@ export async function POST(request: NextRequest) {
   const supabase = getSupabaseAdmin();
   const jetzt = new Date().toISOString();
 
-  const { data: eintrag } = await supabase
+  // Zuordnung ueber resend_email_id kann entweder ein Funnel-Mail-Versand oder
+  // ein Kampagnen-Versand sein (beide Tabellen haben dasselbe Tracking-Schema).
+  const { data: funnelEintrag } = await supabase
     .from("funnel_versand_log")
     .select("id, geoeffnet_am, geklickt_am, anzahl_oeffnungen, anzahl_klicks")
     .eq("resend_email_id", emailId)
     .maybeSingle();
+
+  const tabelle = funnelEintrag ? "funnel_versand_log" : "kampagnen_versand_log";
+  let eintrag = funnelEintrag as
+    | { id: string; geoeffnet_am: string | null; geklickt_am: string | null; anzahl_oeffnungen: number | null; anzahl_klicks: number | null }
+    | null;
+
+  if (!eintrag) {
+    const { data: kampagnenEintrag } = await supabase
+      .from("kampagnen_versand_log")
+      .select("id, geoeffnet_am, geklickt_am, anzahl_oeffnungen, anzahl_klicks")
+      .eq("resend_email_id", emailId)
+      .maybeSingle();
+    eintrag = kampagnenEintrag;
+  }
 
   if (!eintrag) {
     // Kein passender Log-Eintrag (z.B. Test-Mail ueber /email-test) - trotzdem 200,
@@ -67,7 +83,7 @@ export async function POST(request: NextRequest) {
   switch (event.type) {
     case "email.delivered":
       await supabase
-        .from("funnel_versand_log")
+        .from(tabelle)
         .update({ zugestellt_am: jetzt })
         .eq("id", eintrag.id)
         .is("zugestellt_am", null);
@@ -75,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     case "email.opened":
       await supabase
-        .from("funnel_versand_log")
+        .from(tabelle)
         .update({
           geoeffnet_am: eintrag.geoeffnet_am ?? jetzt,
           zuletzt_geoeffnet_am: jetzt,
@@ -86,7 +102,7 @@ export async function POST(request: NextRequest) {
 
     case "email.clicked":
       await supabase
-        .from("funnel_versand_log")
+        .from(tabelle)
         .update({
           geklickt_am: eintrag.geklickt_am ?? jetzt,
           zuletzt_geklickt_am: jetzt,
@@ -97,7 +113,7 @@ export async function POST(request: NextRequest) {
 
     case "email.bounced":
       await supabase
-        .from("funnel_versand_log")
+        .from(tabelle)
         .update({ bounced_am: jetzt })
         .eq("id", eintrag.id)
         .is("bounced_am", null);
@@ -105,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     case "email.complained":
       await supabase
-        .from("funnel_versand_log")
+        .from(tabelle)
         .update({ beschwerde_am: jetzt })
         .eq("id", eintrag.id)
         .is("beschwerde_am", null);

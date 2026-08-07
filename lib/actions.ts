@@ -11,7 +11,27 @@ import { getAktuellerBenutzer } from "./auth";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter } from "./funnel";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
+import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
+
+// Ermittelt Anrede + Quelle fuer ein Formularfeld: explizite Angabe (Herr/Frau/
+// Divers) gilt als 'manuell' und wird nie durch die Namens-Heuristik ersetzt.
+// Ist nichts angegeben, wird per Vornamen geschaetzt ('automatisch'); schlaegt
+// auch das fehl, bleibt es bei keine_angabe/ohne Quelle.
+function ermittleAnredeUndQuelle(
+  formAnrede: FormDataEntryValue | null,
+  vorname: string
+): { anrede: string; anrede_quelle: string | null } {
+  const wert = String(formAnrede || "").trim();
+  if (wert && wert !== "keine_angabe") {
+    return { anrede: wert, anrede_quelle: "manuell" };
+  }
+  const geschaetzt = schaetzeAnredeAusVorname(vorname);
+  if (geschaetzt) {
+    return { anrede: geschaetzt, anrede_quelle: "automatisch" };
+  }
+  return { anrede: "keine_angabe", anrede_quelle: null };
+}
 
 export async function createOrganisation(formData: FormData) {
   const supabase = getSupabaseAdmin();
@@ -30,9 +50,12 @@ export async function createOrganisation(formData: FormData) {
 
 export async function createTeilnehmer(formData: FormData) {
   const supabase = getSupabaseAdmin();
+  const vorname = String(formData.get("vorname"));
+  const { anrede, anrede_quelle } = ermittleAnredeUndQuelle(formData.get("anrede"), vorname);
   const { error } = await supabase.from("teilnehmer").insert({
-    anrede: formData.get("anrede") || "keine_angabe",
-    vorname: String(formData.get("vorname")),
+    anrede,
+    anrede_quelle,
+    vorname,
     nachname: String(formData.get("nachname")),
     email: String(formData.get("email")),
     email_zweite: formData.get("email_zweite") || null,
@@ -66,7 +89,7 @@ export async function updateTeilnehmerStammdaten(formData: FormData) {
   const { error } = await supabase
     .from("teilnehmer")
     .update({
-      anrede: formData.get("anrede") || "keine_angabe",
+      ...ermittleAnredeUndQuelle(formData.get("anrede"), String(formData.get("vorname"))),
       rolle: formData.get("rolle") || "teilnehmer",
       vorname: String(formData.get("vorname")),
       nachname: String(formData.get("nachname")),
@@ -1615,4 +1638,82 @@ export async function versendeBuchExemplarAction(formData: FormData) {
   }
 
   revalidatePath("/buch-versand");
+}
+
+// ---------------------------------------------------------------------------
+// Kampagnen & gespeicherte Filtergruppen (Teilnehmer-Segmentierung, v0.1)
+// ---------------------------------------------------------------------------
+
+function leseFilterAusFormData(formData: FormData): import("./kampagnen").FilterKriterien {
+  const listeAus = (key: string) => formData.getAll(key).map(String).filter(Boolean);
+  return {
+    anrede: listeAus("anrede"),
+    rolle: listeAus("rolle"),
+    seminartypen: listeAus("seminartypen"),
+  };
+}
+
+export async function speichereTeilnehmerSegment(formData: FormData) {
+  const name = String(formData.get("segment_name") || "").trim();
+  if (!name) throw new Error("Bitte einen Namen fuer die Filtergruppe angeben.");
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("teilnehmer_segmente").insert({
+    name,
+    filter_kriterien: leseFilterAusFormData(formData),
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/teilnehmer");
+  revalidatePath("/kampagnen/neu");
+}
+
+export async function loescheTeilnehmerSegment(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("teilnehmer_segmente").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/teilnehmer");
+  revalidatePath("/kampagnen/neu");
+}
+
+export async function erstelleKampagne(formData: FormData) {
+  const name = String(formData.get("name") || "").trim();
+  const betreff = String(formData.get("betreff") || "").trim();
+  const inhalt = String(formData.get("inhalt") || "").trim();
+  const segmentId = String(formData.get("segment_id") || "") || null;
+  if (!name || !betreff || !inhalt) throw new Error("Bitte Name, Betreff und Inhalt ausfuellen.");
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("kampagnen")
+    .insert({
+      name,
+      betreff,
+      inhalt,
+      filter_kriterien: leseFilterAusFormData(formData),
+      segment_id: segmentId,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/kampagnen");
+  redirect(`/kampagnen/${data.id}/vorschau`);
+}
+
+export async function kampagneVersandJetzt(formData: FormData) {
+  const id = String(formData.get("id"));
+  const { sendeKampagneJetzt } = await import("./kampagnen");
+  const ergebnis = await sendeKampagneJetzt(id);
+  revalidatePath("/kampagnen");
+  redirect(`/kampagnen?versendet=1&gesendet=${ergebnis.gesendet}&fehler=${ergebnis.fehler}`);
+}
+
+export async function loescheKampagnenEntwurf(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { data: kampagne } = await supabase.from("kampagnen").select("status").eq("id", id).single();
+  if (kampagne?.status === "versendet") throw new Error("Bereits versendete Kampagnen koennen nicht geloescht werden.");
+  const { error } = await supabase.from("kampagnen").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/kampagnen");
+  redirect("/kampagnen");
 }

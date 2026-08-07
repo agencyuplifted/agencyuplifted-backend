@@ -10,6 +10,10 @@ export default async function TeilnehmerPage() {
     .from("teilnehmer")
     .select("*, buchungspositionen(seminartermine(seminartypen(name))), legacy_buchungen(seminartypen(name))")
     .order("erstellt_am", { ascending: false });
+  const { data: segmente } = await supabase
+    .from("teilnehmer_segmente")
+    .select("*")
+    .order("erstellt_am", { ascending: false });
 
   const rows = (teilnehmer || []).map((t: any) => {
     const seminare = Array.from(
@@ -25,6 +29,8 @@ export default async function TeilnehmerPage() {
       email: t.email,
       telefon: t.telefon,
       erstellt_am: t.erstellt_am,
+      anrede: t.anrede || "keine_angabe",
+      rolle: t.rolle || "teilnehmer",
       seminare,
     };
   });
@@ -33,7 +39,7 @@ export default async function TeilnehmerPage() {
     <main>
       <h1>Teilnehmer</h1>
 
-      <TeilnehmerTable teilnehmer={rows} />
+      <TeilnehmerTable teilnehmer={rows} segmente={segmente || []} />
 
       <div className="au-card" style={{ maxWidth: 620 }}>
         <h2>Neuer Teilnehmer</h2>

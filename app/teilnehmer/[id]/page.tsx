@@ -280,6 +280,11 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
                 <option value="Frau">Frau</option>
                 <option value="Divers">Divers</option>
               </select>
+              {t.anrede_quelle === "automatisch" && (
+                <p style={{ color: "var(--color-text-muted)", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+                  Automatisch aus dem Vornamen geschätzt — bei Bedarf korrigieren.
+                </p>
+              )}
             </div>
             <div>
               <label className="au-label">Geburtsdatum</label>

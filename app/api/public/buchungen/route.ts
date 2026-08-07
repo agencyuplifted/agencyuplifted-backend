@@ -6,6 +6,7 @@ import { getResend, ABSENDER } from "@/lib/email";
 import { formatDatum } from "@/lib/format";
 import { renderPlatzhalter } from "@/lib/funnel";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "@/lib/organisationsverknuepfung";
+import { schaetzeAnredeAusVorname } from "@/lib/geschlecht";
 
 // Oeffentliche, schreibende Schnittstelle fuer das Onepage-Buchungsformular.
 // Ersetzt den fruehreren Umweg ueber Pipedrive bzw. das Onepage-eigene CRM:
@@ -208,6 +209,8 @@ export async function POST(request: NextRequest) {
         firma_freitext: person.company || null,
         marketing_consent_status: "unbekannt",
         marketing_consent_quelle: "onepage_buchungsformular",
+        anrede: schaetzeAnredeAusVorname(person.firstName) || "keine_angabe",
+        anrede_quelle: schaetzeAnredeAusVorname(person.firstName) ? "automatisch" : null,
         ...(istHauptkontaktOhneOrganisation
           ? {
               privatadresse_strasse: rechnungsadresse.strasse,
