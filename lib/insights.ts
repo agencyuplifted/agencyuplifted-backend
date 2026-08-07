@@ -137,23 +137,15 @@ export function serialisiereBloeckeZuText(bloecke: Block[]): string {
 export function parseTextZuBloecke(text: string): Block[] {
   const zeilen = text.replace(/\r\n/g, "\n").split("\n");
   const bloecke: Block[] = [];
-  let absatzPuffer: string[] = [];
   let i = 0;
-
-  function flushAbsatz() {
-    if (absatzPuffer.length) {
-      const t = absatzPuffer.join(" ").trim();
-      if (t) bloecke.push({ typ: "absatz", text: t });
-      absatzPuffer = [];
-    }
-  }
 
   while (i < zeilen.length) {
     const roh = zeilen[i];
     const z = roh.trim();
 
+    // Leerzeilen sind rein kosmetisch (nur fuer die Lesbarkeit beim Bearbeiten)
+    // und werden ignoriert -- ein einzelnes Enter reicht fuer einen neuen Absatz.
     if (z === "") {
-      flushAbsatz();
       i++;
       continue;
     }
@@ -161,20 +153,18 @@ export function parseTextZuBloecke(text: string): Block[] {
     const h4 = z.match(/^####\s+(.*)$/);
     const h3 = z.match(/^###\s+(.*)$/);
     const h2 = z.match(/^##\s+(.*)$/);
-    if (h4) { flushAbsatz(); bloecke.push({ typ: "ueberschrift", ebene: 4, text: h4[1] }); i++; continue; }
-    if (h3) { flushAbsatz(); bloecke.push({ typ: "ueberschrift", ebene: 3, text: h3[1] }); i++; continue; }
-    if (h2) { flushAbsatz(); bloecke.push({ typ: "ueberschrift", ebene: 2, text: h2[1] }); i++; continue; }
+    if (h4) { bloecke.push({ typ: "ueberschrift", ebene: 4, text: h4[1] }); i++; continue; }
+    if (h3) { bloecke.push({ typ: "ueberschrift", ebene: 3, text: h3[1] }); i++; continue; }
+    if (h2) { bloecke.push({ typ: "ueberschrift", ebene: 2, text: h2[1] }); i++; continue; }
 
     const bild = z.match(/^!\[(.*?)\]\((\S+?)(?:\s+"(.*?)")?\)$/);
     if (bild) {
-      flushAbsatz();
       bloecke.push({ typ: "bild", alt: bild[1], url: bild[2], bildunterschrift: bild[3] || undefined });
       i++;
       continue;
     }
 
     if (z.startsWith("> ")) {
-      flushAbsatz();
       const zitatZeilen: string[] = [];
       while (i < zeilen.length && zeilen[i].trim().startsWith("> ")) {
         zitatZeilen.push(zeilen[i].trim().slice(2));
@@ -190,7 +180,6 @@ export function parseTextZuBloecke(text: string): Block[] {
     }
 
     if (/^-\s+/.test(z)) {
-      flushAbsatz();
       const punkte: string[] = [];
       while (i < zeilen.length && /^-\s+/.test(zeilen[i].trim())) {
         punkte.push(zeilen[i].trim().replace(/^-\s+/, ""));
@@ -201,7 +190,6 @@ export function parseTextZuBloecke(text: string): Block[] {
     }
 
     if (/^\d+\.\s+/.test(z)) {
-      flushAbsatz();
       const punkte: string[] = [];
       while (i < zeilen.length && /^\d+\.\s+/.test(zeilen[i].trim())) {
         punkte.push(zeilen[i].trim().replace(/^\d+\.\s+/, ""));
@@ -211,9 +199,9 @@ export function parseTextZuBloecke(text: string): Block[] {
       continue;
     }
 
-    absatzPuffer.push(z);
+    // Jede uebrige, nicht leere Zeile ist ein eigener Absatz -- ein Enter genuegt.
+    bloecke.push({ typ: "absatz", text: z });
     i++;
   }
-  flushAbsatz();
   return bloecke;
 }
