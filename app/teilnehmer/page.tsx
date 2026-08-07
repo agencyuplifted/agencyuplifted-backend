@@ -31,6 +31,7 @@ export default async function TeilnehmerPage() {
       erstellt_am: t.erstellt_am,
       anrede: t.anrede || "keine_angabe",
       rolle: t.rolle || "teilnehmer",
+      unternehmer_status: t.unternehmer_status || "unbekannt",
       seminare,
     };
   });
@@ -44,7 +45,7 @@ export default async function TeilnehmerPage() {
       <div className="au-card" style={{ maxWidth: 620 }}>
         <h2>Neuer Teilnehmer</h2>
         <form action={createTeilnehmer}>
-          <div className="au-row-2">
+          <div className="au-row-3">
             <div>
               <label className="au-label">Anrede</label>
               <select className="au-select" name="anrede" defaultValue="keine_angabe">
@@ -57,6 +58,14 @@ export default async function TeilnehmerPage() {
             <div>
               <label className="au-label">Geburtsdatum</label>
               <input className="au-input" name="geburtsdatum" type="date" />
+            </div>
+            <div>
+              <label className="au-label">Unternehmer:in / Mitarbeiter:in</label>
+              <select className="au-select" name="unternehmer_status" defaultValue="unbekannt">
+                <option value="unbekannt">—</option>
+                <option value="unternehmer">Unternehmer:in</option>
+                <option value="mitarbeiter">Mitarbeiter:in</option>
+              </select>
             </div>
           </div>
 

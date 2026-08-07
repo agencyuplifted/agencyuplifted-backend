@@ -271,7 +271,7 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
         <form action={updateTeilnehmerStammdaten} style={{ maxWidth: 640 }}>
           <input type="hidden" name="id" value={t.id} />
 
-          <div className="au-row-2">
+          <div className="au-row-3">
             <div>
               <label className="au-label">Anrede</label>
               <select className="au-select" name="anrede" defaultValue={t.anrede || "keine_angabe"}>
@@ -289,6 +289,17 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
             <div>
               <label className="au-label">Geburtsdatum</label>
               <input className="au-input" name="geburtsdatum" type="date" defaultValue={t.geburtsdatum || ""} />
+            </div>
+            <div>
+              <label className="au-label">Unternehmer:in / Mitarbeiter:in</label>
+              <select className="au-select" name="unternehmer_status" defaultValue={t.unternehmer_status || "unbekannt"}>
+                <option value="unbekannt">—</option>
+                <option value="unternehmer">Unternehmer:in</option>
+                <option value="mitarbeiter">Mitarbeiter:in</option>
+              </select>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+                Unabhängig von "Rolle" — bezieht sich auf die berufliche Position der Person, nicht auf ihre Funktion beim Seminar.
+              </p>
             </div>
           </div>
 

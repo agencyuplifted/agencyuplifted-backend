@@ -55,6 +55,7 @@ export async function createTeilnehmer(formData: FormData) {
   const { error } = await supabase.from("teilnehmer").insert({
     anrede,
     anrede_quelle,
+    unternehmer_status: formData.get("unternehmer_status") || "unbekannt",
     vorname,
     nachname: String(formData.get("nachname")),
     email: String(formData.get("email")),
@@ -91,6 +92,7 @@ export async function updateTeilnehmerStammdaten(formData: FormData) {
     .update({
       ...ermittleAnredeUndQuelle(formData.get("anrede"), String(formData.get("vorname"))),
       rolle: formData.get("rolle") || "teilnehmer",
+      unternehmer_status: formData.get("unternehmer_status") || "unbekannt",
       vorname: String(formData.get("vorname")),
       nachname: String(formData.get("nachname")),
       email: String(formData.get("email")),
@@ -1650,6 +1652,7 @@ function leseFilterAusFormData(formData: FormData): import("./kampagnen").Filter
     anrede: listeAus("anrede"),
     rolle: listeAus("rolle"),
     seminartypen: listeAus("seminartypen"),
+    unternehmer_status: listeAus("unternehmer_status"),
   };
 }
 

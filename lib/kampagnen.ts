@@ -9,6 +9,7 @@ export type FilterKriterien = {
   anrede?: string[];
   rolle?: string[];
   seminartypen?: string[]; // Seminartyp-Namen, z.B. "Preisfindung"
+  unternehmer_status?: string[]; // 'unternehmer' | 'mitarbeiter' | 'unbekannt' -- berufliche Position, unabhaengig von "rolle" (Event-Funktion)
 };
 
 export type GefilterterTeilnehmer = {
@@ -18,6 +19,7 @@ export type GefilterterTeilnehmer = {
   email: string;
   anrede: string;
   rolle: string;
+  unternehmer_status: string;
   seminare: string[];
 };
 
@@ -39,7 +41,7 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
   const { data } = await supabase
     .from("teilnehmer")
     .select(
-      "id, vorname, nachname, email, anrede, rolle, marketing_consent_status, deaktiviert_am, buchungspositionen(seminartermine(seminartypen(name))), legacy_buchungen(seminartypen(name))"
+      "id, vorname, nachname, email, anrede, rolle, unternehmer_status, marketing_consent_status, deaktiviert_am, buchungspositionen(seminartermine(seminartypen(name))), legacy_buchungen(seminartypen(name))"
     )
     .order("nachname", { ascending: true });
 
@@ -61,6 +63,7 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
         email: t.email,
         anrede: t.anrede || "keine_angabe",
         rolle: t.rolle || "teilnehmer",
+        unternehmer_status: t.unternehmer_status || "unbekannt",
         seminare,
       };
     });
@@ -68,6 +71,7 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
   return alle.filter((t) => {
     if (filter.anrede?.length && !filter.anrede.includes(t.anrede)) return false;
     if (filter.rolle?.length && !filter.rolle.includes(t.rolle)) return false;
+    if (filter.unternehmer_status?.length && !filter.unternehmer_status.includes(t.unternehmer_status)) return false;
     if (filter.seminartypen?.length && !t.seminare.some((s) => filter.seminartypen!.includes(s))) return false;
     return true;
   });

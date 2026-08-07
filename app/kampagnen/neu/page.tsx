@@ -8,7 +8,7 @@ import { ladeTeilnehmerFuerFilter, type FilterKriterien } from "@/lib/kampagnen"
 export default async function NeueKampagnePage({
   searchParams,
 }: {
-  searchParams: Promise<{ anrede?: string; rolle?: string; seminartypen?: string; segment_id?: string }>;
+  searchParams: Promise<{ anrede?: string; rolle?: string; seminartypen?: string; unternehmer_status?: string; segment_id?: string }>;
 }) {
   const sp = await searchParams;
   const supabase = getSupabaseAdmin();
@@ -32,6 +32,7 @@ export default async function NeueKampagnePage({
       anrede: sp.anrede ? [sp.anrede] : [],
       rolle: sp.rolle ? [sp.rolle] : [],
       seminartypen: sp.seminartypen ? [sp.seminartypen] : [],
+      unternehmer_status: sp.unternehmer_status ? [sp.unternehmer_status] : [],
     };
   }
 
@@ -40,6 +41,7 @@ export default async function NeueKampagnePage({
   const anredeWert = filter.anrede?.[0] || "";
   const rolleWert = filter.rolle?.[0] || "";
   const seminarWert = filter.seminartypen?.[0] || "";
+  const unternehmerWert = filter.unternehmer_status?.[0] || "";
 
   return (
     <main>
@@ -70,7 +72,7 @@ export default async function NeueKampagnePage({
       <div className="au-card">
         <h2>Filter {aktivesSegment ? `(aus Filtergruppe "${aktivesSegment.name}")` : "(manuell)"}</h2>
         <form method="get" action="/kampagnen/neu">
-          <div className="au-row-3">
+          <div className="au-row-2">
             <div>
               <label className="au-label">Geschlecht</label>
               <select className="au-select" name="anrede" defaultValue={anredeWert}>
@@ -82,7 +84,18 @@ export default async function NeueKampagnePage({
               </select>
             </div>
             <div>
-              <label className="au-label">Rolle</label>
+              <label className="au-label">Unternehmer:in / Mitarbeiter:in</label>
+              <select className="au-select" name="unternehmer_status" defaultValue={unternehmerWert}>
+                <option value="">Alle</option>
+                <option value="unternehmer">Unternehmer:in</option>
+                <option value="mitarbeiter">Mitarbeiter:in</option>
+                <option value="unbekannt">Ohne Angabe</option>
+              </select>
+            </div>
+          </div>
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Rolle (Event-Funktion)</label>
               <select className="au-select" name="rolle" defaultValue={rolleWert}>
                 <option value="">Alle</option>
                 <option value="teilnehmer">Teilnehmer</option>
@@ -131,6 +144,7 @@ export default async function NeueKampagnePage({
             {anredeWert && <input type="hidden" name="anrede" value={anredeWert} />}
             {rolleWert && <input type="hidden" name="rolle" value={rolleWert} />}
             {seminarWert && <input type="hidden" name="seminartypen" value={seminarWert} />}
+            {unternehmerWert && <input type="hidden" name="unternehmer_status" value={unternehmerWert} />}
             {aktivesSegment && <input type="hidden" name="segment_id" value={aktivesSegment.id} />}
 
             <label className="au-label">Name der Kampagne (intern)</label>

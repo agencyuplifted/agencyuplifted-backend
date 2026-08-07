@@ -14,16 +14,18 @@ type Row = {
   erstellt_am: string;
   anrede: string;
   rolle: string;
+  unternehmer_status: string;
   seminare: string[];
 };
 
 type Segment = {
   id: string;
   name: string;
-  filter_kriterien: { anrede?: string[]; rolle?: string[]; seminartypen?: string[] };
+  filter_kriterien: { anrede?: string[]; rolle?: string[]; seminartypen?: string[]; unternehmer_status?: string[] };
 };
 
 const ANREDE_LABEL: Record<string, string> = { Herr: "Männer", Frau: "Frauen", Divers: "Divers", keine_angabe: "Ohne Angabe" };
+const UNTERNEHMER_LABEL: Record<string, string> = { unternehmer: "Unternehmer:in", mitarbeiter: "Mitarbeiter:in", unbekannt: "—" };
 
 type SortKey = "name" | "email" | "telefon" | "seminare" | "erstellt_am";
 
@@ -33,6 +35,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
   const [seminarFilter, setSeminarFilter] = useState("");
   const [anredeFilter, setAnredeFilter] = useState("");
   const [rolleFilter, setRolleFilter] = useState("");
+  const [unternehmerFilter, setUnternehmerFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("erstellt_am");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -57,6 +60,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
     setAnredeFilter(segment.filter_kriterien.anrede?.[0] || "");
     setRolleFilter(segment.filter_kriterien.rolle?.[0] || "");
     setSeminarFilter(segment.filter_kriterien.seminartypen?.[0] || "");
+    setUnternehmerFilter(segment.filter_kriterien.unternehmer_status?.[0] || "");
   }
 
   function kampagneStarten() {
@@ -64,6 +68,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
     if (anredeFilter) params.set("anrede", anredeFilter);
     if (rolleFilter) params.set("rolle", rolleFilter);
     if (seminarFilter) params.set("seminartypen", seminarFilter);
+    if (unternehmerFilter) params.set("unternehmer_status", unternehmerFilter);
     router.push(`/kampagnen/neu?${params.toString()}`);
   }
 
@@ -78,7 +83,8 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
       const matchSeminar = !seminarFilter || t.seminare.includes(seminarFilter);
       const matchAnrede = !anredeFilter || t.anrede === anredeFilter;
       const matchRolle = !rolleFilter || t.rolle === rolleFilter;
-      return matchSearch && matchSeminar && matchAnrede && matchRolle;
+      const matchUnternehmer = !unternehmerFilter || t.unternehmer_status === unternehmerFilter;
+      return matchSearch && matchSeminar && matchAnrede && matchRolle && matchUnternehmer;
     });
     liste.sort((a, b) => {
       let av = "";
@@ -109,14 +115,14 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
       return sortDir === "asc" ? cmp : -cmp;
     });
     return liste;
-  }, [teilnehmer, search, seminarFilter, anredeFilter, rolleFilter, sortKey, sortDir]);
+  }, [teilnehmer, search, seminarFilter, anredeFilter, rolleFilter, unternehmerFilter, sortKey, sortDir]);
 
   function pfeil(key: SortKey) {
     if (sortKey !== key) return "";
     return sortDir === "asc" ? " ▲" : " ▼";
   }
 
-  const filterAktiv = !!(anredeFilter || rolleFilter || seminarFilter);
+  const filterAktiv = !!(anredeFilter || rolleFilter || seminarFilter || unternehmerFilter);
 
   return (
     <div>
@@ -127,6 +133,18 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {segmente.length > 0 && (
+          <select className="au-select" defaultValue="" onChange={(e) => e.target.value && wendeSegmentAn(e.target.value)}>
+            <option value="">Gespeicherte Filtergruppe...</option>
+            {segmente.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        )}
+        <span className="au-toolbar-count">{gefiltert.length} von {teilnehmer.length}</span>
+      </div>
+
+      <div className="au-toolbar" style={{ flexWrap: "wrap", marginTop: "-0.5rem" }}>
         <select className="au-select" value={anredeFilter} onChange={(e) => setAnredeFilter(e.target.value)}>
           <option value="">Alle Geschlechter</option>
           <option value="Frau">Frauen</option>
@@ -134,8 +152,14 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
           <option value="Divers">Divers</option>
           <option value="keine_angabe">Ohne Angabe</option>
         </select>
+        <select className="au-select" value={unternehmerFilter} onChange={(e) => setUnternehmerFilter(e.target.value)}>
+          <option value="">Unternehmer:in / Mitarbeiter:in — alle</option>
+          <option value="unternehmer">Unternehmer:in</option>
+          <option value="mitarbeiter">Mitarbeiter:in</option>
+          <option value="unbekannt">Ohne Angabe</option>
+        </select>
         <select className="au-select" value={rolleFilter} onChange={(e) => setRolleFilter(e.target.value)}>
-          <option value="">Alle Rollen</option>
+          <option value="">Alle Rollen (Event)</option>
           <option value="teilnehmer">Teilnehmer</option>
           <option value="mitarbeiter">Mitarbeiter</option>
           <option value="gastreferent">Gastreferent</option>
@@ -147,15 +171,6 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
-        {segmente.length > 0 && (
-          <select className="au-select" defaultValue="" onChange={(e) => e.target.value && wendeSegmentAn(e.target.value)}>
-            <option value="">Gespeicherte Filtergruppe...</option>
-            {segmente.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        )}
-        <span className="au-toolbar-count">{gefiltert.length} von {teilnehmer.length}</span>
       </div>
 
       {filterAktiv && (
@@ -180,6 +195,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
             {anredeFilter && <input type="hidden" name="anrede" value={anredeFilter} />}
             {rolleFilter && <input type="hidden" name="rolle" value={rolleFilter} />}
             {seminarFilter && <input type="hidden" name="seminartypen" value={seminarFilter} />}
+            {unternehmerFilter && <input type="hidden" name="unternehmer_status" value={unternehmerFilter} />}
             <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Als Filtergruppe speichern</button>
           </form>
         </div>
@@ -190,6 +206,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
           <tr>
             <th className="au-th-sortable" onClick={() => toggleSort("name")}>Name{pfeil("name")}</th>
             <th>Geschlecht</th>
+            <th>Unternehmer:in / Mitarbeiter:in</th>
             <th className="au-th-sortable" onClick={() => toggleSort("email")}>E-Mail{pfeil("email")}</th>
             <th className="au-th-sortable" onClick={() => toggleSort("telefon")}>Telefon{pfeil("telefon")}</th>
             <th className="au-th-sortable" onClick={() => toggleSort("seminare")}>Seminare{pfeil("seminare")}</th>
@@ -201,6 +218,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
             <tr key={t.id} className="au-table-row-link" onClick={() => router.push(`/teilnehmer/${t.id}`)}>
               <td style={{ color: "#102A4C", fontWeight: 600 }}>{t.vorname} {t.nachname}</td>
               <td>{ANREDE_LABEL[t.anrede] || t.anrede}</td>
+              <td>{UNTERNEHMER_LABEL[t.unternehmer_status] || "—"}</td>
               <td>{t.email}</td>
               <td>{t.telefon || "—"}</td>
               <td>{t.seminare.length ? t.seminare.join(", ") : "—"}</td>
@@ -208,7 +226,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
             </tr>
           ))}
           {!gefiltert.length && (
-            <tr className="au-table-empty"><td colSpan={6}>Keine Treffer.</td></tr>
+            <tr className="au-table-empty"><td colSpan={7}>Keine Treffer.</td></tr>
           )}
         </tbody>
       </table>
