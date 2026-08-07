@@ -81,41 +81,58 @@ function renderInline(text: string) {
 function Baustein({ block, i }: { block: Block; i: number }) {
   switch (block.typ) {
     case "absatz":
-      return <p key={i}>{renderInline(block.text)}</p>;
+      return (
+        <p key={i} style={{ margin: "0 0 1.25em", lineHeight: 1.7 }}>
+          {renderInline(block.text)}
+        </p>
+      );
     case "ueberschrift": {
       const Tag = (`h${block.ebene}` as unknown) as "h2" | "h3" | "h4";
-      return <Tag key={i}>{block.text}</Tag>;
+      return (
+        <Tag key={i} style={{ margin: "1.75em 0 0.75em" }}>
+          {block.text}
+        </Tag>
+      );
     }
     case "liste": {
       const ListTag = block.stil === "geordnet" ? "ol" : "ul";
       return (
-        <ListTag key={i}>
+        <ListTag key={i} style={{ margin: "0 0 1.25em", paddingLeft: "1.4em", lineHeight: 1.7 }}>
           {block.punkte.filter(Boolean).map((p, j) => (
-            <li key={j}>{renderInline(p)}</li>
+            <li key={j} style={{ marginBottom: "0.4em" }}>
+              {renderInline(p)}
+            </li>
           ))}
         </ListTag>
       );
     }
     case "zitat":
       return (
-        <blockquote key={i}>
-          <p>{renderInline(block.text)}</p>
-          {block.quelle && <cite>{block.quelle}</cite>}
+        <blockquote
+          key={i}
+          style={{ margin: "0 0 1.25em", padding: "0.25em 0 0.25em 1.25em", borderLeft: "3px solid #d3d1c7" }}
+        >
+          <p style={{ margin: 0, lineHeight: 1.7, fontStyle: "italic" }}>{renderInline(block.text)}</p>
+          {block.quelle && <cite style={{ display: "block", marginTop: "0.5em", fontSize: "0.9em" }}>— {block.quelle}</cite>}
         </blockquote>
       );
     case "bild":
-      // eslint-disable-next-line @next/next/no-img-element
       return (
-        <figure key={i}>
-          <img src={block.url} alt={block.alt} />
-          {block.bildunterschrift && <figcaption>{block.bildunterschrift}</figcaption>}
+        <figure key={i} style={{ margin: "0 0 1.25em" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={block.url} alt={block.alt} style={{ width: "100%", height: "auto", display: "block" }} />
+          {block.bildunterschrift && (
+            <figcaption style={{ fontSize: "0.85em", color: "#5f5e5a", marginTop: "0.5em" }}>
+              {block.bildunterschrift}
+            </figcaption>
+          )}
         </figure>
       );
     case "faq":
       return (
-        <details key={i}>
-          <summary>{block.frage}</summary>
-          <p>{block.antwort}</p>
+        <details key={i} style={{ margin: "0 0 1em" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>{block.frage}</summary>
+          <p style={{ margin: "0.5em 0 0", lineHeight: 1.7 }}>{block.antwort}</p>
         </details>
       );
     default:
