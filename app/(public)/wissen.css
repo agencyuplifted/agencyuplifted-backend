@@ -470,3 +470,42 @@
   border-color: var(--color-accent);
   color: #ffffff;
 }
+
+/* "Premium Updates"-Leiste ueber dem Header -- 1:1 Optik von
+   agencyuplifted-seminare.onepage.me uebernommen (Farben aus dem Live-DOM
+   ausgelesen: Leiste #0B1B33, Badge-Pill #11294D). */
+.wp-premium-bar {
+  background: #0b1b33;
+}
+
+.wp-premium-bar-inner {
+  max-width: 1250px;
+  margin: 0 auto;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.wp-premium-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  background: #11294d;
+  color: #ffffff;
+  font-family: var(--font-public-sans), sans-serif;
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 12px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
+.wp-premium-text {
+  color: #ffffff;
+  font-family: var(--font-public-sans), sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+}

@@ -1,4 +1,5 @@
 import { Archivo, Public_Sans } from "next/font/google";
+import PremiumUpdatesBar from "./PremiumUpdatesBar";
 import WissenHeader from "./WissenHeader";
 import "./wissen.css";
 
@@ -18,6 +19,7 @@ const publicSans = Public_Sans({ subsets: ["latin"], weight: ["400", "500", "600
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={`wp-shell ${archivo.variable} ${publicSans.variable}`}>
+      <PremiumUpdatesBar />
       <WissenHeader />
       <main className="wp-main">{children}</main>
       <footer className="wp-footer">
