@@ -18,7 +18,15 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <main className="wp-main">{children}</main>
       <footer className="wp-footer">
         <div className="wp-footer-inner">
-          <span>© {new Date().getFullYear()} – Markus Hartmann Pricing für Agenturen</span>
+          <span>
+            © {new Date().getFullYear()} –{" "}
+            {/* Zeigt aktuell auf agencyuplifted.de, da www.agencyuplifted.com
+                noch nicht auf die Website geschaltet ist (siehe Backlog-Task
+                "Eigene Domain + Cloudflare-CDN vor Onepage-Seite schalten"). */}
+            <a href="https://www.agencyuplifted.de" className="wp-footer-brand">
+              AgencyUplifted
+            </a>
+          </span>
           <nav className="wp-footer-links">
             <a href="https://www.agencyuplifted.de/impressum">Impressum</a>
             <a href="https://www.agencyuplifted.de/datenschutz">Datenschutz</a>

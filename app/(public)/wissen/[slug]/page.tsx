@@ -19,6 +19,20 @@ async function ladeVeroeffentlichtenEintrag(slug: string) {
   return data;
 }
 
+// Der Wissen-Autor ist aktuell bewusst fest an eine Person gebunden (siehe
+// mitarbeiter.ist_wissen_autor), unabhaengig davon, wer den Beitrag im
+// Editor angelegt hat -- Bio/Foto/LinkedIn sind im Backstage unter
+// /mitarbeiter aenderbar, ohne dass Code angefasst werden muss.
+async function ladeWissenAutor() {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("mitarbeiter")
+    .select("name, bio_rolle, bio_text, bio_foto_url, bio_linkedin_url")
+    .eq("ist_wissen_autor", true)
+    .maybeSingle();
+  return data;
+}
+
 async function basisUrl() {
   const h = await headers();
   const host = h.get("host") || "backstage.agencyuplifted.com";
@@ -29,12 +43,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const eintrag = await ladeVeroeffentlichtenEintrag(slug);
   if (!eintrag) return {};
-  const basis = await basisUrl();
+  const [basis, autor] = await Promise.all([basisUrl(), ladeWissenAutor()]);
   return {
     title: `${eintrag.titel} – AgencyUplifted`,
     description: eintrag.kurzfassung || undefined,
     alternates: { canonical: `${basis}/wissen/${eintrag.slug}` },
+    authors: autor ? [{ name: autor.name }] : undefined,
     openGraph: {
+      type: "article",
       title: eintrag.titel,
       description: eintrag.kurzfassung || undefined,
       images: eintrag.titelbild_url ? [eintrag.titelbild_url] : undefined,
@@ -42,9 +58,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-function baueJsonLd(eintrag: any) {
+function baueJsonLd(eintrag: any, autor: { name: string; bio_linkedin_url: string | null } | null) {
   const basis = {
     "@context": "https://schema.org",
+  };
+  const autorSchema = autor
+    ? {
+        "@type": "Person",
+        name: autor.name,
+        ...(autor.bio_linkedin_url ? { sameAs: [autor.bio_linkedin_url] } : {}),
+      }
+    : undefined;
+  const publisherSchema = {
+    "@type": "Organization",
+    name: "AgencyUplifted",
+    url: "https://www.agencyuplifted.de",
   };
   if (eintrag.typ === "faq") {
     const faqBloecke = (eintrag.bloecke as Block[]).filter((b) => b.typ === "faq") as Extract<Block, { typ: "faq" }>[];
@@ -74,6 +102,8 @@ function baueJsonLd(eintrag: any) {
     image: eintrag.titelbild_url || undefined,
     datePublished: eintrag.veroeffentlicht_am || eintrag.erstellt_am,
     dateModified: eintrag.aktualisiert_am,
+    ...(autorSchema ? { author: autorSchema } : {}),
+    publisher: publisherSchema,
   };
 }
 
@@ -150,12 +180,44 @@ function Baustein({ block, i }: { block: Block; i: number }) {
   }
 }
 
+function AutorBox({ autor }: { autor: { name: string; bio_rolle: string | null; bio_text: string | null; bio_foto_url: string | null; bio_linkedin_url: string | null } }) {
+  const initialen = autor.name
+    .split(" ")
+    .map((teil) => teil[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <div className="wp-author">
+      {autor.bio_foto_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={autor.bio_foto_url} alt={autor.name} className="wp-author-foto" />
+      ) : (
+        <div className="wp-author-foto wp-author-foto-platzhalter" aria-hidden="true">
+          {initialen}
+        </div>
+      )}
+      <div className="wp-author-info">
+        <div className="wp-author-name">{autor.name}</div>
+        {autor.bio_rolle && <div className="wp-author-rolle">{autor.bio_rolle}</div>}
+        {autor.bio_text && <p className="wp-author-bio">{autor.bio_text}</p>}
+        {autor.bio_linkedin_url && (
+          <a href={autor.bio_linkedin_url} target="_blank" rel="noopener noreferrer nofollow" className="wp-author-link">
+            LinkedIn-Profil ↗
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default async function WissenDetailSeite({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const eintrag = await ladeVeroeffentlichtenEintrag(slug);
   if (!eintrag) notFound();
 
-  const jsonLd = baueJsonLd(eintrag);
+  const autor = await ladeWissenAutor();
+  const jsonLd = baueJsonLd(eintrag, autor);
 
   return (
     <div className="wp-container">
@@ -166,6 +228,7 @@ export default async function WissenDetailSeite({ params }: { params: Promise<{ 
       <article className="wp-article">
         <div className="wp-article-meta">
           {formatDatum(eintrag.veroeffentlicht_am || eintrag.erstellt_am)}
+          {autor && <> · von {autor.name}</>}
         </div>
         <h1>{eintrag.titel}</h1>
         {eintrag.kurzfassung && <p className="wp-article-kurzfassung">{eintrag.kurzfassung}</p>}
@@ -181,6 +244,7 @@ export default async function WissenDetailSeite({ params }: { params: Promise<{ 
           <Baustein key={i} block={b} i={i} />
         ))}
       </article>
+      {autor && <AutorBox autor={autor} />}
     </div>
   );
 }

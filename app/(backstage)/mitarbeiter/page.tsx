@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { createMitarbeiter, deaktiviereMitarbeiter, setMitarbeiterZugang } from "@/lib/actions";
+import { createMitarbeiter, deaktiviereMitarbeiter, setMitarbeiterZugang, setMitarbeiterBio } from "@/lib/actions";
 import { formatDatum } from "@/lib/format";
 
 export default async function MitarbeiterPage() {
@@ -26,6 +26,7 @@ export default async function MitarbeiterPage() {
             <th>Erfasst</th>
             <th>Status</th>
             <th>Login-Zugang</th>
+            <th>Wissen-Autor</th>
             <th></th>
           </tr>
         </thead>
@@ -58,6 +59,30 @@ export default async function MitarbeiterPage() {
                 </details>
               </td>
               <td>
+                {m.ist_wissen_autor && <span className="au-badge au-badge-success">aktiv</span>}
+                <details style={{ marginTop: "0.5rem" }}>
+                  <summary style={{ color: "#102A4C", fontSize: "0.8rem", fontWeight: 600 }}>
+                    Bio bearbeiten
+                  </summary>
+                  <form action={setMitarbeiterBio} style={{ marginTop: "0.6rem", minWidth: 260 }}>
+                    <input type="hidden" name="id" value={m.id} />
+                    <label className="au-label">
+                      <input type="checkbox" name="ist_wissen_autor" defaultChecked={m.ist_wissen_autor} style={{ marginRight: "0.4rem" }} />
+                      Autor auf /wissen (nur einer aktiv)
+                    </label>
+                    <label className="au-label">Rolle</label>
+                    <input className="au-input" name="bio_rolle" defaultValue={m.bio_rolle || ""} placeholder="z. B. Gründer, AgencyUplifted" />
+                    <label className="au-label">Bio-Text</label>
+                    <textarea className="au-input" name="bio_text" defaultValue={m.bio_text || ""} rows={3} />
+                    <label className="au-label">Foto-URL</label>
+                    <input className="au-input" name="bio_foto_url" defaultValue={m.bio_foto_url || ""} placeholder="https://…" />
+                    <label className="au-label">LinkedIn-URL</label>
+                    <input className="au-input" name="bio_linkedin_url" defaultValue={m.bio_linkedin_url || ""} placeholder="https://www.linkedin.com/in/…" />
+                    <button type="submit" className="au-btn au-btn-secondary au-btn-sm" style={{ marginTop: "0.4rem" }}>Speichern</button>
+                  </form>
+                </details>
+              </td>
+              <td>
                 {m.aktiv && (
                   <form action={deaktiviereMitarbeiter}>
                     <input type="hidden" name="mitarbeiter_id" value={m.id} />
@@ -68,7 +93,7 @@ export default async function MitarbeiterPage() {
             </tr>
           ))}
           {!mitarbeiter?.length && (
-            <tr className="au-table-empty"><td colSpan={7}>Noch keine Mitarbeiter erfasst.</td></tr>
+            <tr className="au-table-empty"><td colSpan={8}>Noch keine Mitarbeiter erfasst.</td></tr>
           )}
         </tbody>
       </table>

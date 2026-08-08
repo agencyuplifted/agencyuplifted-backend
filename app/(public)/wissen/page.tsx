@@ -21,8 +21,18 @@ async function ladeVeroeffentlichteEintraege() {
   return data || [];
 }
 
+async function ladeWissenAutor() {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("mitarbeiter")
+    .select("name")
+    .eq("ist_wissen_autor", true)
+    .maybeSingle();
+  return data;
+}
+
 export default async function WissenUebersicht() {
-  const eintraege = await ladeVeroeffentlichteEintraege();
+  const [eintraege, autor] = await Promise.all([ladeVeroeffentlichteEintraege(), ladeWissenAutor()]);
 
   return (
     <div className="wp-container">
@@ -43,6 +53,7 @@ export default async function WissenUebersicht() {
               <Link href={`/wissen/${e.slug}`} className="wp-card-link">
                 <div className="wp-card-meta">
                   {e.veroeffentlicht_am ? formatDatum(e.veroeffentlicht_am) : formatDatum(e.aktualisiert_am)}
+                  {autor && <> · von {autor.name}</>}
                 </div>
                 <h2 className="wp-card-title">{e.titel}</h2>
                 {e.kurzfassung && <p className="wp-card-excerpt">{e.kurzfassung}</p>}

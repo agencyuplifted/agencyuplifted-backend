@@ -1341,6 +1341,42 @@ export async function setMitarbeiterZugang(formData: FormData) {
   redirect("/mitarbeiter");
 }
 
+// Wissen-Autor-Bio: zentral am Mitarbeiter-Datensatz gepflegt (siehe
+// app/(public)/wissen/[slug]/page.tsx), damit Name/Rolle/Bio/Foto/LinkedIn
+// aendbar sind, ohne Code anzufassen. "ist_wissen_autor" markiert, wessen
+// Bio auf den oeffentlichen Wissen-Seiten als Autor-Box erscheint.
+export async function setMitarbeiterBio(formData: FormData) {
+  const id = String(formData.get("id"));
+  const bioRolle = String(formData.get("bio_rolle") || "").trim();
+  const bioText = String(formData.get("bio_text") || "").trim();
+  const bioFotoUrl = String(formData.get("bio_foto_url") || "").trim();
+  const bioLinkedinUrl = String(formData.get("bio_linkedin_url") || "").trim();
+  const istWissenAutor = formData.get("ist_wissen_autor") === "on";
+
+  const supabase = getSupabaseAdmin();
+
+  if (istWissenAutor) {
+    // Nur eine Person kann gleichzeitig der Wissen-Autor sein.
+    await supabase.from("mitarbeiter").update({ ist_wissen_autor: false }).neq("id", id);
+  }
+
+  const { error } = await supabase
+    .from("mitarbeiter")
+    .update({
+      bio_rolle: bioRolle || null,
+      bio_text: bioText || null,
+      bio_foto_url: bioFotoUrl || null,
+      bio_linkedin_url: bioLinkedinUrl || null,
+      ist_wissen_autor: istWissenAutor,
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/mitarbeiter");
+  revalidatePath("/wissen");
+  redirect("/mitarbeiter");
+}
+
 // Einmaliges Setup fuer Resend-Tracking (Oeffnungen/Klicks) + Webhook-Empfang.
 // Aktiviert open/click-Tracking auf der agencyuplifted.de-Domain mit der
 // Tracking-Subdomain "links" (Markus richtet dafuer selbst den DNS-CNAME-Eintrag
