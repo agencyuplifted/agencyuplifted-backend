@@ -28,6 +28,8 @@ export type InsightsEintrag = {
   veroeffentlicht_am: string | null;
   erstellt_am: string;
   aktualisiert_am: string;
+  seo_titel: string | null;
+  seo_beschreibung: string | null;
 };
 
 const TYP_LABEL: Record<InsightsTyp, string> = {
@@ -90,6 +92,34 @@ export async function ladeKategorienFuerEintrag(eintragId: string) {
     .select("kategorie_id, ist_hauptkategorie")
     .eq("eintrag_id", eintragId);
   return data || [];
+}
+
+export async function ladeTags() {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase.from("insights_tags").select("id, name, slug").order("name");
+  return data || [];
+}
+
+export async function ladeTagsFuerEintrag(eintragId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase.from("insights_eintrag_tags").select("tag_id").eq("eintrag_id", eintragId);
+  return (data || []).map((r: any) => r.tag_id as string);
+}
+
+export function erzeugeTagSlug(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue")
+      .replace(/ß/g, "ss")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 60) || "tag"
+  );
 }
 
 export async function eindeutigerSlug(basisSlug: string, typ: InsightsTyp, ausgenommenId?: string): Promise<string> {

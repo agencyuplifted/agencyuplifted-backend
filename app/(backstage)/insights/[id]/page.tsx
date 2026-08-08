@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { speichereInsightsEintrag, setzeInsightsStatus } from "@/lib/actions";
-import { ladeInsightsEintrag, ladeKategorien, ladeKategorienFuerEintrag, insightsTypLabel } from "@/lib/insights";
+import { ladeInsightsEintrag, ladeKategorien, ladeKategorienFuerEintrag, ladeTags, ladeTagsFuerEintrag, insightsTypLabel } from "@/lib/insights";
 import BlockEditor from "../BlockEditor";
 
 const STATUS_FOLGE: Record<string, { status: string; label: string; klasse: string }[]> = {
@@ -35,11 +35,14 @@ export default async function InsightsDetailPage({
     );
   }
 
-  const [kategorien, eintragKategorien] = await Promise.all([
+  const [kategorien, eintragKategorien, tags, eintragTagIds] = await Promise.all([
     ladeKategorien(),
     ladeKategorienFuerEintrag(id),
+    ladeTags(),
+    ladeTagsFuerEintrag(id),
   ]);
   const aktuelleHauptkategorie = eintragKategorien.find((k: any) => k.ist_hauptkategorie)?.kategorie_id || "";
+  const aktuelleTagIds = new Set(eintragTagIds);
 
   return (
     <main>
@@ -96,13 +99,36 @@ export default async function InsightsDetailPage({
             </div>
           </div>
 
-          <label className="au-label">Hauptkategorie</label>
+          <label className="au-label">Content-Pillar (Hauptkategorie)</label>
           <select className="au-select" name="hauptkategorie_id" defaultValue={aktuelleHauptkategorie}>
             <option value="">Keine</option>
             {kategorien.map((k: any) => (
               <option key={k.id} value={k.id}>{k.name}</option>
             ))}
           </select>
+
+          <label className="au-label" style={{ marginTop: "1rem" }}>Tags</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem 1rem", marginBottom: "0.5rem" }}>
+            {tags.map((t: any) => (
+              <label key={t.id} style={{ fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                <input type="checkbox" name="tag_ids" value={t.id} defaultChecked={aktuelleTagIds.has(t.id)} />
+                {t.name}
+              </label>
+            ))}
+          </div>
+          <label className="au-label">Neue Tags (kommagetrennt, werden automatisch angelegt)</label>
+          <input className="au-input" name="neue_tags" placeholder="z. B. Onboarding, Skalierung" />
+        </div>
+
+        <div className="au-card">
+          <h2>SEO &amp; GEO</h2>
+          <label className="au-label">SEO-Titel (Google-Suchergebnis, Browser-Tab)</label>
+          <input className="au-input" name="seo_titel" defaultValue={eintrag.seo_titel || ""} placeholder={eintrag.titel} maxLength={70} />
+          <label className="au-label">SEO-Beschreibung (Google-Snippet)</label>
+          <textarea className="au-textarea" name="seo_beschreibung" rows={2} defaultValue={eintrag.seo_beschreibung || ""} placeholder={eintrag.kurzfassung || ""} maxLength={170} />
+          <p style={{ color: "var(--color-text-muted)", fontSize: "0.8rem", marginTop: "0.3rem" }}>
+            Leer lassen, um automatisch aus Titel/Einleitung zu übernehmen.
+          </p>
         </div>
 
         <div className="au-card">

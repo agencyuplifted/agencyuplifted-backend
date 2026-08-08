@@ -46,17 +46,72 @@ async function basisUrl() {
 // die importierten Contao-Artikel noch keiner insights_kategorien-Zeile
 // zugeordnet sind (0 Zuordnungen aktuell) -- sobald kategorisiert wird,
 // kann hier auf "gleiche Kategorie zuerst" umgestellt werden.
-async function ladeAehnlicheEintraege(aktuelleId: string, typ: string) {
+async function ladeKategorieUndTags(eintragId: string) {
   const supabase = getSupabaseAdmin();
-  const { data } = await supabase
-    .from("insights_eintraege")
-    .select("slug, titel, kurzfassung, veroeffentlicht_am")
-    .eq("status", "veroeffentlicht")
-    .eq("typ", typ)
-    .neq("id", aktuelleId)
-    .order("veroeffentlicht_am", { ascending: false, nullsFirst: false })
-    .limit(3);
-  return data || [];
+  const [{ data: kategorieZuordnung }, { data: tagZuordnungen }] = await Promise.all([
+    supabase
+      .from("insights_eintrag_kategorien")
+      .select("kategorie_id, insights_kategorien(name, slug)")
+      .eq("eintrag_id", eintragId)
+      .eq("ist_hauptkategorie", true)
+      .maybeSingle(),
+    supabase
+      .from("insights_eintrag_tags")
+      .select("tag_id, insights_tags(name, slug)")
+      .eq("eintrag_id", eintragId),
+  ]);
+  const kategorie = kategorieZuordnung?.insights_kategorien
+    ? { id: kategorieZuordnung.kategorie_id as string, ...(kategorieZuordnung.insights_kategorien as any) }
+    : null;
+  const tags = (tagZuordnungen || [])
+    .map((z: any) => z.insights_tags)
+    .filter(Boolean) as { name: string; slug: string }[];
+  return { kategorie, tags };
+}
+
+// "Aehnliche Beitraege" bevorzugt Artikel aus demselben Content-Pillar
+// (thematische Naehe fuer Leser & Topic-Cluster-Signal fuer SEO/GEO) und
+// fuellt bei Bedarf mit den neuesten Artikeln auf.
+async function ladeAehnlicheEintraege(aktuelleId: string, typ: string, kategorieId: string | null) {
+  const supabase = getSupabaseAdmin();
+  const gefunden = new Map<string, { slug: string; titel: string; kurzfassung: string | null; veroeffentlicht_am: string | null }>();
+
+  if (kategorieId) {
+    const { data: eintragIdsInKategorie } = await supabase
+      .from("insights_eintrag_kategorien")
+      .select("eintrag_id")
+      .eq("kategorie_id", kategorieId)
+      .eq("ist_hauptkategorie", true);
+    const ids = (eintragIdsInKategorie || []).map((r: any) => r.eintrag_id).filter((i: string) => i !== aktuelleId);
+    if (ids.length > 0) {
+      const { data } = await supabase
+        .from("insights_eintraege")
+        .select("slug, titel, kurzfassung, veroeffentlicht_am")
+        .eq("status", "veroeffentlicht")
+        .eq("typ", typ)
+        .in("id", ids)
+        .order("veroeffentlicht_am", { ascending: false, nullsFirst: false })
+        .limit(3);
+      for (const a of data || []) gefunden.set(a.slug, a);
+    }
+  }
+
+  if (gefunden.size < 3) {
+    const { data } = await supabase
+      .from("insights_eintraege")
+      .select("slug, titel, kurzfassung, veroeffentlicht_am")
+      .eq("status", "veroeffentlicht")
+      .eq("typ", typ)
+      .neq("id", aktuelleId)
+      .order("veroeffentlicht_am", { ascending: false, nullsFirst: false })
+      .limit(3 + gefunden.size);
+    for (const a of data || []) {
+      if (gefunden.size >= 3) break;
+      if (!gefunden.has(a.slug)) gefunden.set(a.slug, a);
+    }
+  }
+
+  return Array.from(gefunden.values()).slice(0, 3);
 }
 
 function berechneLesezeit(bloecke: Block[]): number {
@@ -79,24 +134,27 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const eintrag = await ladeVeroeffentlichtenEintrag(slug);
   if (!eintrag) return {};
   const [basis, autor] = await Promise.all([basisUrl(), ladeWissenAutor()]);
+  const seoTitel = eintrag.seo_titel || `${eintrag.titel} – AgencyUplifted`;
+  const seoBeschreibung = eintrag.seo_beschreibung || eintrag.kurzfassung || undefined;
+  const ogBild = `${basis}/wissen/${eintrag.slug}/opengraph-image`;
   return {
-    title: `${eintrag.titel} – AgencyUplifted`,
-    description: eintrag.kurzfassung || undefined,
+    title: seoTitel,
+    description: seoBeschreibung,
     alternates: { canonical: `${basis}/wissen/${eintrag.slug}` },
     authors: autor ? [{ name: autor.name }] : undefined,
     openGraph: {
       type: "article",
       title: eintrag.titel,
-      description: eintrag.kurzfassung || undefined,
-      images: eintrag.titelbild_url ? [eintrag.titelbild_url] : undefined,
+      description: seoBeschreibung,
+      images: [ogBild],
       publishedTime: eintrag.veroeffentlicht_am || eintrag.erstellt_am,
       modifiedTime: eintrag.aktualisiert_am,
     },
     twitter: {
-      card: eintrag.titelbild_url ? "summary_large_image" : "summary",
+      card: "summary_large_image",
       title: eintrag.titel,
-      description: eintrag.kurzfassung || undefined,
-      images: eintrag.titelbild_url ? [eintrag.titelbild_url] : undefined,
+      description: seoBeschreibung,
+      images: [ogBild],
     },
   };
 }
@@ -300,10 +358,12 @@ export default async function WissenDetailSeite({ params }: { params: Promise<{ 
   if (!eintrag) notFound();
 
   const basis = await basisUrl();
-  const [autor, aehnliche] = await Promise.all([
+  const [autor, kategorieUndTags] = await Promise.all([
     ladeWissenAutor(),
-    ladeAehnlicheEintraege(eintrag.id, eintrag.typ),
+    ladeKategorieUndTags(eintrag.id),
   ]);
+  const { kategorie, tags } = kategorieUndTags;
+  const aehnliche = await ladeAehnlicheEintraege(eintrag.id, eintrag.typ, kategorie?.id || null);
   const jsonLd = baueJsonLd(eintrag, autor, basis);
   const lesezeit = berechneLesezeit(eintrag.bloecke as Block[]);
   const zuletztAktualisiert =
@@ -332,6 +392,11 @@ export default async function WissenDetailSeite({ params }: { params: Promise<{ 
           <> · {lesezeit} Min. Lesezeit</>
           {zuletztAktualisiert && <> · aktualisiert am {formatDatum(zuletztAktualisiert)}</>}
         </div>
+        {kategorie && (
+          <Link href={`/wissen?kategorie=${kategorie.slug}`} className="wp-pillar-badge">
+            {kategorie.name}
+          </Link>
+        )}
         <h1>{eintrag.titel}</h1>
         {eintrag.kurzfassung && <p className="wp-article-kurzfassung">{eintrag.kurzfassung}</p>}
         {eintrag.titelbild_url && (
@@ -346,6 +411,15 @@ export default async function WissenDetailSeite({ params }: { params: Promise<{ 
           <Baustein key={i} block={b} i={i} />
         ))}
       </article>
+      {tags.length > 0 && (
+        <div className="wp-tags" aria-label="Themen">
+          {tags.map((t) => (
+            <span key={t.slug} className="wp-tag-chip">
+              {t.name}
+            </span>
+          ))}
+        </div>
+      )}
       {autor && <AutorBox autor={autor} />}
       {aehnliche.length > 0 && (
         <section className="wp-related" aria-labelledby="wp-related-heading">

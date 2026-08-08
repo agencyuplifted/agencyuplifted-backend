@@ -13,7 +13,7 @@ import { renderPlatzhalter } from "./funnel";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
-import { erzeugeSlug, eindeutigerSlug } from "./insights";
+import { erzeugeSlug, eindeutigerSlug, erzeugeTagSlug } from "./insights";
 
 // Ermittelt Anrede + Quelle fuer ein Formularfeld: explizite Angabe (Herr/Frau/
 // Divers) gilt als 'manuell' und wird nie durch die Namens-Heuristik ersetzt.
@@ -1796,6 +1796,10 @@ export async function speichereInsightsEintrag(formData: FormData) {
   const titelbildAlt = String(formData.get("titelbild_alt") || "").trim() || null;
   const bloeckeRoh = String(formData.get("bloecke") || "[]");
   const hauptkategorieId = String(formData.get("hauptkategorie_id") || "") || null;
+  const seoTitel = String(formData.get("seo_titel") || "").trim() || null;
+  const seoBeschreibung = String(formData.get("seo_beschreibung") || "").trim() || null;
+  const tagIds = formData.getAll("tag_ids").map((v) => String(v)).filter(Boolean);
+  const neueTagsRoh = String(formData.get("neue_tags") || "").trim();
   if (!titel) throw new Error("Bitte einen Titel angeben.");
 
   let bloecke: unknown;
@@ -1808,7 +1812,7 @@ export async function speichereInsightsEintrag(formData: FormData) {
   const supabase = getSupabaseAdmin();
 
   // Versions-Snapshot vor dem Ueberschreiben sichern
-  const { data: bisher } = await supabase.from("insights_eintraege").select("titel, bloecke").eq("id", id).single();
+  const { data: bisher } = await supabase.from("insights_eintraege").select("titel, bloecke, slug").eq("id", id).single();
   if (bisher) {
     const benutzer = await getAktuellerBenutzer();
     await supabase.from("insights_eintrag_versionen").insert({
@@ -1821,7 +1825,15 @@ export async function speichereInsightsEintrag(formData: FormData) {
 
   const { error } = await supabase
     .from("insights_eintraege")
-    .update({ titel, kurzfassung, titelbild_url: titelbildUrl, titelbild_alt: titelbildAlt, bloecke })
+    .update({
+      titel,
+      kurzfassung,
+      titelbild_url: titelbildUrl,
+      titelbild_alt: titelbildAlt,
+      bloecke,
+      seo_titel: seoTitel,
+      seo_beschreibung: seoBeschreibung,
+    })
     .eq("id", id);
   if (error) throw new Error(error.message);
 
@@ -1832,8 +1844,32 @@ export async function speichereInsightsEintrag(formData: FormData) {
       .insert({ eintrag_id: id, kategorie_id: hauptkategorieId, ist_hauptkategorie: true });
   }
 
+  // Neue Tags anlegen (kommagetrennt eingegeben) und mit anhaengen
+  const alleTagIds = [...tagIds];
+  if (neueTagsRoh) {
+    const namen = neueTagsRoh.split(",").map((n) => n.trim()).filter(Boolean);
+    for (const name of namen) {
+      const slug = erzeugeTagSlug(name);
+      const { data: neuerTag, error: tagFehler } = await supabase
+        .from("insights_tags")
+        .upsert({ name, slug }, { onConflict: "slug" })
+        .select("id")
+        .single();
+      if (!tagFehler && neuerTag) alleTagIds.push(neuerTag.id);
+    }
+  }
+
+  await supabase.from("insights_eintrag_tags").delete().eq("eintrag_id", id);
+  if (alleTagIds.length > 0) {
+    await supabase
+      .from("insights_eintrag_tags")
+      .insert(alleTagIds.map((tagId) => ({ eintrag_id: id, tag_id: tagId })));
+  }
+
   revalidatePath("/insights");
   revalidatePath(`/insights/${id}`);
+  revalidatePath("/wissen");
+  if (bisher?.slug) revalidatePath(`/wissen/${bisher.slug}`);
   redirect(`/insights/${id}?gespeichert=1`);
 }
 
