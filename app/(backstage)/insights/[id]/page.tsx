@@ -48,6 +48,15 @@ export default async function InsightsDetailPage({
       <p style={{ color: "var(--color-text-muted)" }}>
         {insightsTypLabel(eintrag.typ)} · Slug: {eintrag.slug} · Sprache: {eintrag.sprache} · Status: {eintrag.status}
         {eintrag.quelle_typ && <> · Quelle: {eintrag.quelle_typ}</>}
+        {eintrag.status === "veroeffentlicht" && (
+          <>
+            {" "}
+            ·{" "}
+            <a href={`/wissen/${eintrag.slug}`} target="_blank" rel="noopener noreferrer">
+              Live ansehen ↗
+            </a>
+          </>
+        )}
       </p>
 
       {gespeichert && <div className="au-banner au-banner-success">Gespeichert.</div>}

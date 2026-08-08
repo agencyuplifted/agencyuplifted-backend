@@ -1,8 +1,11 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { Block } from "@/lib/insights";
+import { formatDatum } from "@/lib/format";
 import type { Metadata } from "next";
 
 async function ladeVeroeffentlichtenEintrag(slug: string) {
@@ -16,14 +19,21 @@ async function ladeVeroeffentlichtenEintrag(slug: string) {
   return data;
 }
 
+async function basisUrl() {
+  const h = await headers();
+  const host = h.get("host") || "backstage.agencyuplifted.com";
+  return `https://${host}`;
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const eintrag = await ladeVeroeffentlichtenEintrag(slug);
   if (!eintrag) return {};
+  const basis = await basisUrl();
   return {
-    title: eintrag.titel,
+    title: `${eintrag.titel} – AgencyUplifted`,
     description: eintrag.kurzfassung || undefined,
-    alternates: { canonical: `https://backstage.agencyuplifted.com/oeffentlich/${eintrag.slug}` },
+    alternates: { canonical: `${basis}/wissen/${eintrag.slug}` },
     openGraph: {
       title: eintrag.titel,
       description: eintrag.kurzfassung || undefined,
@@ -82,7 +92,7 @@ function Baustein({ block, i }: { block: Block; i: number }) {
   switch (block.typ) {
     case "absatz":
       return (
-        <p key={i} style={{ margin: "0 0 1.25em", lineHeight: 1.7 }}>
+        <p key={i} style={{ margin: "0 0 1.25em", lineHeight: 1.7, color: "var(--color-text)" }}>
           {renderInline(block.text)}
         </p>
       );
@@ -110,9 +120,9 @@ function Baustein({ block, i }: { block: Block; i: number }) {
       return (
         <blockquote
           key={i}
-          style={{ margin: "0 0 1.25em", padding: "0.25em 0 0.25em 1.25em", borderLeft: "3px solid #d3d1c7" }}
+          style={{ margin: "0 0 1.25em", padding: "0.25em 0 0.25em 1.25em", borderLeft: "3px solid var(--color-border-strong)" }}
         >
-          <p style={{ margin: 0, lineHeight: 1.7, fontStyle: "italic" }}>{renderInline(block.text)}</p>
+          <p style={{ margin: 0, lineHeight: 1.7, fontStyle: "italic", color: "var(--color-text)" }}>{renderInline(block.text)}</p>
           {block.quelle && <cite style={{ display: "block", marginTop: "0.5em", fontSize: "0.9em" }}>— {block.quelle}</cite>}
         </blockquote>
       );
@@ -122,7 +132,7 @@ function Baustein({ block, i }: { block: Block; i: number }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={block.url} alt={block.alt} style={{ width: "100%", height: "auto", display: "block" }} />
           {block.bildunterschrift && (
-            <figcaption style={{ fontSize: "0.85em", color: "#5f5e5a", marginTop: "0.5em" }}>
+            <figcaption style={{ fontSize: "0.85em", color: "var(--color-text-faint)", marginTop: "0.5em" }}>
               {block.bildunterschrift}
             </figcaption>
           )}
@@ -140,7 +150,7 @@ function Baustein({ block, i }: { block: Block; i: number }) {
   }
 }
 
-export default async function OeffentlicheInsightsSeite({ params }: { params: Promise<{ slug: string }> }) {
+export default async function WissenDetailSeite({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const eintrag = await ladeVeroeffentlichtenEintrag(slug);
   if (!eintrag) notFound();
@@ -148,17 +158,29 @@ export default async function OeffentlicheInsightsSeite({ params }: { params: Pr
   const jsonLd = baueJsonLd(eintrag);
 
   return (
-    <article style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem" }}>
+    <div className="wp-container">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <h1>{eintrag.titel}</h1>
-      {eintrag.kurzfassung && <p style={{ color: "#5f5e5a" }}>{eintrag.kurzfassung}</p>}
-      {eintrag.titelbild_url && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={eintrag.titelbild_url} alt={eintrag.titelbild_alt || ""} style={{ width: "100%", height: "auto" }} />
-      )}
-      {(eintrag.bloecke as Block[]).map((b, i) => (
-        <Baustein key={i} block={b} i={i} />
-      ))}
-    </article>
+      <Link href="/wissen" className="wp-back">
+        ← Zurück zum Wissen
+      </Link>
+      <article className="wp-article">
+        <div className="wp-article-meta">
+          {formatDatum(eintrag.veroeffentlicht_am || eintrag.erstellt_am)}
+        </div>
+        <h1>{eintrag.titel}</h1>
+        {eintrag.kurzfassung && <p className="wp-article-kurzfassung">{eintrag.kurzfassung}</p>}
+        {eintrag.titelbild_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={eintrag.titelbild_url}
+            alt={eintrag.titelbild_alt || ""}
+            className="wp-article-image"
+          />
+        )}
+        {(eintrag.bloecke as Block[]).map((b, i) => (
+          <Baustein key={i} block={b} i={i} />
+        ))}
+      </article>
+    </div>
   );
 }

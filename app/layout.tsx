@@ -1,6 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { getAktuellerBenutzer } from "@/lib/auth";
-import Sidebar from "./Sidebar";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -30,19 +28,14 @@ export const viewport: Viewport = {
   themeColor: "#102a4c",
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const benutzer = await getAktuellerBenutzer();
-
+// Bewusst schlank: dieses Root-Layout liefert nur html/body + globale
+// Styles. Die eigentliche Backstage-Optik (Sidebar, au-container) lebt in
+// app/(backstage)/layout.tsx, damit /login und die oeffentlichen
+// /wissen-Seiten NICHT in der Admin-Sidebar landen.
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="de">
-      <body>
-        <div className="au-app">
-          <Sidebar benutzerName={benutzer?.name} />
-          <div className="au-main">
-            <div className="au-container">{children}</div>
-          </div>
-        </div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

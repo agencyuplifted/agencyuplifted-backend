@@ -1,0 +1,191 @@
+/* Eigenstaendige, schlanke Optik fuer den oeffentlichen Wissen-Bereich --
+   bewusst getrennt von den au-* Backstage-Klassen (die sind fuer App-Chrome
+   und Tabellen gedacht, nicht fuer Lesefluss). Nutzt dieselben CSS-Variablen
+   wie das Backstage-Design (app/globals.css), damit die Marke konsistent
+   bleibt. */
+
+.wp-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.wp-header {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.wp-header-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1.15rem 1.5rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wp-brand {
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--color-accent);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+
+.wp-brand-sub {
+  color: var(--color-text-faint);
+  font-size: 0.85rem;
+  margin-left: 0.5rem;
+  font-weight: 400;
+}
+
+.wp-main {
+  flex: 1;
+  padding: 3rem 1.5rem 5rem;
+}
+
+.wp-container {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.wp-footer {
+  border-top: 1px solid var(--color-border);
+  padding: 2rem 1.5rem;
+}
+
+.wp-footer-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-text-faint);
+  font-size: 0.8rem;
+}
+
+.wp-footer-links {
+  display: flex;
+  gap: 1.1rem;
+}
+
+.wp-footer-links a {
+  color: var(--color-text-faint);
+  text-decoration: none;
+}
+
+.wp-footer-links a:hover {
+  color: var(--color-text-muted);
+}
+
+/* Uebersicht */
+
+.wp-intro h1 {
+  font-size: 1.9rem;
+  margin: 0 0 0.6rem;
+}
+
+.wp-intro p {
+  max-width: 58ch;
+}
+
+.wp-list {
+  list-style: none;
+  margin: 2.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wp-list-item {
+  border-top: 1px solid var(--color-border);
+}
+
+.wp-list-item:last-child {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.wp-card-link {
+  display: block;
+  padding: 1.5rem 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.wp-card-link:hover .wp-card-title {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.wp-card-meta {
+  font-size: 0.78rem;
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.4rem;
+}
+
+.wp-card-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0 0 0.4rem;
+}
+
+.wp-card-excerpt {
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.wp-empty {
+  padding: 3rem 0;
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border);
+  margin-top: 2.5rem;
+}
+
+/* Detailseite */
+
+.wp-back {
+  display: inline-block;
+  margin-bottom: 2rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.wp-back:hover {
+  color: var(--color-accent);
+}
+
+.wp-article-meta {
+  font-size: 0.78rem;
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.6rem;
+}
+
+.wp-article h1 {
+  font-size: 1.9rem;
+  margin: 0 0 0.75rem;
+}
+
+.wp-article-kurzfassung {
+  color: var(--color-text-muted);
+  font-size: 1.05rem;
+  margin: 0 0 2rem;
+}
+
+.wp-article-image {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  margin-bottom: 2rem;
+  display: block;
+}

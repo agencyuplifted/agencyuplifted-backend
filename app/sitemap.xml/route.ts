@@ -1,10 +1,12 @@
+import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-const BASIS_URL = "https://backstage.agencyuplifted.com";
+export async function GET(request: NextRequest) {
+  const host = request.headers.get("host") || "backstage.agencyuplifted.com";
+  const basisUrl = `https://${host}`;
 
-export async function GET() {
   const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from("insights_eintraege")
@@ -15,7 +17,7 @@ export async function GET() {
   const urls = eintraege
     .map(
       (e: any) =>
-        `  <url>\n    <loc>${BASIS_URL}/oeffentlich/${e.slug}</loc>\n    <lastmod>${new Date(
+        `  <url>\n    <loc>${basisUrl}/wissen/${e.slug}</loc>\n    <lastmod>${new Date(
           e.aktualisiert_am
         ).toISOString()}</lastmod>\n  </url>`
     )
