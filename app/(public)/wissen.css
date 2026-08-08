@@ -9,36 +9,115 @@
   display: flex;
   flex-direction: column;
   background: var(--color-bg);
+  font-family: var(--font-public-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* Header 1:1 an agencyuplifted-seminare.onepage.me angelehnt (Logo, Nav,
+   Masse, Farben), damit Wissen-Seiten und Onepage-Marketingseite wie aus
+   einem Guss wirken. Siehe WissenHeader.tsx fuer die Struktur. */
 .wp-header {
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(16, 42, 76, 0.1);
 }
 
 .wp-header-inner {
-  max-width: 760px;
+  max-width: 1250px;
   margin: 0 auto;
-  padding: 1.15rem 1.5rem;
+  padding: 14px 24px;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
-.wp-brand {
-  font-weight: 600;
+.wp-logo {
+  display: flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.wp-logo-img {
+  height: 18px;
+  width: auto;
+  display: block;
+}
+
+.wp-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.wp-nav-link {
+  font-family: var(--font-archivo), sans-serif;
+  font-weight: 700;
   font-size: 1.05rem;
   color: var(--color-accent);
   text-decoration: none;
-  letter-spacing: -0.01em;
 }
 
-.wp-brand-sub {
-  color: var(--color-text-faint);
-  font-size: 0.85rem;
-  margin-left: 0.5rem;
-  font-weight: 400;
+.wp-nav-link:hover {
+  opacity: 0.75;
+}
+
+.wp-nav-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.wp-nav-toggle-bar {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--color-accent);
+  border-radius: 1px;
+}
+
+.wp-nav-mobile {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .wp-nav-links {
+    display: none;
+  }
+
+  .wp-nav-toggle {
+    display: flex;
+  }
+
+  .wp-nav-mobile {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid rgba(16, 42, 76, 0.1);
+    padding: 0.5rem 24px 1rem;
+  }
+
+  .wp-nav-mobile-link {
+    font-family: var(--font-archivo), sans-serif;
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--color-accent);
+    text-decoration: none;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(16, 42, 76, 0.08);
+  }
+
+  .wp-nav-mobile-link:last-child {
+    border-bottom: none;
+  }
 }
 
 .wp-main {
