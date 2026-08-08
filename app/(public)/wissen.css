@@ -52,8 +52,12 @@
 }
 
 .wp-nav-link {
-  font-family: var(--font-archivo), sans-serif;
-  font-weight: 700;
+  /* Auf onepage.me steht --font-kit-family fuer normale Nav-Punkte auf
+     'Public Sans' / 400 -- Archivo/700 ist dort nur fuer den CTA-Button
+     reserviert (--font-kit-header-font). Per CSS-Custom-Property direkt auf
+     der Seite verifiziert, nicht nur optisch geschaetzt. */
+  font-family: var(--font-public-sans), sans-serif;
+  font-weight: 400;
   font-size: 0.875rem;
   color: var(--color-accent);
   text-decoration: none;
@@ -207,8 +211,8 @@
     border: none;
     cursor: pointer;
     text-align: left;
-    font-family: var(--font-archivo), sans-serif;
-    font-weight: 700;
+    font-family: var(--font-public-sans), sans-serif;
+    font-weight: 400;
     font-size: 1.05rem;
     color: var(--color-accent);
     text-decoration: none;
