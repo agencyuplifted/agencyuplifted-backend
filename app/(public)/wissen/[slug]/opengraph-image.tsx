@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+export const runtime = "edge";
 export const alt = "AgencyUplifted Wissen";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
