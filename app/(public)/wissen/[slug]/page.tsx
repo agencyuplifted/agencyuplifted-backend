@@ -136,7 +136,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const [basis, autor] = await Promise.all([basisUrl(), ladeWissenAutor()]);
   const seoTitel = eintrag.seo_titel || `${eintrag.titel} – AgencyUplifted`;
   const seoBeschreibung = eintrag.seo_beschreibung || eintrag.kurzfassung || undefined;
-  const ogBild = `${basis}/wissen/${eintrag.slug}/opengraph-image`;
+  // Das Social-Share-Bild wird NICHT hier verlinkt, sondern automatisch von
+  // Next.js ueber die Datei-Konvention opengraph-image.tsx im selben Ordner
+  // aufgeloest und in die Metadaten eingehaengt -- inkl. des internen
+  // Hash-Suffixes, den Next.js Metadata-Routen innerhalb von Routengruppen
+  // wie (public) automatisch vergibt (z. B. /opengraph-image-1tiezv). Eine
+  // manuell zusammengesetzte URL ohne diesen Suffix wuerde 404en.
   return {
     title: seoTitel,
     description: seoBeschreibung,
@@ -146,7 +151,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       type: "article",
       title: eintrag.titel,
       description: seoBeschreibung,
-      images: [ogBild],
       publishedTime: eintrag.veroeffentlicht_am || eintrag.erstellt_am,
       modifiedTime: eintrag.aktualisiert_am,
     },
@@ -154,7 +158,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       card: "summary_large_image",
       title: eintrag.titel,
       description: seoBeschreibung,
-      images: [ogBild],
     },
   };
 }
