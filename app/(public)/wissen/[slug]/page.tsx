@@ -39,6 +39,41 @@ async function basisUrl() {
   return `https://${host}`;
 }
 
+// "Aehnliche Beitraege": haelt Leser auf der Seite (Dwell Time/Engagement)
+// und verteilt internen Link-Equity zwischen Artikeln -- beides fuer
+// klassisches SEO wie fuer GEO relevant (Themencluster/Kontext fuer LLMs).
+// Sortiert aktuell nach Veroeffentlichungsdatum, nicht nach Kategorie, weil
+// die importierten Contao-Artikel noch keiner insights_kategorien-Zeile
+// zugeordnet sind (0 Zuordnungen aktuell) -- sobald kategorisiert wird,
+// kann hier auf "gleiche Kategorie zuerst" umgestellt werden.
+async function ladeAehnlicheEintraege(aktuelleId: string, typ: string) {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("insights_eintraege")
+    .select("slug, titel, kurzfassung, veroeffentlicht_am")
+    .eq("status", "veroeffentlicht")
+    .eq("typ", typ)
+    .neq("id", aktuelleId)
+    .order("veroeffentlicht_am", { ascending: false, nullsFirst: false })
+    .limit(3);
+  return data || [];
+}
+
+function berechneLesezeit(bloecke: Block[]): number {
+  const woerter = bloecke
+    .map((b) => {
+      if (b.typ === "absatz" || b.typ === "zitat") return b.text;
+      if (b.typ === "ueberschrift") return b.text;
+      if (b.typ === "liste") return b.punkte.join(" ");
+      if (b.typ === "faq") return `${b.frage} ${b.antwort}`;
+      return "";
+    })
+    .join(" ")
+    .split(/\s+/)
+    .filter(Boolean).length;
+  return Math.max(1, Math.round(woerter / 200));
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const eintrag = await ladeVeroeffentlichtenEintrag(slug);
@@ -54,14 +89,50 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: eintrag.titel,
       description: eintrag.kurzfassung || undefined,
       images: eintrag.titelbild_url ? [eintrag.titelbild_url] : undefined,
+      publishedTime: eintrag.veroeffentlicht_am || eintrag.erstellt_am,
+      modifiedTime: eintrag.aktualisiert_am,
+    },
+    twitter: {
+      card: eintrag.titelbild_url ? "summary_large_image" : "summary",
+      title: eintrag.titel,
+      description: eintrag.kurzfassung || undefined,
+      images: eintrag.titelbild_url ? [eintrag.titelbild_url] : undefined,
     },
   };
 }
 
-function baueJsonLd(eintrag: any, autor: { name: string; bio_linkedin_url: string | null } | null) {
+function baueJsonLd(
+  eintrag: any,
+  autor: { name: string; bio_linkedin_url: string | null } | null,
+  basisUrl: string
+) {
   const basis = {
     "@context": "https://schema.org",
   };
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Wissen", item: `${basisUrl}/wissen` },
+      { "@type": "ListItem", position: 2, name: eintrag.titel, item: `${basisUrl}/wissen/${eintrag.slug}` },
+    ],
+  };
+  // Eingebettete faq-Bausteine (auch in normalen Artikeln moeglich) zaehlen
+  // fuer Google/KI-Assistenten als eigenstaendige FAQPage-Struktur, zusaetzlich
+  // zum Article-Schema -- mehrere @type-Bloecke auf einer Seite sind zulaessig.
+  const faqBausteine = (eintrag.bloecke as Block[]).filter((b) => b.typ === "faq") as Extract<Block, { typ: "faq" }>[];
+  const eingebettetesFaqSchema =
+    eintrag.typ !== "faq" && faqBausteine.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: faqBausteine.map((f) => ({
+            "@type": "Question",
+            name: f.frage,
+            acceptedAnswer: { "@type": "Answer", text: f.antwort },
+          })),
+        }
+      : null;
   const autorSchema = autor
     ? {
         "@type": "Person",
@@ -77,33 +148,45 @@ function baueJsonLd(eintrag: any, autor: { name: string; bio_linkedin_url: strin
   if (eintrag.typ === "faq") {
     const faqBloecke = (eintrag.bloecke as Block[]).filter((b) => b.typ === "faq") as Extract<Block, { typ: "faq" }>[];
     return {
-      ...basis,
-      "@type": "FAQPage",
-      mainEntity: faqBloecke.map((f) => ({
-        "@type": "Question",
-        name: f.frage,
-        acceptedAnswer: { "@type": "Answer", text: f.antwort },
-      })),
+      artikel: {
+        ...basis,
+        "@type": "FAQPage",
+        mainEntity: faqBloecke.map((f) => ({
+          "@type": "Question",
+          name: f.frage,
+          acceptedAnswer: { "@type": "Answer", text: f.antwort },
+        })),
+      },
+      breadcrumb: breadcrumbSchema,
+      faq: null,
     };
   }
   if (eintrag.typ === "glossar") {
     return {
-      ...basis,
-      "@type": "DefinedTerm",
-      name: eintrag.titel,
-      description: eintrag.kurzfassung || "",
+      artikel: {
+        ...basis,
+        "@type": "DefinedTerm",
+        name: eintrag.titel,
+        description: eintrag.kurzfassung || "",
+      },
+      breadcrumb: breadcrumbSchema,
+      faq: null,
     };
   }
   return {
-    ...basis,
-    "@type": "Article",
-    headline: eintrag.titel,
-    description: eintrag.kurzfassung || undefined,
-    image: eintrag.titelbild_url || undefined,
-    datePublished: eintrag.veroeffentlicht_am || eintrag.erstellt_am,
-    dateModified: eintrag.aktualisiert_am,
-    ...(autorSchema ? { author: autorSchema } : {}),
-    publisher: publisherSchema,
+    artikel: {
+      ...basis,
+      "@type": "Article",
+      headline: eintrag.titel,
+      description: eintrag.kurzfassung || undefined,
+      image: eintrag.titelbild_url || undefined,
+      datePublished: eintrag.veroeffentlicht_am || eintrag.erstellt_am,
+      dateModified: eintrag.aktualisiert_am,
+      ...(autorSchema ? { author: autorSchema } : {}),
+      publisher: publisherSchema,
+    },
+    breadcrumb: breadcrumbSchema,
+    faq: eingebettetesFaqSchema,
   };
 }
 
@@ -216,19 +299,38 @@ export default async function WissenDetailSeite({ params }: { params: Promise<{ 
   const eintrag = await ladeVeroeffentlichtenEintrag(slug);
   if (!eintrag) notFound();
 
-  const autor = await ladeWissenAutor();
-  const jsonLd = baueJsonLd(eintrag, autor);
+  const basis = await basisUrl();
+  const [autor, aehnliche] = await Promise.all([
+    ladeWissenAutor(),
+    ladeAehnlicheEintraege(eintrag.id, eintrag.typ),
+  ]);
+  const jsonLd = baueJsonLd(eintrag, autor, basis);
+  const lesezeit = berechneLesezeit(eintrag.bloecke as Block[]);
+  const zuletztAktualisiert =
+    eintrag.aktualisiert_am &&
+    eintrag.veroeffentlicht_am &&
+    new Date(eintrag.aktualisiert_am).getTime() - new Date(eintrag.veroeffentlicht_am).getTime() > 1000 * 60 * 60 * 24
+      ? eintrag.aktualisiert_am
+      : null;
 
   return (
     <div className="wp-container">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <Link href="/wissen" className="wp-back">
-        ← Zurück zum Wissen
-      </Link>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.artikel) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.breadcrumb) }} />
+      {jsonLd.faq && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.faq) }} />
+      )}
+      <nav className="wp-breadcrumbs" aria-label="Breadcrumb">
+        <Link href="/wissen">Wissen</Link>
+        <span aria-hidden="true"> / </span>
+        <span>{eintrag.titel}</span>
+      </nav>
       <article className="wp-article">
         <div className="wp-article-meta">
           {formatDatum(eintrag.veroeffentlicht_am || eintrag.erstellt_am)}
           {autor && <> · von {autor.name}</>}
+          <> · {lesezeit} Min. Lesezeit</>
+          {zuletztAktualisiert && <> · aktualisiert am {formatDatum(zuletztAktualisiert)}</>}
         </div>
         <h1>{eintrag.titel}</h1>
         {eintrag.kurzfassung && <p className="wp-article-kurzfassung">{eintrag.kurzfassung}</p>}
@@ -245,6 +347,21 @@ export default async function WissenDetailSeite({ params }: { params: Promise<{ 
         ))}
       </article>
       {autor && <AutorBox autor={autor} />}
+      {aehnliche.length > 0 && (
+        <section className="wp-related" aria-labelledby="wp-related-heading">
+          <h2 id="wp-related-heading" className="wp-related-heading">Ähnliche Beiträge</h2>
+          <ul className="wp-related-list">
+            {aehnliche.map((a) => (
+              <li key={a.slug}>
+                <Link href={`/wissen/${a.slug}`} className="wp-related-link">
+                  <span className="wp-related-title">{a.titel}</span>
+                  {a.kurzfassung && <span className="wp-related-excerpt">{a.kurzfassung}</span>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

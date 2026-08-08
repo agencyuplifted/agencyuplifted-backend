@@ -259,3 +259,74 @@
   color: var(--color-accent);
   text-decoration: underline;
 }
+
+/* Breadcrumbs */
+
+.wp-breadcrumbs {
+  margin-bottom: 1.25rem;
+  font-size: 0.82rem;
+  color: var(--color-text-faint);
+}
+
+.wp-breadcrumbs a {
+  color: var(--color-text-faint);
+  text-decoration: none;
+}
+
+.wp-breadcrumbs a:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+/* Aehnliche Beitraege */
+
+.wp-related {
+  margin-top: 3rem;
+}
+
+.wp-related-heading {
+  font-size: 1.1rem;
+  margin: 0 0 1rem;
+}
+
+.wp-related-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wp-related-list li {
+  border-top: 1px solid var(--color-border);
+}
+
+.wp-related-list li:last-child {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.wp-related-link {
+  display: block;
+  padding: 1rem 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.wp-related-link:hover .wp-related-title {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.wp-related-title {
+  display: block;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.2rem;
+}
+
+.wp-related-excerpt {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
