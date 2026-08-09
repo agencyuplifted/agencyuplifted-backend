@@ -55,5 +55,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: "/((?!_next/static|_next/image|favicon.ico).*)",
+  // icon-*.png / apple-touch-icon.png / manifest.json sind oeffentliche PWA-
+  // Assets (Home-Bildschirm-Icon, Onepage-Media-Fetch) und muessen ohne
+  // Login abrufbar sein, genau wie favicon.ico.
+  matcher:
+    "/((?!_next/static|_next/image|favicon.ico|icon-192.png|icon-512.png|apple-touch-icon.png|manifest.json).*)",
 };
