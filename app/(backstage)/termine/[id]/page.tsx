@@ -34,6 +34,21 @@ function formatZeit(t: string | null) {
   return t ? t.slice(0, 5) + " Uhr" : "";
 }
 
+// Gleiche Logik wie in der oeffentlichen API-Route (app/api/public/seminartermine/[id]),
+// damit die Vorschau exakt zeigt, welcher Preis gerade auf der Website ausgespielt
+// wuerde: die Preisstaffel mit dem groessten Stichtag, dessen Frist noch nicht
+// unterschritten ist (je naeher am Termin, desto teurer).
+function aktuellerPreisNettoVorschau(preisstaffeln: any[], datumStart: string): number | null {
+  if (!preisstaffeln || !preisstaffeln.length) return null;
+  const heute = new Date();
+  const start = new Date(datumStart);
+  const tageBisStart = Math.ceil((start.getTime() - heute.getTime()) / (1000 * 60 * 60 * 24));
+  const sortiert = [...preisstaffeln].sort((a, b) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start);
+  const aktiv = sortiert.find((p) => tageBisStart >= p.stichtag_tage_vor_start);
+  const gewaehlt = aktiv || sortiert[sortiert.length - 1];
+  return gewaehlt ? Number(gewaehlt.preis) : null;
+}
+
 export default async function TerminDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -533,6 +548,48 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
           Jede Option ist ein eigenes buchbares Paket mit eigenem Titel, Beschreibung, Featureliste und eigenen Preisstufen (Frühbucher/Normalpreis). Ein Seminar mit nur einer Buchungsvariante braucht nur eine Option.
         </p>
+
+        <h3 style={{ fontSize: "0.95rem", margin: "1.25rem 0 0.25rem" }}>Vorschau</h3>
+        <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "0 0 0.25rem" }}>
+          So kommen die Optionen ungefähr auf der Website an (Preis-Sektion und Buchungsformular auf Onepage) – zum Gegenchecken, bevor die Preise dorthin übertragen werden.
+        </p>
+        {optionen?.length ? (
+          <div className="au-option-preview-grid">
+            {optionen.map((opt: any) => {
+              const previewPreis = aktuellerPreisNettoVorschau(opt.preisstaffeln || [], termin.datum_start);
+              const featuresSortiert = (opt.seminartermin_options_features || [])
+                .slice()
+                .sort((a: any, b: any) => (a.sortierung ?? 0) - (b.sortierung ?? 0));
+              return (
+                <div
+                  key={opt.id}
+                  className={`au-option-preview-card ${opt.badge === "empfohlen" ? "au-option-preview-card-empfohlen" : ""}`}
+                >
+                  {opt.badge && <span className="au-badge au-badge-gold">{badgeLabel[opt.badge] || opt.badge}</span>}
+                  <p className="au-option-preview-title">{opt.titel}</p>
+                  {opt.beschreibung && <p className="au-option-preview-desc">{renderFett(opt.beschreibung)}</p>}
+                  {previewPreis !== null ? (
+                    <p className="au-option-preview-price">
+                      {formatEUR(previewPreis)}
+                      <span className="au-option-preview-price-hinweis"> netto · {formatEURBrutto(previewPreis)} brutto</span>
+                    </p>
+                  ) : (
+                    <p className="au-option-preview-price-fehlt">Noch kein Preis hinterlegt</p>
+                  )}
+                  {featuresSortiert.length > 0 && (
+                    <ul className="au-option-preview-features">
+                      {featuresSortiert.map((f: any) => (
+                        <li key={f.id}>{renderFett(f.text)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="au-option-preview-empty">Noch keine Optionen angelegt – die Vorschau erscheint hier, sobald mindestens eine Option existiert.</div>
+        )}
 
         {optionen?.map((opt: any) => (
           <div key={opt.id} className="au-subcard">
