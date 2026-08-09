@@ -82,7 +82,14 @@ export default function Sidebar({ benutzerName }: { benutzerName?: string | null
       {mobileOffen && <div className="au-mobile-overlay" onClick={() => setMobileOffen(false)} />}
 
       <aside className={`au-sidebar ${mobileOffen ? "au-sidebar-open" : ""}`}>
-        <Link href="/dashboard" className="au-sidebar-brand">AgencyUplifted</Link>
+        {/* prefetch={false}: Next.js prefetcht sonst ALLE sichtbaren Sidebar-Links
+            gleichzeitig bei jedem Seitenaufruf -- bei 17 Verwaltungsseiten mit
+            jeweils mehreren DB-Abfragen ergab das einen Burst von 15-20+
+            gleichzeitigen serverseitigen Renders, der zu sporadischen 503-Fehlern
+            fuehrte (auch auf Seiten, die man gar nicht angeklickt hat). Da dies ein
+            internes Tool ist, bringt Prefetching kaum etwas -- der Klick selbst ist
+            schnell genug. */}
+        <Link href="/dashboard" className="au-sidebar-brand" prefetch={false}>AgencyUplifted</Link>
 
         {GROUPS.map((group, i) => (
           <div className="au-sidebar-group" key={group.title || i}>
@@ -94,6 +101,7 @@ export default function Sidebar({ benutzerName }: { benutzerName?: string | null
                   key={l.href}
                   href={l.href}
                   className={`au-sidebar-link ${aktiv ? "au-sidebar-link-active" : ""}`}
+                  prefetch={false}
                 >
                   {l.label}
                 </Link>
