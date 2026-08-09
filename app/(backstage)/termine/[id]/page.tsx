@@ -38,63 +38,79 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const supabase = getSupabaseAdmin();
 
-  const { data: termin } = await supabase
-    .from("seminartermine")
-    .select("*, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), trainer(name)")
-    .eq("id", id)
-    .single();
-
-  const { data: seminartypen } = await supabase.from("seminartypen").select("*").order("name");
-  const { data: orte } = await supabase.from("veranstaltungsorte").select("*").order("name");
-  const { data: trainerListe } = await supabase.from("trainer").select("*").order("name");
-
-  const { data: optionen } = await supabase
-    .from("seminartermin_optionen")
-    .select("*, seminartermin_options_features(*), preisstaffeln(*)")
-    .eq("seminartermin_id", id)
-    .order("sortierung", { ascending: true });
-
-  const { data: urgencyStufen } = await supabase
-    .from("urgency_stufen")
-    .select("*")
-    .eq("seminartermin_id", id)
-    .order("schwellenwert_prozent", { ascending: true });
-
-  const { data: mitarbeiterListe } = await supabase
-    .from("mitarbeiter")
-    .select("*")
-    .eq("aktiv", true)
-    .order("name");
-
-  const { data: terminMitarbeiter } = await supabase
-    .from("seminartermin_mitarbeiter")
-    .select("*, mitarbeiter(name)")
-    .eq("seminartermin_id", id)
-    .order("erstellt_am", { ascending: true });
-
-  const { data: protokoll } = await supabase
-    .from("aenderungsprotokoll")
-    .select("*")
-    .eq("bezug_typ", "seminartermin")
-    .eq("bezug_id", id)
-    .order("erstellt_am", { ascending: false });
-
-  const { data: buchungsPositionen } = await supabase
-    .from("buchungspositionen")
-    .select(
-      "teilnehmer_id, seminartermin_option_id, beschreibung, buchungen(status, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle)"
-    )
-    .eq("seminartermin_id", id);
-
-  const { data: legacyTeilnehmer } = await supabase
-    .from("legacy_buchungen")
-    .select("teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle), organisationen(name)")
-    .eq("seminartermin_id", id);
-
-  const { data: zimmerpartner } = await supabase
-    .from("seminartermin_zimmerpartner")
-    .select("id, teilnehmer_a:teilnehmer_id_a(id, vorname, nachname), teilnehmer_b:teilnehmer_id_b(id, vorname, nachname)")
-    .eq("seminartermin_id", id);
+  // Alle folgenden Abfragen sind voneinander unabhaengig (jede filtert direkt
+  // auf die Termin-ID aus der URL, keine haengt vom Ergebnis einer anderen ab).
+  // Frueher wurden sie einzeln nacheinander mit await geladen -- bei ~12
+  // Round-Trips a 150-300ms summierte sich das auf 10-15+ Sekunden pro
+  // Seitenaufruf. Nach einer Formular-Aktion (z.B. Preisstaffel anlegen) rendert
+  // Next.js dieselbe Seite fuer den Redirect ein zweites Mal in derselben
+  // Funktionsausfuehrung -- das hat zusammen das Vercel-Timeout gerissen und zu
+  // einer leeren Seite (503) gefuehrt, obwohl die Daten korrekt gespeichert
+  // wurden. Mit Promise.all laufen alle Abfragen parallel (~1 Anfrage-Dauer
+  // statt 12), das behebt das Timeout-Problem grundlegend.
+  const [
+    { data: termin },
+    { data: seminartypen },
+    { data: orte },
+    { data: trainerListe },
+    { data: optionen },
+    { data: urgencyStufen },
+    { data: mitarbeiterListe },
+    { data: terminMitarbeiter },
+    { data: protokoll },
+    { data: buchungsPositionen },
+    { data: legacyTeilnehmer },
+    { data: zimmerpartner },
+  ] = await Promise.all([
+    supabase
+      .from("seminartermine")
+      .select("*, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), trainer(name)")
+      .eq("id", id)
+      .single(),
+    supabase.from("seminartypen").select("*").order("name"),
+    supabase.from("veranstaltungsorte").select("*").order("name"),
+    supabase.from("trainer").select("*").order("name"),
+    supabase
+      .from("seminartermin_optionen")
+      .select("*, seminartermin_options_features(*), preisstaffeln(*)")
+      .eq("seminartermin_id", id)
+      .order("sortierung", { ascending: true }),
+    supabase
+      .from("urgency_stufen")
+      .select("*")
+      .eq("seminartermin_id", id)
+      .order("schwellenwert_prozent", { ascending: true }),
+    supabase
+      .from("mitarbeiter")
+      .select("*")
+      .eq("aktiv", true)
+      .order("name"),
+    supabase
+      .from("seminartermin_mitarbeiter")
+      .select("*, mitarbeiter(name)")
+      .eq("seminartermin_id", id)
+      .order("erstellt_am", { ascending: true }),
+    supabase
+      .from("aenderungsprotokoll")
+      .select("*")
+      .eq("bezug_typ", "seminartermin")
+      .eq("bezug_id", id)
+      .order("erstellt_am", { ascending: false }),
+    supabase
+      .from("buchungspositionen")
+      .select(
+        "teilnehmer_id, seminartermin_option_id, beschreibung, buchungen(status, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle)"
+      )
+      .eq("seminartermin_id", id),
+    supabase
+      .from("legacy_buchungen")
+      .select("teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle), organisationen(name)")
+      .eq("seminartermin_id", id),
+    supabase
+      .from("seminartermin_zimmerpartner")
+      .select("id, teilnehmer_a:teilnehmer_id_a(id, vorname, nachname), teilnehmer_b:teilnehmer_id_b(id, vorname, nachname)")
+      .eq("seminartermin_id", id),
+  ]);
 
   type TeilnehmerZeile = {
     id: string;
