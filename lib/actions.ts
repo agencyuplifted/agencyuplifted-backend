@@ -448,6 +448,8 @@ export async function updateSeminartermin(formData: FormData) {
     zusatzteilnehmer_rabatt_prozent: formData.get("zusatzteilnehmer_rabatt_prozent")
       ? Number(formData.get("zusatzteilnehmer_rabatt_prozent"))
       : null,
+    eyebrow_text: formData.get("eyebrow_text") || null,
+    urgency_label_template: formData.get("urgency_label_template") || null,
   };
 
   const { error } = await supabase.from("seminartermine").update(update).eq("id", id);

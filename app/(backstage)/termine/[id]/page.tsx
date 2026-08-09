@@ -459,6 +459,17 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             </div>
           </div>
 
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Eyebrow-Text (Onepage-Hero)</label>
+              <input className="au-input" name="eyebrow_text" defaultValue={termin.eyebrow_text || ""} placeholder="Standard: Seminar" />
+            </div>
+            <div>
+              <label className="au-label">Urgency-Text Standard (Onepage-Hero, ohne Platzzahl)</label>
+              <input className="au-input" name="urgency_label_template" defaultValue={termin.urgency_label_template || ""} placeholder="z. B. Noch Plätze frei" />
+            </div>
+          </div>
+
           <div className="au-card">
             <strong>Zusätzlicher Teilnehmer (Gruppenpreis)</strong>
             <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0.4rem 0 0.75rem" }}>
