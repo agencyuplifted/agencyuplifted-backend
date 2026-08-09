@@ -453,6 +453,15 @@ details summary {
   font-weight: 700;
 }
 
+.au-option-preview-zusatz {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--color-border);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
 .au-option-preview-empty {
   border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius-md);

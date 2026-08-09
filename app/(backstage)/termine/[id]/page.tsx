@@ -583,6 +583,9 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                       ))}
                     </ul>
                   )}
+                  {opt.zusatz_teilnehmer_hinweis && (
+                    <p className="au-option-preview-zusatz">{renderFett(opt.zusatz_teilnehmer_hinweis)}</p>
+                  )}
                 </div>
               );
             })}
@@ -621,6 +624,12 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
                 <FettTextarea name="beschreibung" defaultValue={opt.beschreibung || ""} placeholder="Kurze Beschreibung dieser Option" />
                 <label className="au-label">Sortierung (0 = zuerst)</label>
                 <input className="au-input" name="sortierung" type="number" defaultValue={opt.sortierung ?? 0} />
+                <label className="au-label">Hinweis: zusätzlicher Teilnehmer (erscheint unter der Preistabelle auf Onepage)</label>
+                <FettTextarea
+                  name="zusatz_teilnehmer_hinweis"
+                  defaultValue={opt.zusatz_teilnehmer_hinweis || ""}
+                  placeholder="z. B. Jeder weitere zusätzliche Teilnehmer aus Deiner Agentur im Seminar pro Person 3.480 €. Inklusive drei Übernachtungen im Einzelzimmer mit Frühstück, drei gemeinsamen Mittag- und Abendessen. Inklusive allen Getränken (exklusive Hotelbar)"
+                />
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button type="submit" className="au-btn au-btn-secondary">Speichern</button>
                 </div>

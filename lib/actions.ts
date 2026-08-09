@@ -1151,6 +1151,7 @@ export async function updateSeminarOption(formData: FormData) {
       titel: String(formData.get("titel")),
       beschreibung: formData.get("beschreibung") || null,
       sortierung: Number(formData.get("sortierung") || 0),
+      zusatz_teilnehmer_hinweis: formData.get("zusatz_teilnehmer_hinweis") || null,
     })
     .eq("id", optionId);
   if (error) throw new Error(error.message);
