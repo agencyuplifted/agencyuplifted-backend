@@ -55,6 +55,7 @@ export const TERMIN_FELD_LABELS: Record<string, string> = {
   angezeigte_restplaetze: "Angezeigte Restplätze (Urgency)",
   zusatzteilnehmer_preis: "Zusatzteilnehmer-Festpreis",
   zusatzteilnehmer_rabatt_prozent: "Zusatzteilnehmer-Rabatt (%)",
+  untertitel: "Untertitel (Onepage-Hero)",
   eyebrow_text: "Eyebrow-Text (Onepage-Hero, Standard: Seminar)",
   urgency_label_template: "Urgency-Text Standard (Onepage-Hero, ohne Platzzahl)",
 };

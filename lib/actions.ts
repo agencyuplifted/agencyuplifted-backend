@@ -448,6 +448,7 @@ export async function updateSeminartermin(formData: FormData) {
     zusatzteilnehmer_rabatt_prozent: formData.get("zusatzteilnehmer_rabatt_prozent")
       ? Number(formData.get("zusatzteilnehmer_rabatt_prozent"))
       : null,
+    untertitel: formData.get("untertitel") || null,
     eyebrow_text: formData.get("eyebrow_text") || null,
     urgency_label_template: formData.get("urgency_label_template") || null,
   };

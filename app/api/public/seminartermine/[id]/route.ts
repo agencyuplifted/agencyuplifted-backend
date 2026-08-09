@@ -68,7 +68,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, seminartypen(name), veranstaltungsorte(name, ort), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, seminartypen(name), veranstaltungsorte(name, ort), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, preis))"
     )
     .eq("id", id)
     .single();
@@ -93,12 +93,21 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     .select("schwellenwert_prozent, text_vorlage")
     .eq("seminartermin_id", id);
 
-  const dringlichkeitstext =
+  const dringlichkeitstextGestuft =
     (urgencyStufen || [])
       .filter((u) => belegtProzent >= u.schwellenwert_prozent)
       .sort((a, b) => b.schwellenwert_prozent - a.schwellenwert_prozent)[0]?.text_vorlage
       ?.replace("{remaining}", String(freiePlaetze))
       ?.replace("{total}", String(termin.kapazitaet)) || null;
+
+  // Fallback: falls keine prozentualen Urgency-Stufen greifen, den am Termin
+  // hinterlegten Standard-Text verwenden (z.B. "Noch Plätze frei").
+  const dringlichkeitstext =
+    dringlichkeitstextGestuft ||
+    (termin as any).urgency_label_template
+      ?.replace("{remaining}", String(freiePlaetze))
+      ?.replace("{total}", String(termin.kapazitaet)) ||
+    null;
 
   const optionen = ((termin as any).seminartermin_optionen || [])
     .sort((a: any, b: any) => (a.sortierung ?? 0) - (b.sortierung ?? 0))
@@ -130,6 +139,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     NextResponse.json({
       id: termin.id,
       titel: termin.titel || (termin as any).seminartypen?.name || null,
+      untertitel: (termin as any).untertitel || null,
+      eyebrow_text: (termin as any).eyebrow_text || "Seminar",
       seminarart: (termin as any).seminartypen?.name || null,
       datum_start: termin.datum_start,
       datum_ende: termin.datum_ende,

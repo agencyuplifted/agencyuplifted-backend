@@ -459,6 +459,11 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             </div>
           </div>
 
+          <div>
+            <label className="au-label">Untertitel (Onepage-Hero, unter dem Titel)</label>
+            <textarea className="au-textarea" name="untertitel" defaultValue={termin.untertitel || ""} placeholder="z. B. Kalkulieren Sie Preise, die Wert sichtbar machen ..." rows={2} />
+          </div>
+
           <div className="au-row-2">
             <div>
               <label className="au-label">Eyebrow-Text (Onepage-Hero)</label>
