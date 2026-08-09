@@ -25,7 +25,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#102a4c",
+  themeColor: "#0b1b33",
 };
 
 // Bewusst schlank: dieses Root-Layout liefert nur html/body + globale

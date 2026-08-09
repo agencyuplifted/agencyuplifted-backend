@@ -216,7 +216,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
         <tbody>
           {gefiltert.map((t) => (
             <tr key={t.id} className="au-table-row-link" onClick={() => router.push(`/teilnehmer/${t.id}`)}>
-              <td style={{ color: "#102A4C", fontWeight: 600 }}>{t.vorname} {t.nachname}</td>
+              <td style={{ color: "#0B1B33", fontWeight: 600 }}>{t.vorname} {t.nachname}</td>
               <td>{ANREDE_LABEL[t.anrede] || t.anrede}</td>
               <td>{UNTERNEHMER_LABEL[t.unternehmer_status] || "—"}</td>
               <td>{t.email}</td>
@@ -233,7 +233,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
 
       {segmente.length > 0 && (
         <details style={{ marginTop: "1rem" }}>
-          <summary style={{ cursor: "pointer", color: "#102A4C", fontWeight: 600 }}>Gespeicherte Filtergruppen verwalten ({segmente.length})</summary>
+          <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600 }}>Gespeicherte Filtergruppen verwalten ({segmente.length})</summary>
           <div className="au-card" style={{ marginTop: "0.75rem" }}>
             {segmente.map((s) => (
               <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.4rem 0", borderBottom: "1px solid var(--color-border)" }}>

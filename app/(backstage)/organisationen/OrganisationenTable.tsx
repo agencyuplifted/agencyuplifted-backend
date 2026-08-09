@@ -113,7 +113,7 @@ export default function OrganisationenTable({ organisationen }: { organisationen
         <tbody>
           {gefiltert.map((o) => (
             <tr key={o.id} className="au-table-row-link" onClick={() => router.push(`/organisationen/${o.id}`)}>
-              <td style={{ color: "#102A4C", fontWeight: 600 }}>{o.name}</td>
+              <td style={{ color: "#0B1B33", fontWeight: 600 }}>{o.name}</td>
               <td>{o.ort || "—"}</td>
               <td>{o.ust_id || "—"}</td>
               <td>{o.seminare.length ? o.seminare.join(", ") : "—"}</td>

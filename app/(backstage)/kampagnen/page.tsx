@@ -38,7 +38,7 @@ export default async function KampagnenPage({
         Gezielter E-Mail-Versand an eine gefilterte Teilnehmer-Auswahl (z. B. „Arbeitsgruppe Unternehmerinnen“) —
         getrennt von den automatischen Funnel-Mails. Filter, Filtergruppen speichern und Kampagne starten geht auch
         direkt von der{" "}
-        <Link href="/teilnehmer" style={{ color: "#102A4C", fontWeight: 600 }}>Teilnehmerliste</Link> aus.
+        <Link href="/teilnehmer" style={{ color: "#0B1B33", fontWeight: 600 }}>Teilnehmerliste</Link> aus.
       </p>
 
       {versendet && (

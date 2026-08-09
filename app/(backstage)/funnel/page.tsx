@@ -142,7 +142,7 @@ export default async function FunnelPage({
             </div>
 
             <details style={{ marginTop: "0.85rem" }}>
-              <summary style={{ color: "#102A4C", fontSize: "0.85rem", fontWeight: 600 }}>Bearbeiten</summary>
+              <summary style={{ color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>Bearbeiten</summary>
               <form action={updateFunnelMail} style={{ marginTop: "0.85rem" }}>
                 <input type="hidden" name="id" value={f.id} />
                 <label className="au-label">Name (intern)</label>

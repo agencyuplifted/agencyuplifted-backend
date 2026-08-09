@@ -48,7 +48,7 @@ export default async function FunnelVorschauPage() {
                     <td>{e.betreff}</td>
                     <td style={{ maxWidth: 420 }}>
                       <details>
-                        <summary style={{ color: "#102A4C", fontSize: "0.85rem", fontWeight: 600 }}>Anzeigen</summary>
+                        <summary style={{ color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>Anzeigen</summary>
                         <div
                           style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--color-text)" }}
                           dangerouslySetInnerHTML={{ __html: e.inhaltHtml }}

@@ -89,7 +89,7 @@ export default async function InsightsPage({
           <tbody>
             {(eintraege || []).map((e: any) => (
               <tr key={e.id}>
-                <td style={{ color: "#102A4C", fontWeight: 600 }}>
+                <td style={{ color: "#0B1B33", fontWeight: 600 }}>
                   <Link href={`/insights/${e.id}`}>{e.titel}</Link>
                 </td>
                 <td>{insightsTypLabel(e.typ)}</td>

@@ -45,7 +45,7 @@ export default async function MitarbeiterPage() {
                   <span className="au-badge au-badge-warning">noch nicht eingerichtet</span>
                 )}
                 <details style={{ marginTop: "0.5rem" }}>
-                  <summary style={{ color: "#102A4C", fontSize: "0.8rem", fontWeight: 600 }}>
+                  <summary style={{ color: "#0B1B33", fontSize: "0.8rem", fontWeight: 600 }}>
                     {m.passwort_hash ? "Passwort ändern" : "Zugang einrichten"}
                   </summary>
                   <form action={setMitarbeiterZugang} style={{ marginTop: "0.6rem", minWidth: 220 }}>
@@ -61,7 +61,7 @@ export default async function MitarbeiterPage() {
               <td>
                 {m.ist_wissen_autor && <span className="au-badge au-badge-success">aktiv</span>}
                 <details style={{ marginTop: "0.5rem" }}>
-                  <summary style={{ color: "#102A4C", fontSize: "0.8rem", fontWeight: 600 }}>
+                  <summary style={{ color: "#0B1B33", fontSize: "0.8rem", fontWeight: 600 }}>
                     Bio bearbeiten
                   </summary>
                   <form action={setMitarbeiterBio} style={{ marginTop: "0.6rem", minWidth: 260 }}>

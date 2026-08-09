@@ -46,7 +46,7 @@ export default async function InsightsDetailPage({
 
   return (
     <main>
-      <Link href="/insights" style={{ color: "#102A4C", fontSize: "0.85rem" }}>← Zurück zu Insights</Link>
+      <Link href="/insights" style={{ color: "#0B1B33", fontSize: "0.85rem" }}>← Zurück zu Insights</Link>
       <h1>{eintrag.titel}</h1>
       <p style={{ color: "var(--color-text-muted)" }}>
         {insightsTypLabel(eintrag.typ)} · Slug: {eintrag.slug} · Sprache: {eintrag.sprache} · Status: {eintrag.status}

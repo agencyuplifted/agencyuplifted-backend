@@ -538,7 +538,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             {opt.beschreibung && <p style={{ color: "#444", fontSize: "0.9rem", margin: "0.35rem 0" }}>{renderFett(opt.beschreibung)}</p>}
 
             <details style={{ margin: "0.5rem 0" }}>
-              <summary style={{ cursor: "pointer", color: "#102A4C", fontSize: "0.85rem", fontWeight: 600 }}>Option bearbeiten</summary>
+              <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>Option bearbeiten</summary>
               <form action={updateSeminarOption} style={{ marginTop: "0.6rem", maxWidth: 480 }}>
                 <input type="hidden" name="seminartermin_option_id" value={opt.id} />
                 <input type="hidden" name="seminartermin_id" value={id} />
