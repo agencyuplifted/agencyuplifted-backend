@@ -3,7 +3,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AgencyUplifted Backend",
-  manifest: "/manifest.json",
+  // Kein "manifest" mehr hier: das manifest.json triggert in Chrome (Desktop)
+  // bei jedem Aufruf erneut das "App installieren"-Icon/Prompt. Markus hat
+  // die Seite bereits einmal manuell im Dock installiert -- das bleibt
+  // bestehen, auch ohne den Manifest-Link im <head>. Fuer iOS "Zum
+  // Home-Bildschirm" reichen apple-touch-icon + appleWebApp unten weiterhin.
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
