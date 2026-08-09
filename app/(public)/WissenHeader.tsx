@@ -4,19 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 // Spiegelt bewusst 1:1 den Header der Haupt-Marketingseite
-// (agencyuplifted-seminare.onepage.me), damit Wissen-Seiten und Onepage-Seite
-// wie aus einem Guss wirken -- gleiches Logo, gleiche Nav-Punkte, gleiche
-// Schrift (Archivo) und Farben. "Start"/"Preisfindung"/"Blog" sind echte,
-// funktionierende Links. "Leistungen" (Dropdown), "Ueber uns", "Branchen",
-// "Karriere" und der CTA-Button sind technisch 1:1 nachgebaut, zeigen auf der
-// Onepage-Seite aber selbst noch auf onepage.io (Platzhalter des Baukastens,
-// noch nicht von Markus final verlinkt) -- hier daher bewusst mit "#" als
-// Platzhalter-Ziel, damit die Struktur steht und nur noch die echten URLs
-// eingetragen werden muessen, sobald sie feststehen.
+// (agencyuplifted.com, dahinter die Onepage-Seite), damit Wissen-Seiten und
+// Marketingseite wie aus einem Guss wirken -- gleiches Logo, gleiche
+// Nav-Punkte, gleiche Schrift (Archivo) und Farben. "Start"/"Preisfindung"/
+// "Blog" sind echte, funktionierende Links. "Leistungen" (Dropdown),
+// "Ueber uns", "Branchen", "Karriere" und der CTA-Button sind technisch 1:1
+// nachgebaut, zeigen auf der Onepage-Seite aber selbst noch auf onepage.io
+// (Platzhalter des Baukastens, noch nicht von Markus final verlinkt) -- hier
+// daher bewusst mit "#" als Platzhalter-Ziel, damit die Struktur steht und
+// nur noch die echten URLs eingetragen werden muessen, sobald sie feststehen.
+//
+// Hinweis: agencyuplifted.com zeigt aktuell komplett auf die Onepage-Seite;
+// /wissen ist dort (Stand jetzt) noch NICHT durchgereicht (liefert Onepages
+// eigene 404-Seite). Diese Links funktionieren trotzdem unabhaengig davon,
+// da sie extern auf agencyuplifted.com verweisen, nicht auf einen /wissen-Pfad.
 const NAV_LINKS = [
-  { href: "https://agencyuplifted-seminare.onepage.me/", label: "Start", extern: true },
+  { href: "https://agencyuplifted.com/", label: "Start", extern: true },
   {
-    href: "https://agencyuplifted-seminare.onepage.me/seminare-preisfindung",
+    href: "https://agencyuplifted.com/seminare-preisfindung",
     label: "Preisfindung",
     extern: true,
   },
@@ -70,7 +75,7 @@ export default function WissenHeader() {
   return (
     <header className="wp-header">
       <div className="wp-header-inner">
-        <a href="https://agencyuplifted-seminare.onepage.me/" className="wp-logo">
+        <a href="https://agencyuplifted.com/" className="wp-logo">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="https://onecdn.io/media/cd724ffc-e672-4e72-b6d4-5a217d1249ec/full"
