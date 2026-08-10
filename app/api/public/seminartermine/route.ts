@@ -39,12 +39,12 @@ function formatDatumsspanne(datumStart: string, datumEnde: string): string {
     return `${start.getDate()}. ${monatStart} ${jahrStart}`;
   }
   if (jahrStart !== jahrEnde) {
-    return `${start.getDate()}. ${monatStart} ${jahrStart} - ${ende.getDate()}. ${monatEnde} ${jahrEnde}`;
+    return `${start.getDate()}. ${monatStart} ${jahrStart} – ${ende.getDate()}. ${monatEnde} ${jahrEnde}`;
   }
   if (monatStart !== monatEnde) {
-    return `${start.getDate()}. ${monatStart} - ${ende.getDate()}. ${monatEnde} ${jahrStart}`;
+    return `${start.getDate()}. ${monatStart} – ${ende.getDate()}. ${monatEnde} ${jahrStart}`;
   }
-  return `${start.getDate()}.-${ende.getDate()}. ${monatStart} ${jahrStart}`;
+  return `${start.getDate()}. – ${ende.getDate()}. ${monatStart} ${jahrStart}`;
 }
 
 function aktuellerPreisNetto(preisstaffeln: { stichtag_tage_vor_start: number; preis: number }[], datumStart: string): number | null {

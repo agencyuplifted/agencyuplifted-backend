@@ -27,9 +27,12 @@ function brutto(netto: number): number {
 }
 
 // Menschenlesbare Datumsspanne fuer die Website-Anzeige, z.B.
-// "14.-15. August 2026" (gleicher Monat), "30. September - 2. Oktober 2026"
-// (unterschiedliche Monate) oder "30. Dezember 2026 - 2. Januar 2027"
+// "14. – 15. August 2026" (gleicher Monat), "30. September – 2. Oktober 2026"
+// (unterschiedliche Monate) oder "30. Dezember 2026 – 2. Januar 2027"
 // (unterschiedliche Jahre). Bei nur einem Tag: "14. August 2026".
+// Trennzeichen ist immer ein Halbgeviertstrich (En-Dash, "–") mit Leerzeichen
+// davor und danach -- so an allen Terminanzeigen auf der Website (Hero,
+// Kalender-Modul, etc.) konsistent zu halten.
 function formatDatumsspanne(datumStart: string, datumEnde: string): string {
   const start = new Date(datumStart);
   const ende = new Date(datumEnde);
@@ -42,12 +45,12 @@ function formatDatumsspanne(datumStart: string, datumEnde: string): string {
     return `${start.getDate()}. ${monatStart} ${jahrStart}`;
   }
   if (jahrStart !== jahrEnde) {
-    return `${start.getDate()}. ${monatStart} ${jahrStart} - ${ende.getDate()}. ${monatEnde} ${jahrEnde}`;
+    return `${start.getDate()}. ${monatStart} ${jahrStart} – ${ende.getDate()}. ${monatEnde} ${jahrEnde}`;
   }
   if (monatStart !== monatEnde) {
-    return `${start.getDate()}. ${monatStart} - ${ende.getDate()}. ${monatEnde} ${jahrStart}`;
+    return `${start.getDate()}. ${monatStart} – ${ende.getDate()}. ${monatEnde} ${jahrStart}`;
   }
-  return `${start.getDate()}.-${ende.getDate()}. ${monatStart} ${jahrStart}`;
+  return `${start.getDate()}. – ${ende.getDate()}. ${monatStart} ${jahrStart}`;
 }
 
 function aktuellerPreisNetto(preisstaffeln: { stichtag_tage_vor_start: number; preis: number }[], datumStart: string): number | null {
