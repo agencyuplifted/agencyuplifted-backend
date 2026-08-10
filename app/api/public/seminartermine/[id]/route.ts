@@ -102,9 +102,17 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   (legacyPositionen || []).forEach((l: any) => zaehleEin(l.teilnehmer_id, l.teilnehmer?.rolle));
   const gebucht = teilnehmerIds.size;
 
-  const belegtProzent = termin.kapazitaet > 0 ? (gebucht / termin.kapazitaet) * 100 : 0;
+  // "Angezeigte Restplaetze" (Termin-Formular) erlaubt eine manuelle
+  // Ueberschreibung der angezeigten Restplaetze, unabhaengig von den
+  // tatsaechlichen Buchungen (z.B. um Urgency gezielt zu steuern). Die
+  // Belegungsquote fuer die Urgency-Stufen richtet sich bewusst nach dieser
+  // angezeigten (ggf. ueberschriebenen) Zahl, nicht nach der echten Buchungszahl -
+  // damit eine manuell hochgesetzte Urgency auch tatsaechlich eine hoehere
+  // Stufe (z.B. "Nur noch wenige Plaetze") auslöst.
   const freiRechnerisch = Math.max(0, termin.kapazitaet - gebucht);
   const freiePlaetze = termin.angezeigte_restplaetze ?? freiRechnerisch;
+  const effektivGebucht = Math.max(0, termin.kapazitaet - freiePlaetze);
+  const belegtProzent = termin.kapazitaet > 0 ? (effektivGebucht / termin.kapazitaet) * 100 : 0;
 
   const { data: urgencyStufen } = await supabase
     .from("urgency_stufen")
