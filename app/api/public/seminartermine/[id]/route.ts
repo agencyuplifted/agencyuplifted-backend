@@ -77,12 +77,30 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return withCors(NextResponse.json({ error: "not_found" }, { status: 404 }));
   }
 
+  // Belegung = Anzahl unterschiedlicher Teilnehmer (aktuelle Buchungen + Alt-Daten
+  // aus legacy_buchungen zusammengefuehrt, doppelt gezaehlte Personen vermieden).
+  // Mitarbeiter/Gastreferenten zaehlen nicht als belegter Platz. Gleiche Logik
+  // wie in der Backstage-Terminuebersicht (app/(backstage)/termine/page.tsx).
   const { data: positionen } = await supabase
     .from("buchungspositionen")
-    .select("seminartermin_id, buchungen!inner(status)")
+    .select("seminartermin_id, teilnehmer_id, buchungen!inner(status), teilnehmer(rolle)")
     .eq("seminartermin_id", id)
     .neq("buchungen.status", "storniert");
-  const gebucht = positionen?.length || 0;
+
+  const { data: legacyPositionen } = await supabase
+    .from("legacy_buchungen")
+    .select("seminartermin_id, teilnehmer_id, teilnehmer(rolle)")
+    .eq("seminartermin_id", id);
+
+  const teilnehmerIds = new Set<string>();
+  const zaehleEin = (teilnehmerId: string | null | undefined, rolle: string | null | undefined) => {
+    if (!teilnehmerId) return;
+    if (rolle && rolle !== "teilnehmer") return;
+    teilnehmerIds.add(teilnehmerId);
+  };
+  (positionen || []).forEach((p: any) => zaehleEin(p.teilnehmer_id, p.teilnehmer?.rolle));
+  (legacyPositionen || []).forEach((l: any) => zaehleEin(l.teilnehmer_id, l.teilnehmer?.rolle));
+  const gebucht = teilnehmerIds.size;
 
   const belegtProzent = termin.kapazitaet > 0 ? (gebucht / termin.kapazitaet) * 100 : 0;
   const freiRechnerisch = Math.max(0, termin.kapazitaet - gebucht);
