@@ -475,6 +475,11 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             </div>
           </div>
 
+          <div>
+            <label className="au-label">Onepage-Zielseite (für "Jetzt anmelden" in Termin-Übersichten)</label>
+            <input className="au-input" name="onepage_slug" defaultValue={termin.onepage_slug || ""} placeholder="z. B. /seminar-preisfindung-oktober — leer = kein Button" />
+          </div>
+
           <div className="au-card">
             <strong>Zusätzlicher Teilnehmer (Gruppenpreis)</strong>
             <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0.4rem 0 0.75rem" }}>

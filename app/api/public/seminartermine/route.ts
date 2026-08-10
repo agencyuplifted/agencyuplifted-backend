@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("seminartermine")
     .select(
-      "id, titel, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, status, seminartypen(name), veranstaltungsorte(name, ort), seminartermin_optionen(preisstaffeln(stichtag_tage_vor_start, preis))"
+      "id, titel, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, urgency_label_template, onepage_slug, status, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(preisstaffeln(stichtag_tage_vor_start, preis))"
     )
     .gte("datum_start", heuteIso)
     .neq("status", "abgesagt")
@@ -84,24 +84,73 @@ export async function GET(request: NextRequest) {
   }
 
   const terminIds = (termine || []).map((t: any) => t.id);
+
+  // Belegung = Anzahl unterschiedlicher Teilnehmer (aktuelle Buchungen + Alt-
+  // Daten aus legacy_buchungen zusammengefuehrt, doppelt gezaehlte Personen
+  // vermieden). Mitarbeiter/Gastreferenten zaehlen nicht als belegter Platz.
+  // Gleiche Logik wie in /api/public/seminartermine/[id] und der
+  // Backstage-Terminuebersicht.
   const { data: positionen } = terminIds.length
     ? await supabase
         .from("buchungspositionen")
-        .select("seminartermin_id, buchungen!inner(status)")
+        .select("seminartermin_id, teilnehmer_id, buchungen!inner(status), teilnehmer(rolle)")
         .in("seminartermin_id", terminIds)
         .neq("buchungen.status", "storniert")
     : { data: [] as any[] };
 
-  const gebuchtProTermin = new Map<string, number>();
-  for (const p of positionen || []) {
-    const key = (p as any).seminartermin_id;
-    gebuchtProTermin.set(key, (gebuchtProTermin.get(key) || 0) + 1);
-  }
+  const { data: legacyPositionen } = terminIds.length
+    ? await supabase
+        .from("legacy_buchungen")
+        .select("seminartermin_id, teilnehmer_id, teilnehmer(rolle)")
+        .in("seminartermin_id", terminIds)
+    : { data: [] as any[] };
+
+  const teilnehmerProTermin = new Map<string, Set<string>>();
+  const zaehleEin = (seminarterminId: string | null, teilnehmerId: string | null, rolle: string | null | undefined) => {
+    if (!seminarterminId || !teilnehmerId) return;
+    if (rolle && rolle !== "teilnehmer") return;
+    if (!teilnehmerProTermin.has(seminarterminId)) teilnehmerProTermin.set(seminarterminId, new Set());
+    teilnehmerProTermin.get(seminarterminId)!.add(teilnehmerId);
+  };
+  (positionen || []).forEach((p: any) => zaehleEin(p.seminartermin_id, p.teilnehmer_id, p.teilnehmer?.rolle));
+  (legacyPositionen || []).forEach((l: any) => zaehleEin(l.seminartermin_id, l.teilnehmer_id, l.teilnehmer?.rolle));
+
+  const { data: urgencyStufenAlle } = terminIds.length
+    ? await supabase
+        .from("urgency_stufen")
+        .select("seminartermin_id, schwellenwert_prozent, text_vorlage")
+        .in("seminartermin_id", terminIds)
+    : { data: [] as any[] };
+  const urgencyStufenProTermin = new Map<string, { schwellenwert_prozent: number; text_vorlage: string }[]>();
+  (urgencyStufenAlle || []).forEach((u: any) => {
+    if (!urgencyStufenProTermin.has(u.seminartermin_id)) urgencyStufenProTermin.set(u.seminartermin_id, []);
+    urgencyStufenProTermin.get(u.seminartermin_id)!.push(u);
+  });
 
   const ergebnis = (termine || []).map((t: any) => {
-    const gebucht = gebuchtProTermin.get(t.id) || 0;
+    const gebucht = teilnehmerProTermin.get(t.id)?.size || 0;
     const freiRechnerisch = Math.max(0, t.kapazitaet - gebucht);
+    // "Angezeigte Restplaetze" erlaubt eine manuelle Ueberschreibung,
+    // unabhaengig von den tatsaechlichen Buchungen (z.B. um Urgency gezielt
+    // zu steuern). Die Belegungsquote fuer die Urgency-Stufen richtet sich
+    // bewusst nach dieser angezeigten (ggf. ueberschriebenen) Zahl.
     const freiePlaetze = t.angezeigte_restplaetze ?? freiRechnerisch;
+    const effektivGebucht = Math.max(0, t.kapazitaet - freiePlaetze);
+    const belegtProzent = t.kapazitaet > 0 ? (effektivGebucht / t.kapazitaet) * 100 : 0;
+
+    const stufen = urgencyStufenProTermin.get(t.id) || [];
+    const dringlichkeitstextGestuft = stufen
+      .filter((u) => belegtProzent >= u.schwellenwert_prozent)
+      .sort((a, b) => b.schwellenwert_prozent - a.schwellenwert_prozent)[0]?.text_vorlage
+      ?.replace("{remaining}", String(freiePlaetze))
+      ?.replace("{total}", String(t.kapazitaet));
+
+    const dringlichkeitstext =
+      dringlichkeitstextGestuft ||
+      (t.urgency_label_template
+        ?.replace("{remaining}", String(freiePlaetze))
+        ?.replace("{total}", String(t.kapazitaet))) ||
+      null;
 
     const alleStaffeln = (t.seminartermin_optionen || []).flatMap((o: any) => o.preisstaffeln || []);
     const preiseProOption = (t.seminartermin_optionen || [])
@@ -116,11 +165,19 @@ export async function GET(request: NextRequest) {
       datum_start: t.datum_start,
       datum_ende: t.datum_ende,
       datumsspanne_anzeige: formatDatumsspanne(t.datum_start, t.datum_ende),
+      // Der Ortsname enthaelt die Stadt meist schon -- die separate "ort"-
+      // Spalte deshalb NICHT anhaengen (sonst "Illschwang, Illschwang").
+      // Stattdessen optional die nahe Grossstadt ergaenzen.
       ort_anzeige: t.veranstaltungsorte
-        ? [t.veranstaltungsorte.name, t.veranstaltungsorte.ort].filter(Boolean).join(", ")
+        ? [t.veranstaltungsorte.name, t.veranstaltungsorte.nahe_grossstadt ? `bei ${t.veranstaltungsorte.nahe_grossstadt}` : null]
+            .filter(Boolean)
+            .join(" ")
         : "Ort wird noch bekannt gegeben",
       kapazitaet: t.kapazitaet,
       freie_plaetze: freiePlaetze,
+      belegt_prozent: Math.round(belegtProzent),
+      dringlichkeitstext,
+      onepage_slug: t.onepage_slug || null,
       ab_preis_netto: abPreisNetto,
       ab_preis_brutto: abPreisNetto !== null ? brutto(abPreisNetto) : null,
       hat_preisdaten: alleStaffeln.length > 0,

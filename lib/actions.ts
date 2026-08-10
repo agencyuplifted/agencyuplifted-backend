@@ -451,6 +451,7 @@ export async function updateSeminartermin(formData: FormData) {
     untertitel: formData.get("untertitel") || null,
     eyebrow_text: formData.get("eyebrow_text") || null,
     urgency_label_template: formData.get("urgency_label_template") || null,
+    onepage_slug: formData.get("onepage_slug") || null,
   };
 
   const { error } = await supabase.from("seminartermine").update(update).eq("id", id);
