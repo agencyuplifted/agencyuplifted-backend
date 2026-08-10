@@ -68,7 +68,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, seminartypen(name), veranstaltungsorte(name, ort), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, preis))"
     )
     .eq("id", id)
     .single();
@@ -148,10 +148,25 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       zeit_ende: termin.zeit_ende,
       format: termin.format,
       ort: (termin as any).veranstaltungsorte
-        ? { name: (termin as any).veranstaltungsorte.name, ort: (termin as any).veranstaltungsorte.ort }
+        ? {
+            name: (termin as any).veranstaltungsorte.name,
+            ort: (termin as any).veranstaltungsorte.ort,
+            nahe_grossstadt: (termin as any).veranstaltungsorte.nahe_grossstadt || null,
+          }
         : null,
+      // Der Ortsname (z.B. "Weisses Ross, Illschwang") enthaelt die Stadt
+      // meist schon -- die separate "ort"-Spalte deshalb NICHT anhaengen
+      // (sonst "Illschwang, Illschwang"). Stattdessen optional die nahe
+      // Grossstadt ergaenzen, z.B. "Weisses Ross, Illschwang bei Nuernberg".
       ort_anzeige: (termin as any).veranstaltungsorte
-        ? [(termin as any).veranstaltungsorte.name, (termin as any).veranstaltungsorte.ort].filter(Boolean).join(", ")
+        ? [
+            (termin as any).veranstaltungsorte.name,
+            (termin as any).veranstaltungsorte.nahe_grossstadt
+              ? `bei ${(termin as any).veranstaltungsorte.nahe_grossstadt}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" ")
         : "Ort wird noch bekannt gegeben",
       datumsspanne_anzeige: formatDatumsspanne(termin.datum_start, termin.datum_ende),
       zimmerupgrade: termin.zimmerupgrade_preis_netto
