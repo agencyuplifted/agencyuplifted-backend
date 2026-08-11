@@ -59,4 +59,6 @@ export const TERMIN_FELD_LABELS: Record<string, string> = {
   eyebrow_text: "Eyebrow-Text (Onepage-Hero, Standard: Seminar)",
   urgency_label_template: "Urgency-Text Standard (Onepage-Hero, ohne Platzzahl)",
   onepage_slug: "Onepage-Zielseite (Buchen-Button in Termin-Uebersichten)",
+  zimmerupgrade_beschreibung: "Zimmer-Upgrade Beschreibung",
+  zimmerupgrade_preis_netto: "Zimmer-Upgrade Aufpreis (netto, pro Person)",
 };
