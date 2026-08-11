@@ -452,6 +452,10 @@ export async function updateSeminartermin(formData: FormData) {
     eyebrow_text: formData.get("eyebrow_text") || null,
     urgency_label_template: formData.get("urgency_label_template") || null,
     onepage_slug: formData.get("onepage_slug") || null,
+    zimmerupgrade_beschreibung: formData.get("zimmerupgrade_beschreibung") || null,
+    zimmerupgrade_preis_netto: formData.get("zimmerupgrade_preis_netto")
+      ? Number(formData.get("zimmerupgrade_preis_netto"))
+      : null,
   };
 
   const { error } = await supabase.from("seminartermine").update(update).eq("id", id);
