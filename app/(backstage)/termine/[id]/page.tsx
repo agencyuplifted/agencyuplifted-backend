@@ -479,8 +479,22 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             <label className="au-label">Onepage-Zielseite (für "Jetzt anmelden" in Termin-Übersichten)</label>
             <input className="au-input" name="onepage_slug" defaultValue={termin.onepage_slug || ""} placeholder="z. B. /seminar-preisfindung-oktober — leer = kein Button" />
           </div>
-
           <div className="au-card">
+            <strong>Zimmer-Upgrade (optional)</strong>
+            <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0.4rem 0 0.75rem" }}>
+              Nur wenn hier ein Aufpreis hinterlegt ist, erscheint im Onepage-Buchungsformular pro Teilnehmer:in eine Zimmerkategorie-Auswahl (Standard/Upgrade) — separat von den Adressfeldern. Ohne Aufpreis bleibt die Auswahl im Formular verborgen.
+            </p>
+            <div className="au-row-2">
+              <div>
+                <label className="au-label">Beschreibung (z. B. "Komfortzimmer statt Standardzimmer")</label>                
+                <input className="au-input" name="zimmerupgrade_beschreibung" defaultValue={termin.zimmerupgr
+              </div>
+              <div>
+                <label className="au-label">Aufpreis pro Person (€, netto)</label>
+                <input className="au-input" name="zimmerupgrade_preis_netto" type="number" step="0.01" defaultValue={termin.zimmerupgrade_preis_netto ?? ""} placeholder="z. B. 178" />
+              </div>
+            </div>
+          </div>
             <strong>Zusätzlicher Teilnehmer (Gruppenpreis)</strong>
             <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0.4rem 0 0.75rem" }}>
               Preis für die 2. (und weitere) Person derselben Firma. Entweder Festpreis ODER Rabatt in % angeben, nicht beides.
