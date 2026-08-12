@@ -61,4 +61,6 @@ export const TERMIN_FELD_LABELS: Record<string, string> = {
   onepage_slug: "Onepage-Zielseite (Buchen-Button in Termin-Uebersichten)",
   zimmerupgrade_beschreibung: "Zimmer-Upgrade Beschreibung",
   zimmerupgrade_preis_netto: "Zimmer-Upgrade Aufpreis (netto, pro Person)",
+  selbstauskunft_label: "Selbstauskunft-Checkbox Text",
+  selbstauskunft_aktiv: "Selbstauskunft-Checkbox aktiv",
 };
