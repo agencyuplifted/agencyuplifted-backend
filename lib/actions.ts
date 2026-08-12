@@ -456,7 +456,9 @@ export async function updateSeminartermin(formData: FormData) {
     zimmerupgrade_preis_netto: formData.get("zimmerupgrade_preis_netto")
       ? Number(formData.get("zimmerupgrade_preis_netto"))
       : null,
-  };
+    selbstauskunft_label: formData.get("selbstauskunft_label") || null,
+    selbstauskunft_aktiv: formData.get("selbstauskunft_aktiv") === "on",
+    
 
   const { error } = await supabase.from("seminartermine").update(update).eq("id", id);
   if (error) throw new Error(error.message);
