@@ -487,7 +487,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
             <div className="au-row-2">
               <div>
                 <label className="au-label">Beschreibung (z. B. "Komfortzimmer statt Standardzimmer")</label>                
-                <input className="au-input" name="zimmerupgrade_beschreibung" defaultValue={termin.zimmerupgr
+        <input className="au-input" name="zimmerupgrade_beschreibung" defaultValue={termin.zimmerupgrade_beschreibung || ""} placeholder="z. B. Komfortzimmer statt Standardzimmer" />
               </div>
               <div>
                 <label className="au-label">Aufpreis pro Person (€, netto)</label>
@@ -495,6 +495,15 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
               </div>
             </div>
           </div>
+                    <div className="au-card">
+                                  <strong>Selbstauskunft-Checkbox (optional)</strong>
+                                  <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0.4rem 0 0.75rem" }}>Nur wenn hier aktiviert, erscheint im Onepage-Buchungsformular eine Pflicht-Checkbox mit dem unten stehenden Text.</p>
+                                  <label className="au-label">Checkbox-Text (frei wählbar, auch für die gegenteilige Aussage möglich)</label>
+                                  <textarea className="au-textarea" name="selbstauskunft_label" defaultValue={termin.selbstauskunft_label || ""} placeholder="z. B. Ich bestätige, dass ich Agenturunternehmer:in bin." rows={2} />
+                                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.6rem", fontSize: "0.9rem" }}><input type="checkbox" name="selbstauskunft_aktiv" defaultChecked={termin.selbstauskunft_aktiv || false} /> Checkbox im Buchungsformular aktiv</label>
+                    </div>
+          <div className="au-card">
+                          
             <strong>Zusätzlicher Teilnehmer (Gruppenpreis)</strong>
             <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0.4rem 0 0.75rem" }}>
               Preis für die 2. (und weitere) Person derselben Firma. Entweder Festpreis ODER Rabatt in % angeben, nicht beides.
