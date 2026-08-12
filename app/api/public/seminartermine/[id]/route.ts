@@ -71,8 +71,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, preis))"
-    )
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, selbstauskunft_label, selbstauskunft_aktiv, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, preis))"
+      )
     .eq("id", id)
     .single();
 
@@ -201,6 +201,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       zimmerupgrade: termin.zimmerupgrade_preis_netto
         ? { beschreibung: termin.zimmerupgrade_beschreibung || "Zimmer-Upgrade", preis_netto: Number(termin.zimmerupgrade_preis_netto) }
         : null,
+      selbstauskunft: termin.selbstauskunft_aktiv ? (termin.selbstauskunft_label || "Ich bestaetige die untenstehende Angabe.") : null,
       kapazitaet: termin.kapazitaet,
       freie_plaetze: freiePlaetze,
       belegt_prozent: Math.round(belegtProzent),
