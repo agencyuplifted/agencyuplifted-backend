@@ -458,7 +458,7 @@ export async function updateSeminartermin(formData: FormData) {
       : null,
     selbstauskunft_label: formData.get("selbstauskunft_label") || null,
     selbstauskunft_aktiv: formData.get("selbstauskunft_aktiv") === "on",
-    
+  };
 
   const { error } = await supabase.from("seminartermine").update(update).eq("id", id);
   if (error) throw new Error(error.message);
@@ -688,6 +688,89 @@ export async function duplicateSeminarOption(formData: FormData) {
       }))
     );
   }
+
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function importSeminarOptions(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const optionIds = formData.getAll("option_ids").map(String).filter(Boolean);
+
+  if (!optionIds.length) {
+    redirect(`/termine/${seminarterminId}`);
+  }
+
+  const { data: quellOptionen, error: qErr } = await supabase
+    .from("seminartermin_optionen")
+    .select("*, seminartermin_options_features(*), preisstaffeln(*)")
+    .in("id", optionIds);
+  if (qErr) throw new Error(qErr.message);
+
+  const { data: bestehende } = await supabase
+    .from("seminartermin_optionen")
+    .select("sortierung")
+    .eq("seminartermin_id", seminarterminId)
+    .order("sortierung", { ascending: false })
+    .limit(1);
+  let naechsteSortierung = (bestehende?.[0]?.sortierung ?? -1) + 1;
+
+  // Reihenfolge der Quell-Optionen beibehalten (nicht die DB-Rueckgabereihenfolge),
+  // damit z.B. Option A vor Option B importiert wird, wenn beide ausgewaehlt sind.
+  const sortiert = optionIds
+    .map((optId) => (quellOptionen as any[])?.find((o) => o.id === optId))
+    .filter(Boolean);
+
+  for (const quelle of sortiert) {
+    const { data: neueOption, error: insErr } = await supabase
+      .from("seminartermin_optionen")
+      .insert({
+        seminartermin_id: seminarterminId,
+        titel: quelle.titel,
+        beschreibung: quelle.beschreibung,
+        badge: null,
+        sortierung: naechsteSortierung,
+        zusatz_teilnehmer_hinweis: quelle.zusatz_teilnehmer_hinweis,
+      })
+      .select()
+      .single();
+    if (insErr) throw new Error(insErr.message);
+    naechsteSortierung += 1;
+
+    const features = quelle.seminartermin_options_features;
+    if (features?.length) {
+      await supabase.from("seminartermin_options_features").insert(
+        features.map((f: any) => ({
+          seminartermin_option_id: neueOption.id,
+          text: f.text,
+          sortierung: f.sortierung,
+        }))
+      );
+    }
+    const staffeln = quelle.preisstaffeln;
+    if (staffeln?.length) {
+      await supabase.from("preisstaffeln").insert(
+        staffeln.map((p: any) => ({
+          seminartermin_option_id: neueOption.id,
+          name: p.name,
+          stichtag_tage_vor_start: p.stichtag_tage_vor_start,
+          preis: p.preis,
+          waehrung: p.waehrung,
+          sortierung: p.sortierung,
+        }))
+      );
+    }
+  }
+
+  const benutzer = await getAktuellerBenutzer();
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "seminartermin",
+    bezug_id: seminarterminId,
+    ereignis: "optionen_import",
+    beschreibung: `${sortiert.length} Option(en) importiert: ${sortiert.map((o: any) => o.titel).join(", ")}`,
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
 
   revalidatePath(`/termine/${seminarterminId}`);
   redirect(`/termine/${seminarterminId}`);

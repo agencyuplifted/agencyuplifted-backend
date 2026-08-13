@@ -9,6 +9,7 @@ import {
   duplicateSeminartermin,
   previewSeminarterminLoeschen,
   duplicateSeminarOption,
+  importSeminarOptions,
   updateOptionBadge,
   updateSeminarOption,
   deleteSeminarOption,
@@ -49,8 +50,15 @@ function aktuellerPreisNettoVorschau(preisstaffeln: any[], datumStart: string): 
   return gewaehlt ? Number(gewaehlt.preis) : null;
 }
 
-export default async function TerminDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TerminDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ importVon?: string }>;
+}) {
   const { id } = await params;
+  const { importVon } = await searchParams;
   const supabase = getSupabaseAdmin();
 
   // Alle folgenden Abfragen sind voneinander unabhaengig (jede filtert direkt
@@ -76,6 +84,7 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
     { data: buchungsPositionen },
     { data: legacyTeilnehmer },
     { data: zimmerpartner },
+    { data: andereTermine },
   ] = await Promise.all([
     supabase
       .from("seminartermine")
@@ -125,7 +134,23 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
       .from("seminartermin_zimmerpartner")
       .select("id, teilnehmer_a:teilnehmer_id_a(id, vorname, nachname), teilnehmer_b:teilnehmer_id_b(id, vorname, nachname)")
       .eq("seminartermin_id", id),
+    supabase
+      .from("seminartermine")
+      .select("id, kennung, titel, datum_start, seminartypen(name)")
+      .neq("id", id)
+      .order("datum_start", { ascending: true }),
   ]);
+
+  // Optionen des gewaehlten Quell-Termins fuer den Options-Import (nur geladen,
+  // wenn im Import-Panel bereits ein Quell-Termin ausgewaehlt wurde).
+  const importQuellTermin = importVon ? (andereTermine as any[])?.find((t) => t.id === importVon) : null;
+  const { data: importQuellOptionen } = importQuellTermin
+    ? await supabase
+        .from("seminartermin_optionen")
+        .select("*, seminartermin_options_features(*), preisstaffeln(*)")
+        .eq("seminartermin_id", importVon)
+        .order("sortierung", { ascending: true })
+    : { data: null as any[] | null };
 
   type TeilnehmerZeile = {
     id: string;
@@ -784,6 +809,59 @@ export default async function TerminDetailPage({ params }: { params: Promise<{ i
         {!optionen?.length && (
           <p style={{ color: "var(--color-text-faint)" }}>Noch keine Optionen angelegt.</p>
         )}
+
+        <div className="au-card">
+          <strong>Optionen aus anderem Termin importieren</strong>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0.35rem 0 0.75rem" }}>
+            Praktisch, wenn dieser Termin die gleichen (oder fast gleichen) Optionen wie ein bestehender Termin braucht – z. B. aus einem anderen Seminartyp. Quell-Termin waehlen, gewuenschte Option(en) ankreuzen, importieren. Importierte Optionen sind eigenstaendige Kopien (inkl. Features und Preisstaffeln) und koennen danach hier ganz normal bearbeitet werden, ohne den Quell-Termin zu beeinflussen.
+          </p>
+          <form method="GET" style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div>
+              <label className="au-label">Quell-Termin</label>
+              <select name="importVon" defaultValue={importVon || ""} style={{ padding: "0.45rem", minWidth: 320 }}>
+                <option value="">– Termin auswählen –</option>
+                {andereTermine?.map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.kennung ? `${t.kennung} · ` : ""}{t.titel || t.seminartypen?.name || "Ohne Titel"} ({formatDatum(t.datum_start)})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="au-btn au-btn-secondary">Optionen anzeigen</button>
+          </form>
+
+          {importQuellTermin && (
+            <div style={{ marginTop: "1rem" }}>
+              {importQuellOptionen?.length ? (
+                <form action={importSeminarOptions}>
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", margin: "0.5rem 0 0.85rem" }}>
+                    {importQuellOptionen.map((opt: any) => (
+                      <label key={opt.id} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", fontSize: "0.9rem", cursor: "pointer" }}>
+                        <input type="checkbox" name="option_ids" value={opt.id} style={{ marginTop: "0.2rem" }} />
+                        <span>
+                          <strong>{opt.titel}</strong>
+                          {opt.badge && (
+                            <span className="au-badge au-badge-gold" style={{ marginLeft: "0.4rem" }}>
+                              {badgeLabel[opt.badge] || opt.badge}
+                            </span>
+                          )}
+                          <br />
+                          <span style={{ color: "var(--color-text-faint)" }}>
+                            {(opt.seminartermin_options_features?.length || 0)} Feature(s) · {(opt.preisstaffeln?.length || 0)} Preisstaffel(n)
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <button type="submit" className="au-btn au-btn-primary">Ausgewählte Optionen importieren</button>
+                </form>
+              ) : (
+                <p style={{ color: "var(--color-text-faint)", fontSize: "0.9rem" }}>Dieser Termin hat noch keine Optionen.</p>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="au-card">
           <strong>Neue Option hinzufügen</strong>
