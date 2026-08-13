@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatDatum, monatsName } from "@/lib/format";
+import { formatDatum, formatDatumsspanne, monatsName } from "@/lib/format";
 import { duplicateSeminartermin } from "@/lib/actions";
 
 function gruppeProMonat(liste: any[]) {
@@ -131,7 +131,7 @@ function TerminTabelle({
                     <tr key={t.id} style={vergangen ? { opacity: 0.6 } : undefined}>
                       <td><Link href={`/termine/${t.id}`}>{t.titel || t.seminartypen?.name}</Link></td>
                       <td>{t.kennung ? <span className="au-badge">{t.kennung}</span> : "—"}</td>
-                      <td>{formatDatum(t.datum_start)}{t.zeit_start ? `, ${t.zeit_start.slice(0, 5)} Uhr` : ""}</td>
+                      <td>{formatDatumsspanne(t.datum_start, t.datum_ende)}{t.zeit_start ? `, ${t.zeit_start.slice(0, 5)} Uhr` : ""}</td>
                       <td>{t.veranstaltungsorte?.name || "—"}</td>
                       <td>{t.format}</td>
                       <td>

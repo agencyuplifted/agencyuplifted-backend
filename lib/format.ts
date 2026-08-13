@@ -5,6 +5,27 @@ export function formatDatum(d: string) {
   return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(d));
 }
 
+// Kompakte Datumsspanne fuer Listenansichten (z.B. Termine-Uebersicht): zeigt bei
+// mehrtaegigen Terminen den vollen Zeitraum statt nur des Starttags. Faellt bei
+// eintaegigen Terminen (kein Enddatum oder Enddatum = Startdatum) auf das normale
+// Einzeldatum zurueck.
+export function formatDatumsspanne(start: string, ende?: string | null) {
+  if (!ende || ende === start) return formatDatum(start);
+  const startDatum = new Date(start);
+  const endeDatum = new Date(ende);
+  const tag = (d: Date) => String(d.getDate()).padStart(2, "0");
+  const monat = (d: Date) => String(d.getMonth() + 1).padStart(2, "0");
+  const jahr = (d: Date) => d.getFullYear();
+
+  if (jahr(startDatum) !== jahr(endeDatum)) {
+    return `${formatDatum(start)} – ${formatDatum(ende)}`;
+  }
+  if (monat(startDatum) !== monat(endeDatum)) {
+    return `${tag(startDatum)}.${monat(startDatum)}. – ${tag(endeDatum)}.${monat(endeDatum)}.${jahr(endeDatum)}`;
+  }
+  return `${tag(startDatum)}. – ${tag(endeDatum)}.${monat(endeDatum)}.${jahr(endeDatum)}`;
+}
+
 // Fuer Zeitstempel (z.B. Resend-Tracking: zugestellt/geoeffnet/geklickt am),
 // bei denen zusaetzlich zum Datum auch die Uhrzeit relevant ist.
 export function formatDatumZeit(d: string) {
