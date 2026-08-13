@@ -131,7 +131,7 @@ function TerminTabelle({
                     <tr key={t.id} style={vergangen ? { opacity: 0.6 } : undefined}>
                       <td><Link href={`/termine/${t.id}`}>{t.titel || t.seminartypen?.name}</Link></td>
                       <td>{t.kennung ? <span className="au-badge">{t.kennung}</span> : "—"}</td>
-                      <td>{formatDatumsspanne(t.datum_start, t.datum_ende)}{t.zeit_start ? `, ${t.zeit_start.slice(0, 5)} Uhr` : ""}</td>
+                      <td>{formatDatumsspanne(t.datum_start, t.datum_ende)}</td>
                       <td>{t.veranstaltungsorte?.name || "—"}</td>
                       <td>{t.format}</td>
                       <td>
