@@ -1805,7 +1805,7 @@ export async function uebernehmeThemenRadarIdeeInInsights(formData: FormData) {
       bloecke: [],
       status: "entwurf",
       autor_id: benutzer?.id || null,
-      quelle_typ: "themen-radar",
+      quelle_typ: "themen_radar",
       quelle_referenz: idee.id,
     })
     .select("id")
