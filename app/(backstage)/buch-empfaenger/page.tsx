@@ -2,10 +2,15 @@ export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
 
-const TYP_LABEL: Record<string, string> = {
-  mitarbeiter: "Mitarbeiter",
-  agenturunternehmer: "Agenturunternehmer",
-};
+// Kategorien sind seit der Erweiterbarkeit (buch_kontakt_kategorien) freier
+// Text - hier nur noch die Badge-Farbe je nach bekannter Kategorie, alle
+// anderen (Journalist, Redakteur, Pitch-Berater, ...) bekommen eine
+// einheitliche neutrale Presse-/Extern-Farbe.
+function typBadgeKlasse(typ: string) {
+  if (typ === "Mitarbeiter") return "au-badge-neutral";
+  if (typ === "Agenturunternehmer") return "au-badge-gold";
+  return "au-badge-warning";
+}
 
 const STATUS_LABEL: Record<string, string> = {
   neu: "Neu",
@@ -25,7 +30,7 @@ export default async function BuchEmpfaengerPage() {
     .order("erstellt_am", { ascending: false });
 
   const gesamt = empfaenger?.length || 0;
-  const potenzielleLeads = empfaenger?.filter((e: any) => e.typ === "agenturunternehmer").length || 0;
+  const potenzielleLeads = empfaenger?.filter((e: any) => e.typ === "Agenturunternehmer").length || 0;
 
   return (
     <main>
@@ -58,9 +63,7 @@ export default async function BuchEmpfaengerPage() {
                 <td>{e.firma || "—"}</td>
                 <td>{e.email || "—"}</td>
                 <td>
-                  <span className={`au-badge ${e.typ === "mitarbeiter" ? "au-badge-neutral" : "au-badge-gold"}`}>
-                    {TYP_LABEL[e.typ] || e.typ}
-                  </span>
+                  <span className={`au-badge ${typBadgeKlasse(e.typ)}`}>{e.typ}</span>
                 </td>
                 <td>
                   {e.status ? (

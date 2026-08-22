@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { legeBuchVersandAn, versendeBuchExemplarAction } from "@/lib/actions";
+import { legeBuchVersandAn, versendeBuchExemplarAction, deleteBuchVersand } from "@/lib/actions";
 import AdressParseFeld from "./AdressParseFeld";
 import SendButton from "./SendButton";
+import LoeschenButton from "./LoeschenButton";
 
 const GRUND_LABEL: Record<string, string> = {
   rezension: "Rezensionsexemplar",
@@ -35,6 +36,8 @@ export default async function BuchVersandPage() {
     .limit(1)
     .maybeSingle();
 
+  const { data: kategorien } = await supabase.from("buch_kontakt_kategorien").select("id, name").order("name");
+
   return (
     <main>
       <h1>Buch-Versand</h1>
@@ -61,9 +64,14 @@ export default async function BuchVersandPage() {
       </div>
 
       <div className="au-card">
-        <h2>Neues Exemplar</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2>Neues Exemplar</h2>
+          <a href="/buch-versand/kategorien" className="au-btn au-btn-secondary au-btn-sm">
+            Kategorien verwalten
+          </a>
+        </div>
         <form action={legeBuchVersandAn} style={{ maxWidth: 640 }}>
-          <AdressParseFeld />
+          <AdressParseFeld kategorien={kategorien || []} />
           <label className="au-label">Grund</label>
           <select className="au-select" name="grund" defaultValue="rezension">
             <option value="rezension">Rezensionsexemplar</option>
@@ -85,7 +93,7 @@ export default async function BuchVersandPage() {
               <th>Grund</th>
               <th>Status</th>
               <th>Angelegt</th>
-              <th>Aktion</th>
+              <th>Aktionen</th>
             </tr>
           </thead>
           <tbody>
@@ -113,12 +121,21 @@ export default async function BuchVersandPage() {
                 </td>
                 <td>{formatDatum(e.erstellt_am)}</td>
                 <td>
-                  {e.status !== "versendet" && (
-                    <form action={versendeBuchExemplarAction}>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {e.status !== "versendet" && (
+                      <form action={versendeBuchExemplarAction}>
+                        <input type="hidden" name="id" value={e.id} />
+                        <SendButton />
+                      </form>
+                    )}
+                    <a href={`/buch-versand/${e.id}`} className="au-btn au-btn-secondary au-btn-sm">
+                      Bearbeiten
+                    </a>
+                    <form action={deleteBuchVersand}>
                       <input type="hidden" name="id" value={e.id} />
-                      <SendButton />
+                      <LoeschenButton name={e.name} />
                     </form>
-                  )}
+                  </div>
                 </td>
               </tr>
             ))}

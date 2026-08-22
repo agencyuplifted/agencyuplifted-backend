@@ -1704,8 +1704,8 @@ export async function legeBuchVersandAn(formData: FormData) {
   const email = String(formData.get("email") || "").trim() || null;
   const grund = String(formData.get("grund") || "rezension");
   const rohtext = String(formData.get("rohtext") || "") || null;
-  const empfaengerTyp = String(formData.get("empfaenger_typ") || "agenturunternehmer");
-  const empfaengerStatus = empfaengerTyp === "agenturunternehmer" ? String(formData.get("empfaenger_status") || "neu") : null;
+  const empfaengerTyp = String(formData.get("empfaenger_typ") || "Agenturunternehmer");
+  const empfaengerStatus = empfaengerTyp === "Agenturunternehmer" ? String(formData.get("empfaenger_status") || "neu") : null;
 
   if (!name || !strasse || !plz || !ort) {
     throw new Error("Name, Straße, PLZ und Ort sind Pflichtfelder.");
@@ -1746,6 +1746,89 @@ export async function legeBuchVersandAn(formData: FormData) {
 
   revalidatePath("/buch-versand");
   revalidatePath("/buch-empfaenger");
+}
+
+// Ein einmal angelegter Eintrag war bislang "fest" - Adresse/Kategorie ließen
+// sich nicht mehr korrigieren, wenn beim Einfügen etwas falsch geparst wurde.
+// Aktualisiert sowohl den Buch-Versand-Datensatz als auch den verknüpften
+// Buch-Empfänger-Eintrag (Name/Firma/E-Mail/Kategorie/Status sind dort
+// dupliziert, damit die Empfänger-Liste unabhängig von buch_versand lesbar
+// bleibt).
+export async function updateBuchVersand(formData: FormData) {
+  const id = String(formData.get("id"));
+  const name = String(formData.get("name") || "").trim();
+  const firma = String(formData.get("firma") || "").trim() || null;
+  const strasse = String(formData.get("strasse") || "").trim();
+  const plz = String(formData.get("plz") || "").trim();
+  const ort = String(formData.get("ort") || "").trim();
+  const land = String(formData.get("land") || "Deutschland").trim();
+  const email = String(formData.get("email") || "").trim() || null;
+  const grund = String(formData.get("grund") || "rezension");
+  const empfaengerTyp = String(formData.get("empfaenger_typ") || "Agenturunternehmer");
+  const empfaengerStatus = empfaengerTyp === "Agenturunternehmer" ? String(formData.get("empfaenger_status") || "neu") : null;
+
+  if (!id || !name || !strasse || !plz || !ort) {
+    throw new Error("Name, Straße, PLZ und Ort sind Pflichtfelder.");
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("buch_versand")
+    .update({ name, firma, strasse, plz, ort, land, email, grund })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  const { error: empfaengerFehler } = await supabase
+    .from("buch_empfaenger")
+    .update({ name, firma, email, typ: empfaengerTyp, status: empfaengerStatus })
+    .eq("buch_versand_id", id);
+  if (empfaengerFehler) throw new Error(empfaengerFehler.message);
+
+  revalidatePath("/buch-versand");
+  revalidatePath("/buch-empfaenger");
+  redirect("/buch-versand");
+}
+
+export async function deleteBuchVersand(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+
+  const { error: empfaengerFehler } = await supabase.from("buch_empfaenger").delete().eq("buch_versand_id", id);
+  if (empfaengerFehler) throw new Error(empfaengerFehler.message);
+
+  const { error } = await supabase.from("buch_versand").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/buch-versand");
+  revalidatePath("/buch-empfaenger");
+  redirect("/buch-versand");
+}
+
+// ---------- Buch-Kontakt-Kategorien (erweiterbare Liste statt fester Werte) ----------
+
+export async function createBuchKontaktKategorie(formData: FormData) {
+  const name = String(formData.get("name") || "").trim();
+  if (!name) throw new Error("Bitte einen Namen für die Kategorie angeben.");
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("buch_kontakt_kategorien").insert({ name });
+  if (error) {
+    if (error.code === "23505") throw new Error(`Kategorie "${name}" existiert bereits.`);
+    throw new Error(error.message);
+  }
+  revalidatePath("/buch-versand/kategorien");
+  revalidatePath("/buch-versand");
+  redirect("/buch-versand/kategorien");
+}
+
+export async function deleteBuchKontaktKategorie(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("buch_kontakt_kategorien").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/buch-versand/kategorien");
+  revalidatePath("/buch-versand");
+  redirect("/buch-versand/kategorien");
 }
 
 export async function versendeBuchExemplarAction(formData: FormData) {

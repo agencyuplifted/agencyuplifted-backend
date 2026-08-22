@@ -79,10 +79,12 @@ function parseAdresse(text: string) {
   };
 }
 
-export default function AdressParseFeld() {
+type Kategorie = { id: string; name: string };
+
+export default function AdressParseFeld({ kategorien }: { kategorien: Kategorie[] }) {
   const [rohtext, setRohtext] = useState("");
   const [felder, setFelder] = useState({ name: "", firma: "", strasse: "", plz: "", ort: "", land: "Deutschland", email: "" });
-  const [typ, setTyp] = useState("agenturunternehmer");
+  const [typ, setTyp] = useState(kategorien.find((k) => k.name === "Agenturunternehmer")?.name || kategorien[0]?.name || "");
   const [status, setStatus] = useState("neu");
 
   function onRohtextChange(value: string) {
@@ -195,11 +197,14 @@ export default function AdressParseFeld() {
         <div>
           <label className="au-label">Empfänger ist</label>
           <select className="au-select" name="empfaenger_typ" value={typ} onChange={(e) => setTyp(e.target.value)}>
-            <option value="agenturunternehmer">Agenturunternehmer</option>
-            <option value="mitarbeiter">Mitarbeiter</option>
+            {kategorien.map((k) => (
+              <option key={k.id} value={k.name}>
+                {k.name}
+              </option>
+            ))}
           </select>
         </div>
-        {typ === "agenturunternehmer" && (
+        {typ === "Agenturunternehmer" && (
           <div>
             <label className="au-label">Kundenstatus</label>
             <select className="au-select" name="empfaenger_status" value={status} onChange={(e) => setStatus(e.target.value)}>
