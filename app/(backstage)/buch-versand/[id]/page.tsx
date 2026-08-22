@@ -19,7 +19,7 @@ export default async function BuchVersandBearbeitenPage({ params }: { params: Pr
 
   const { data: empfaenger } = await supabase
     .from("buch_empfaenger")
-    .select("typ, status")
+    .select("typ, status, geburtsdatum, linkedin_url")
     .eq("buch_versand_id", id)
     .maybeSingle();
 
@@ -84,6 +84,17 @@ export default async function BuchVersandBearbeitenPage({ params }: { params: Pr
             initialTyp={empfaenger?.typ || ""}
             initialStatus={empfaenger?.status || null}
           />
+
+          <div className="au-row-2">
+            <div>
+              <label className="au-label">Geburtstag (optional)</label>
+              <input className="au-input" type="date" name="geburtsdatum" defaultValue={empfaenger?.geburtsdatum || ""} />
+            </div>
+            <div>
+              <label className="au-label">LinkedIn-URL (optional)</label>
+              <input className="au-input" type="text" name="linkedin_url" defaultValue={empfaenger?.linkedin_url || ""} placeholder="https://www.linkedin.com/in/…" />
+            </div>
+          </div>
 
           <button type="submit" className="au-btn au-btn-primary" style={{ marginTop: "1rem" }}>
             Änderungen speichern

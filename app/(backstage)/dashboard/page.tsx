@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatEURBrutto, formatDatum } from "@/lib/format";
+import { ladeAnstehendeGeburtstage } from "@/lib/geburtstage";
 
 type Ansicht = "uebersicht" | "nachfrage" | "auslastung" | "kunden" | "vertrieb";
 
@@ -147,6 +148,13 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
         </div>
       </div>
       <div className="au-card">
+        <h2>Nächste Geburtstage (14 Tage)</h2>
+        <NaechsteGeburtstage />
+        <div style={{ marginTop: "0.75rem" }}>
+          <Link href="/geburtstage" className="au-btn au-btn-secondary au-btn-sm">Alle Geburtstage ansehen →</Link>
+        </div>
+      </div>
+      <div className="au-card">
         <p style={{ fontSize: "0.85rem", margin: 0 }}>
           Hinweis: Der Umsatz-Wert bezieht sich nur auf Buchungen, die im neuen System erfasst wurden — bei den
           historischen Altdaten aus dem Alt-System wurden keine Preise übernommen. Alle Preise netto, zzgl. 19% USt. (brutto:{" "}
@@ -154,6 +162,33 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
         </p>
       </div>
     </>
+  );
+}
+
+async function NaechsteGeburtstage() {
+  const eintraege = await ladeAnstehendeGeburtstage(14);
+  if (!eintraege.length) {
+    return <p style={{ margin: 0 }}>Keine Geburtstage in den nächsten 14 Tagen.</p>;
+  }
+  return (
+    <table className="au-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Geburtstag</th>
+          <th>Wann</th>
+        </tr>
+      </thead>
+      <tbody>
+        {eintraege.slice(0, 8).map((e) => (
+          <tr key={`${e.quelle}-${e.id}`}>
+            <td><Link href={e.detailHref}>{e.name}</Link></td>
+            <td>{formatDatum(e.geburtsdatum)}</td>
+            <td>{e.tageBis === 0 ? "Heute!" : e.tageBis === 1 ? "Morgen" : `in ${e.tageBis} Tagen`}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

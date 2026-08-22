@@ -53,6 +53,7 @@ const GROUPS: NavGroup[] = [
       { href: "/content-creation", label: "Content Creation" },
       { href: "/buch-versand", label: "Buch-Versand" },
       { href: "/buch-empfaenger", label: "Buch-Empfänger" },
+      { href: "/geburtstage", label: "Geburtstage" },
     ],
   },
 ];

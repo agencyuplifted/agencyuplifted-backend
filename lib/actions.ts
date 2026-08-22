@@ -1766,6 +1766,8 @@ export async function updateBuchVersand(formData: FormData) {
   const grund = String(formData.get("grund") || "rezension");
   const empfaengerTyp = String(formData.get("empfaenger_typ") || "Agenturunternehmer");
   const empfaengerStatus = empfaengerTyp === "Agenturunternehmer" ? String(formData.get("empfaenger_status") || "neu") : null;
+  const geburtsdatum = String(formData.get("geburtsdatum") || "").trim() || null;
+  const linkedinUrl = String(formData.get("linkedin_url") || "").trim() || null;
 
   if (!id || !name || !strasse || !plz || !ort) {
     throw new Error("Name, Straße, PLZ und Ort sind Pflichtfelder.");
@@ -1780,12 +1782,13 @@ export async function updateBuchVersand(formData: FormData) {
 
   const { error: empfaengerFehler } = await supabase
     .from("buch_empfaenger")
-    .update({ name, firma, email, typ: empfaengerTyp, status: empfaengerStatus })
+    .update({ name, firma, email, typ: empfaengerTyp, status: empfaengerStatus, geburtsdatum, linkedin_url: linkedinUrl })
     .eq("buch_versand_id", id);
   if (empfaengerFehler) throw new Error(empfaengerFehler.message);
 
   revalidatePath("/buch-versand");
   revalidatePath("/buch-empfaenger");
+  revalidatePath("/geburtstage");
   redirect("/buch-versand");
 }
 
@@ -2070,4 +2073,123 @@ export async function setzeInsightsStatus(formData: FormData) {
   revalidatePath("/insights");
   revalidatePath(`/insights/${id}`);
   redirect(`/insights/${id}?gespeichert=1`);
+}
+
+// ---------------------------------------------------------------------------
+// Geburtstage: Vorlagen (Textbausteine) + manueller E-Mail-Versand
+// ---------------------------------------------------------------------------
+
+export async function createGeburtstagsVorlage(formData: FormData) {
+  const name = String(formData.get("name") || "").trim();
+  const betreff = String(formData.get("betreff") || "").trim();
+  const inhalt = String(formData.get("inhalt") || "").trim();
+  const istStandard = formData.get("ist_standard") === "on";
+  if (!name || !betreff || !inhalt) throw new Error("Name, Betreff und Inhalt sind Pflichtfelder.");
+
+  const supabase = getSupabaseAdmin();
+  if (istStandard) {
+    await supabase.from("geburtstags_vorlagen").update({ ist_standard: false }).eq("ist_standard", true);
+  }
+  const { error } = await supabase.from("geburtstags_vorlagen").insert({ name, betreff, inhalt, ist_standard: istStandard });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/geburtstage/vorlagen");
+  redirect("/geburtstage/vorlagen");
+}
+
+export async function updateGeburtstagsVorlage(formData: FormData) {
+  const id = String(formData.get("id"));
+  const name = String(formData.get("name") || "").trim();
+  const betreff = String(formData.get("betreff") || "").trim();
+  const inhalt = String(formData.get("inhalt") || "").trim();
+  if (!id || !name || !betreff || !inhalt) throw new Error("Name, Betreff und Inhalt sind Pflichtfelder.");
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("geburtstags_vorlagen")
+    .update({ name, betreff, inhalt, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/geburtstage/vorlagen");
+  redirect("/geburtstage/vorlagen");
+}
+
+export async function setGeburtstagsVorlageStandard(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  await supabase.from("geburtstags_vorlagen").update({ ist_standard: false }).eq("ist_standard", true);
+  const { error } = await supabase.from("geburtstags_vorlagen").update({ ist_standard: true }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/geburtstage/vorlagen");
+  redirect("/geburtstage/vorlagen");
+}
+
+export async function deleteGeburtstagsVorlage(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("geburtstags_vorlagen").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/geburtstage/vorlagen");
+  redirect("/geburtstage/vorlagen");
+}
+
+// Sendet die (ggf. vom Nutzer noch bearbeitete) Geburtstags-Mail direkt per
+// Resend und schreibt einen Log-Eintrag (quelle+kontakt_id+jahr eindeutig),
+// damit dieselbe Person im selben Jahr nicht zweimal angeschrieben wird und
+// die Übersicht "bereits gratuliert" anzeigen kann.
+export async function sendeGeburtstagsMail(formData: FormData) {
+  const quelle = String(formData.get("quelle"));
+  const kontaktId = String(formData.get("kontakt_id"));
+  const email = String(formData.get("email") || "").trim();
+  const betreff = String(formData.get("betreff") || "").trim();
+  const inhalt = String(formData.get("inhalt") || "").trim();
+  const vorlageId = String(formData.get("vorlage_id") || "") || null;
+
+  if (quelle !== "teilnehmer" && quelle !== "buch_empfaenger") throw new Error("Unbekannte Quelle.");
+  if (!kontaktId || !email || !betreff || !inhalt) throw new Error("Fehlende Angaben für den Versand.");
+
+  const jahr = new Date().getFullYear();
+  const supabase = getSupabaseAdmin();
+
+  let status: "gesendet" | "fehler" = "gesendet";
+  let fehlermeldung: string | null = null;
+  let resendEmailId: string | null = null;
+  try {
+    const resend = getResend();
+    const { data, error } = await resend.emails.send({
+      from: ABSENDER,
+      to: [email],
+      subject: betreff,
+      html: inhalt.replace(/\n/g, "<br/>"),
+    });
+    if (error) {
+      status = "fehler";
+      fehlermeldung = error.message;
+    } else {
+      resendEmailId = data?.id || null;
+    }
+  } catch (e: any) {
+    status = "fehler";
+    fehlermeldung = e?.message || "Unbekannter Fehler beim Versand.";
+  }
+
+  const { error: logFehler } = await supabase.from("geburtstags_versand_log").insert({
+    quelle,
+    kontakt_id: kontaktId,
+    jahr,
+    email,
+    vorlage_id: vorlageId,
+    status,
+    fehlermeldung,
+    resend_email_id: resendEmailId,
+  });
+  // Eindeutigkeits-Constraint (quelle+kontakt_id+jahr) kann bei Doppelklick
+  // zuschlagen - das ist gewollt (kein zweiter Log-Eintrag), aber wenn der
+  // Versand selbst fehlgeschlagen ist, soll der Nutzer trotzdem eine
+  // Fehlermeldung sehen statt einer stillen Doppel-Sperre.
+  if (logFehler && status === "fehler") throw new Error(fehlermeldung || logFehler.message);
+
+  revalidatePath("/geburtstage");
+  redirect(`/geburtstage?versendet=${status === "gesendet" ? "1" : "0"}`);
 }
