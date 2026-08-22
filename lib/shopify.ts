@@ -74,6 +74,7 @@ async function adminGraphql(query: string, variables: Record<string, unknown>) {
 export type BuchVersandEintrag = {
   id: string;
   name: string;
+  firma?: string | null;
   email: string | null;
   strasse: string;
   plz: string;
@@ -92,6 +93,7 @@ export async function versendeAlsShopifyBestellung(eintrag: BuchVersandEintrag) 
   const address = {
     firstName: vorname,
     lastName: restName.length ? nachname : "",
+    company: eintrag.firma || undefined,
     address1: eintrag.strasse,
     city: eintrag.ort,
     zip: eintrag.plz,

@@ -6,10 +6,18 @@ import { useState } from "react";
 // automatisch in Shopify-taugliche Adressfelder zerlegen. Die erkannten Felder
 // bleiben editierbar, bevor der Eintrag angelegt wird - reine Heuristik, kein
 // externer Dienst, keine Adressvalidierung.
+
+// Entfernt Satzzeichen (Komma/Punkt/Semikolon) am Zeilenende, die beim
+// Kopieren aus E-Mail-Signaturen, Tabellen oder Adressblöcken oft übrig
+// bleiben (z.B. "Cherrypicker,", "20457 Hamburg.").
+function saubereZeile(z: string) {
+  return z.replace(/[.,;]+\s*$/, "").trim();
+}
+
 function parseAdresse(text: string) {
   const zeilen = text
-    .split("\n")
-    .map((z) => z.trim())
+    .split(/\r?\n/)
+    .map((z) => saubereZeile(z))
     .filter(Boolean);
 
   const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
@@ -31,26 +39,39 @@ function parseAdresse(text: string) {
   // -weg, ...), fällt sonst auf die erste Zahl-Zeile zurück - deckt auch
   // Straßennamen ohne Suffix ab, z.B. "Alt Lage 3b".
   const strasseKandidaten = zeilen.filter((z) => z !== plzOrtZeile && !z.includes("@") && /\d/.test(z));
-  const strasseZeile =
+  const strasseZeileRoh =
     strasseKandidaten.find((z) => /straße|strasse|str\.|weg|allee|platz|gasse|ring/i.test(z)) ||
     strasseKandidaten[0];
+  // Hausnummer manchmal durch Komma abgetrennt kopiert (z.B. "Zippelhaus, 3"
+  // aus einer Tabelle) - zu "Zippelhaus 3" normalisieren.
+  const strasseZeile = strasseZeileRoh
+    ? strasseZeileRoh.replace(/,\s*(\d+\s*[a-zA-Z]?)$/, " $1").replace(/\s+/g, " ").trim()
+    : "";
 
   let land = "Deutschland";
   if (/österreich|austria/i.test(text)) land = "Österreich";
   else if (/schweiz|switzerland/i.test(text)) land = "Schweiz";
 
-  const nameZeile = zeilen.find(
+  // Übrige Zeilen (keine PLZ/Ort-, Straßen- oder E-Mail-Zeile, kein Land,
+  // beginnt nicht mit einer Ziffer) sind Firma und/oder Ansprechpartner.
+  // In deutschen Geschäftsadressen steht die Firma üblicherweise vor dem
+  // Ansprechpartner - bei zwei Kandidaten gilt deshalb der erste als Firma,
+  // der zweite als Name; bei nur einem Kandidaten gilt er als Name.
+  const nameKandidaten = zeilen.filter(
     (z) =>
       z !== plzOrtZeile &&
-      z !== strasseZeile &&
+      z !== strasseZeileRoh &&
       !z.includes("@") &&
       !/^\d/.test(z) &&
       !/^(deutschland|österreich|schweiz|germany|austria|switzerland)$/i.test(z)
   );
+  const firma = nameKandidaten.length > 1 ? nameKandidaten[0] : "";
+  const name = nameKandidaten.length > 1 ? nameKandidaten[1] : nameKandidaten[0] || "";
 
   return {
-    name: nameZeile || "",
-    strasse: strasseZeile || "",
+    name,
+    firma,
+    strasse: strasseZeile,
     plz,
     ort,
     land,
@@ -60,7 +81,7 @@ function parseAdresse(text: string) {
 
 export default function AdressParseFeld() {
   const [rohtext, setRohtext] = useState("");
-  const [felder, setFelder] = useState({ name: "", strasse: "", plz: "", ort: "", land: "Deutschland", email: "" });
+  const [felder, setFelder] = useState({ name: "", firma: "", strasse: "", plz: "", ort: "", land: "Deutschland", email: "" });
   const [typ, setTyp] = useState("agenturunternehmer");
   const [status, setStatus] = useState("neu");
 
@@ -69,6 +90,7 @@ export default function AdressParseFeld() {
     const erkannt = parseAdresse(value);
     setFelder((prev) => ({
       name: erkannt.name || prev.name,
+      firma: erkannt.firma || prev.firma,
       strasse: erkannt.strasse || prev.strasse,
       plz: erkannt.plz || prev.plz,
       ort: erkannt.ort || prev.ort,
@@ -85,12 +107,22 @@ export default function AdressParseFeld() {
         rows={5}
         value={rohtext}
         onChange={(e) => onRohtextChange(e.target.value)}
-        placeholder={"Max Mustermann\nMusterstraße 12\n12345 Musterstadt\nmax@example.com"}
+        placeholder={"Firma GmbH (optional)\nMax Mustermann\nMusterstraße 12\n12345 Musterstadt\nmax@example.com"}
         style={{ minHeight: "auto" }}
       />
       <input type="hidden" name="rohtext" value={rohtext} />
 
       <div className="au-row-2">
+        <div>
+          <label className="au-label">Firma (optional)</label>
+          <input
+            className="au-input"
+            type="text"
+            name="firma"
+            value={felder.firma}
+            onChange={(e) => setFelder({ ...felder, firma: e.target.value })}
+          />
+        </div>
         <div>
           <label className="au-label">Name</label>
           <input
@@ -102,17 +134,16 @@ export default function AdressParseFeld() {
             onChange={(e) => setFelder({ ...felder, name: e.target.value })}
           />
         </div>
-        <div>
-          <label className="au-label">E-Mail (optional)</label>
-          <input
-            className="au-input"
-            type="email"
-            name="email"
-            value={felder.email}
-            onChange={(e) => setFelder({ ...felder, email: e.target.value })}
-          />
-        </div>
       </div>
+
+      <label className="au-label">E-Mail (optional)</label>
+      <input
+        className="au-input"
+        type="email"
+        name="email"
+        value={felder.email}
+        onChange={(e) => setFelder({ ...felder, email: e.target.value })}
+      />
 
       <label className="au-label">Straße + Hausnummer</label>
       <input

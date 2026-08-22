@@ -93,6 +93,7 @@ export default async function BuchVersandPage() {
               <tr key={e.id}>
                 <td style={{ fontWeight: 600 }}>{e.name}</td>
                 <td style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
+                  {e.firma && <div style={{ fontWeight: 600, color: "var(--color-text)" }}>{e.firma}</div>}
                   {e.strasse}, {e.plz} {e.ort}, {e.land}
                   {e.email && <div>{e.email}</div>}
                 </td>

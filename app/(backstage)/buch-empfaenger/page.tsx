@@ -44,6 +44,7 @@ export default async function BuchEmpfaengerPage() {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Firma</th>
               <th>E-Mail</th>
               <th>Typ</th>
               <th>Status</th>
@@ -54,6 +55,7 @@ export default async function BuchEmpfaengerPage() {
             {empfaenger?.map((e: any) => (
               <tr key={e.id}>
                 <td style={{ fontWeight: 600 }}>{e.name}</td>
+                <td>{e.firma || "—"}</td>
                 <td>{e.email || "—"}</td>
                 <td>
                   <span className={`au-badge ${e.typ === "mitarbeiter" ? "au-badge-neutral" : "au-badge-gold"}`}>
@@ -74,7 +76,7 @@ export default async function BuchEmpfaengerPage() {
             ))}
             {!empfaenger?.length && (
               <tr className="au-table-empty">
-                <td colSpan={5}>Noch keine Buch-Empfänger erfasst.</td>
+                <td colSpan={6}>Noch keine Buch-Empfänger erfasst.</td>
               </tr>
             )}
           </tbody>

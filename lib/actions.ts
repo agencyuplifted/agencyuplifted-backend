@@ -1696,6 +1696,7 @@ export async function neueContentAufgabe(formData: FormData) {
 
 export async function legeBuchVersandAn(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
+  const firma = String(formData.get("firma") || "").trim() || null;
   const strasse = String(formData.get("strasse") || "").trim();
   const plz = String(formData.get("plz") || "").trim();
   const ort = String(formData.get("ort") || "").trim();
@@ -1717,6 +1718,7 @@ export async function legeBuchVersandAn(formData: FormData) {
     .from("buch_versand")
     .insert({
       name,
+      firma,
       strasse,
       plz,
       ort,
@@ -1735,6 +1737,7 @@ export async function legeBuchVersandAn(formData: FormData) {
   const { error: empfaengerFehler } = await supabase.from("buch_empfaenger").insert({
     buch_versand_id: neuerEintrag?.id || null,
     name,
+    firma,
     email,
     typ: empfaengerTyp,
     status: empfaengerStatus,
@@ -1751,7 +1754,7 @@ export async function versendeBuchExemplarAction(formData: FormData) {
 
   const { data: eintrag, error: ladeFehler } = await supabase
     .from("buch_versand")
-    .select("id, name, email, strasse, plz, ort, land, grund")
+    .select("id, name, firma, email, strasse, plz, ort, land, grund")
     .eq("id", id)
     .single();
   if (ladeFehler || !eintrag) throw new Error(ladeFehler?.message || "Eintrag nicht gefunden.");
