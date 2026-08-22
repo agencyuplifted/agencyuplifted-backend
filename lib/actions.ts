@@ -14,6 +14,7 @@ import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsv
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
 import { erzeugeSlug, eindeutigerSlug, erzeugeTagSlug } from "./insights";
+import { holeAutocompleteVorschlaege } from "./themen-radar";
 
 // Ermittelt Anrede + Quelle fuer ein Formularfeld: explizite Angabe (Herr/Frau/
 // Divers) gilt als 'manuell' und wird nie durch die Namens-Heuristik ersetzt.
@@ -1690,6 +1691,135 @@ export async function neueContentAufgabe(formData: FormData) {
   const { error } = await supabase.from("content_aufgaben").insert({ titel, beschreibung, rhythmus });
   if (error) throw new Error(error.message);
   revalidatePath("/content-creation");
+}
+
+// ---------- Themen-Radar (Ideen-Pipeline fuer Insights/Blog + LinkedIn) ----------
+
+export async function erstelleThemenRadarIdee(formData: FormData) {
+  const thema = String(formData.get("thema") || "").trim();
+  if (!thema) throw new Error("Bitte ein Thema angeben.");
+  const cluster = String(formData.get("cluster") || "Sonstige");
+  const notiz = String(formData.get("notiz") || "").trim() || null;
+  const fuer_linkedin = formData.get("fuer_linkedin") === "on";
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("themen_radar_ideen").insert({
+    thema,
+    cluster,
+    notiz,
+    fuer_linkedin,
+    quelle: "manuell",
+    status: "neu",
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}
+
+// Holt Google-Autocomplete-Vorschlaege zu einem Startbegriff und legt sie direkt als
+// neue Ideen an (Quelle "autocomplete", Status "neu") -- unpassende koennen danach in
+// der Liste verworfen/geloescht werden. Bewusst ohne Vorab-Auswahl-UI, um v1 schlank zu
+// halten; GSC kommt als praezisere Quelle spaeter dazu.
+export async function holeAutocompleteIdeen(formData: FormData) {
+  const seed = String(formData.get("seed") || "").trim();
+  if (!seed) throw new Error("Bitte einen Startbegriff angeben.");
+  const cluster = String(formData.get("cluster") || "Sonstige");
+
+  const vorschlaege = await holeAutocompleteVorschlaege(seed);
+  if (!vorschlaege.length) {
+    revalidatePath("/content-creation");
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  // Bereits vorhandene Themen (gleicher Wortlaut) nicht doppelt anlegen.
+  const { data: vorhandene } = await supabase.from("themen_radar_ideen").select("thema");
+  const vorhandeneSet = new Set((vorhandene || []).map((v: any) => v.thema.toLowerCase()));
+  const neue = vorschlaege
+    .filter((v) => !vorhandeneSet.has(v.toLowerCase()))
+    .map((thema) => ({ thema, cluster, quelle: "autocomplete", status: "neu" }));
+
+  if (neue.length) {
+    const { error } = await supabase.from("themen_radar_ideen").insert(neue);
+    if (error) throw new Error(error.message);
+  }
+  revalidatePath("/content-creation");
+}
+
+export async function aktualisiereThemenRadarStatus(formData: FormData) {
+  const id = String(formData.get("id"));
+  const status = String(formData.get("status"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("themen_radar_ideen")
+    .update({ status, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}
+
+export async function toggleThemenRadarLinkedin(formData: FormData) {
+  const id = String(formData.get("id"));
+  const neuerWert = formData.get("neuer_wert") === "true";
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("themen_radar_ideen")
+    .update({ fuer_linkedin: neuerWert, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}
+
+export async function loescheThemenRadarIdee(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("themen_radar_ideen").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}
+
+// Legt aus einer Themen-Radar-Idee direkt einen Insights-Entwurf an (Status "entwurf")
+// und verknuepft beide Datensaetze -- kein Copy-Paste zwischen den Bereichen noetig.
+export async function uebernehmeThemenRadarIdeeInInsights(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+
+  const { data: idee, error: ideeError } = await supabase
+    .from("themen_radar_ideen")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (ideeError || !idee) throw new Error(ideeError?.message || "Idee nicht gefunden.");
+
+  const basisSlug = erzeugeSlug(idee.thema);
+  const slug = await eindeutigerSlug(basisSlug, "artikel");
+  const benutzer = await getAktuellerBenutzer();
+
+  const { data: eintrag, error: eintragError } = await supabase
+    .from("insights_eintraege")
+    .insert({
+      typ: "artikel",
+      slug,
+      titel: idee.thema,
+      kurzfassung: idee.notiz || null,
+      seo_titel: idee.thema,
+      bloecke: [],
+      status: "entwurf",
+      autor_id: benutzer?.id || null,
+      quelle_typ: "themen-radar",
+      quelle_referenz: idee.id,
+    })
+    .select("id")
+    .single();
+  if (eintragError) throw new Error(eintragError.message);
+
+  await supabase
+    .from("themen_radar_ideen")
+    .update({ insights_eintrag_id: eintrag.id, status: "in_arbeit", aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+
+  revalidatePath("/content-creation");
+  revalidatePath("/insights");
+  redirect(`/insights/${eintrag.id}`);
 }
 
 // ---------- Buch-Versand (Rezensions-/Gratisexemplare) ----------
