@@ -11,6 +11,8 @@ import {
 } from "@/lib/actions";
 import { CLUSTER, QUELLE_LABEL, ladeThemenRadarIdeen, ladeNaechsteThemenRadarIdeen } from "@/lib/themen-radar";
 import ThemenRadarZeile from "./ThemenRadarZeile";
+import { ladeTriageEintraege, GROESSE_LABEL, TRIAGE_AKTION, TRIAGE_AKTION_LABEL, type Groesse, type TriageAktion } from "@/lib/triage";
+import TriageZeile from "./TriageZeile";
 
 const RHYTHMUS_LABEL: Record<string, string> = {
   einmalig: "Einmalig",
@@ -27,10 +29,16 @@ function formatDatum(d?: string | null) {
 export default async function ContentCreationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; cluster?: string }>;
+  searchParams: Promise<{ tab?: string; cluster?: string; triage_kategorie?: string; triage_groesse?: string; triage_aktion?: string }>;
 }) {
-  const { tab: tabParam, cluster: clusterFilter } = await searchParams;
-  const tab = tabParam === "themen-radar" ? "themen-radar" : "uebersicht";
+  const {
+    tab: tabParam,
+    cluster: clusterFilter,
+    triage_kategorie: triageKategorieFilter,
+    triage_groesse: triageGroesseFilter,
+    triage_aktion: triageAktionFilter,
+  } = await searchParams;
+  const tab = tabParam === "themen-radar" ? "themen-radar" : tabParam === "triage" ? "triage" : "uebersicht";
 
   const supabase = getSupabaseAdmin();
 
@@ -68,6 +76,25 @@ export default async function ContentCreationPage({
 
   const ideen = tab === "themen-radar" ? await ladeThemenRadarIdeen(clusterFilter ? { cluster: clusterFilter } : undefined) : [];
 
+  const alleTriageEintraege = tab === "triage" ? await ladeTriageEintraege() : [];
+  const triageEintraege =
+    tab === "triage"
+      ? alleTriageEintraege.filter(
+          (e) =>
+            (!triageKategorieFilter || e.kategorie === triageKategorieFilter) &&
+            (!triageGroesseFilter || e.groesse === triageGroesseFilter) &&
+            (!triageAktionFilter || e.triage_aktion === triageAktionFilter)
+        )
+      : [];
+
+  const triageNachKategorie: Record<string, number> = {};
+  const triageNachGroesse: Record<string, number> = {};
+  for (const e of alleTriageEintraege) {
+    const k = e.kategorie || "Ohne Kategorie";
+    triageNachKategorie[k] = (triageNachKategorie[k] || 0) + 1;
+    triageNachGroesse[e.groesse] = (triageNachGroesse[e.groesse] || 0) + 1;
+  }
+
   return (
     <main>
       <h1>Content Creation</h1>
@@ -88,6 +115,12 @@ export default async function ContentCreationPage({
           className={`au-btn au-btn-sm ${tab === "themen-radar" ? "au-btn-primary" : "au-btn-secondary"}`}
         >
           Themen-Radar
+        </Link>
+        <Link
+          href="/content-creation?tab=triage"
+          className={`au-btn au-btn-sm ${tab === "triage" ? "au-btn-primary" : "au-btn-secondary"}`}
+        >
+          Alt-Content-Triage
         </Link>
       </div>
 
@@ -337,6 +370,159 @@ export default async function ContentCreationPage({
           </div>
         </>
       )}
+      {tab === "triage" && (
+        <>
+          <div className="au-card">
+            <h2>Phase-0-Triage: {alleTriageEintraege.length} Alt-Entwürfe</h2>
+            <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: "-0.5rem" }}>
+              Aus dem Contao-Import von agencyuplifted.de/blog — bevor neue Artikel geplant werden, erst
+              entscheiden, was mit dem Vorhandenen passiert. „Klein" (unter ~2.500 Zeichen) sind meist einzelne
+              pointierte Gedanken, die sich gut als FAQ-/Glossar-Baustein in einen größeren Pillar einfügen lassen
+              und schnell per KI redigieren lassen. „Groß" (über ~7.000 Zeichen) sind bereits eigenständige
+              Artikel, die eher ins Deep-Dive-Format überführt werden. „Cluster-Kandidat" markiert Entwürfe, die
+              gemeinsam mit anderen zu einem Pillar zusammengeführt werden sollen — dafür bei mehreren
+              zusammengehörigen Einträgen dasselbe Cluster-Label eintragen.
+            </p>
+            <div className="au-row-2" style={{ gap: "1.5rem", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginBottom: "0.4rem" }}>
+                  Nach Größe
+                </div>
+                <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                  {(["klein", "mittel", "gross"] as const).map((g) => (
+                    <span key={g} className="au-badge au-badge-neutral">
+                      {GROESSE_LABEL[g]}: {triageNachGroesse[g] || 0}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginBottom: "0.4rem" }}>
+                  Nach Kategorie
+                </div>
+                <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                  {Object.entries(triageNachKategorie).map(([k, n]) => (
+                    <span key={k} className="au-badge au-badge-neutral">
+                      {k}: {n}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="au-card">
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <div>
+                <div style={{ color: "var(--color-text-muted)", fontSize: "0.8rem", marginBottom: "0.3rem" }}>
+                  Kategorie
+                </div>
+                <div className="au-toolbar" style={{ flexWrap: "wrap" }}>
+                  <Link
+                    href="/content-creation?tab=triage"
+                    className={`au-btn au-btn-sm ${!triageKategorieFilter ? "au-btn-primary" : "au-btn-secondary"}`}
+                  >
+                    Alle
+                  </Link>
+                  {CLUSTER.filter((c) => c !== "Sonstige").map((c) => (
+                    <Link
+                      key={c}
+                      href={`/content-creation?tab=triage&triage_kategorie=${encodeURIComponent(c)}`}
+                      className={`au-btn au-btn-sm ${triageKategorieFilter === c ? "au-btn-primary" : "au-btn-secondary"}`}
+                    >
+                      {c}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: "var(--color-text-muted)", fontSize: "0.8rem", marginBottom: "0.3rem" }}>
+                  Größe
+                </div>
+                <div className="au-toolbar" style={{ flexWrap: "wrap" }}>
+                  <Link
+                    href={`/content-creation?tab=triage${triageKategorieFilter ? `&triage_kategorie=${encodeURIComponent(triageKategorieFilter)}` : ""}`}
+                    className={`au-btn au-btn-sm ${!triageGroesseFilter ? "au-btn-primary" : "au-btn-secondary"}`}
+                  >
+                    Alle
+                  </Link>
+                  {(["klein", "mittel", "gross"] as const).map((g) => (
+                    <Link
+                      key={g}
+                      href={`/content-creation?tab=triage&triage_groesse=${g}${triageKategorieFilter ? `&triage_kategorie=${encodeURIComponent(triageKategorieFilter)}` : ""}`}
+                      className={`au-btn au-btn-sm ${triageGroesseFilter === g ? "au-btn-primary" : "au-btn-secondary"}`}
+                    >
+                      {GROESSE_LABEL[g]}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: "var(--color-text-muted)", fontSize: "0.8rem", marginBottom: "0.3rem" }}>
+                  Triage-Aktion
+                </div>
+                <div className="au-toolbar" style={{ flexWrap: "wrap" }}>
+                  <Link
+                    href={`/content-creation?tab=triage${triageKategorieFilter ? `&triage_kategorie=${encodeURIComponent(triageKategorieFilter)}` : ""}`}
+                    className={`au-btn au-btn-sm ${!triageAktionFilter ? "au-btn-primary" : "au-btn-secondary"}`}
+                  >
+                    Alle
+                  </Link>
+                  {TRIAGE_AKTION.map((a) => (
+                    <Link
+                      key={a}
+                      href={`/content-creation?tab=triage&triage_aktion=${a}${triageKategorieFilter ? `&triage_kategorie=${encodeURIComponent(triageKategorieFilter)}` : ""}`}
+                      className={`au-btn au-btn-sm ${triageAktionFilter === a ? "au-btn-primary" : "au-btn-secondary"}`}
+                    >
+                      {TRIAGE_AKTION_LABEL[a]}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="au-card">
+            <h2>Entwürfe · {triageEintraege.length}</h2>
+            <table className="au-table">
+              <thead>
+                <tr>
+                  <th>Titel</th>
+                  <th>Kategorie</th>
+                  <th>Umfang</th>
+                  <th>Triage-Aktion</th>
+                  <th>Cluster-Label</th>
+                </tr>
+              </thead>
+              <tbody>
+                {triageEintraege.map((e) => (
+                  <tr key={e.id}>
+                    <td>
+                      <Link href={`/insights/${e.id}`} style={{ fontWeight: 600 }}>
+                        {e.titel}
+                      </Link>
+                    </td>
+                    <td>
+                      <span className="au-badge au-badge-neutral">{e.kategorie || "—"}</span>
+                    </td>
+                    <td>
+                      <span className="au-badge au-badge-neutral">{GROESSE_LABEL[e.groesse]}</span>
+                      <div style={{ color: "var(--color-text-muted)", fontSize: "0.78rem", marginTop: "0.2rem" }}>
+                        {e.block_count} Blöcke · {e.text_len.toLocaleString("de-DE")} Zeichen
+                      </div>
+                    </td>
+                    <TriageZeile id={e.id} aktion={e.triage_aktion} clusterLabel={e.triage_cluster_label} />
+                  </tr>
+                ))}
+                {!triageEintraege.length && (
+                  <tr className="au-table-empty"><td colSpan={5}>Keine Entwürfe für diesen Filter.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
     </main>
   );
 }

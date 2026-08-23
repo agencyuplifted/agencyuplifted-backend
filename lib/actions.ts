@@ -2323,3 +2323,33 @@ export async function sendeGeburtstagsMail(formData: FormData) {
   revalidatePath("/geburtstage");
   redirect(`/geburtstage?versendet=${status === "gesendet" ? "1" : "0"}`);
 }
+
+// ---- Phase-0-Triage der Alt-Entwuerfe -----------------------------------
+
+export async function aktualisiereTriageAktion(formData: FormData) {
+  const id = String(formData.get("id"));
+  const aktion = String(formData.get("triage_aktion"));
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("insights_eintraege")
+    .update({ triage_aktion: aktion, triage_bearbeitet_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/content-creation");
+}
+
+export async function aktualisiereTriageClusterLabel(formData: FormData) {
+  const id = String(formData.get("id"));
+  const label = String(formData.get("triage_cluster_label") || "").trim() || null;
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("insights_eintraege")
+    .update({ triage_cluster_label: label, triage_bearbeitet_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/content-creation");
+}
