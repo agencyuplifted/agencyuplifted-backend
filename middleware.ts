@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/session";
+import { createClient } from "@supabase/supabase-js";
 
 // Login-basierter Zugriffsschutz: jede Anfrage ausser /login, dem
 // Cron-Endpoint, den oeffentlichen Wissen-Seiten und statischen Assets
@@ -19,6 +20,28 @@ const PUBLIC_HOSTS = (process.env.PUBLIC_HOST || "")
   .map((h) => h.trim().toLowerCase())
   .filter(Boolean);
 
+// 301/302-Weiterleitungen fuer migrierte Alt-URLs (z. B. von der frueheren
+// agencyuplifted.de/Contao-Seite auf die neuen /wissen-URLs), gepflegt unter
+// /redirects. Die Pruefung laeuft NUR auf den PUBLIC_HOSTS -- echte Besucher
+// treffen so auf keine zusaetzliche Verzoegerung/Datenbankabfrage bei jedem
+// Backstage-Klick, nur auf den oeffentlichen Domains, wo migrierte Alt-URLs
+// ueberhaupt aufgerufen werden koennen. createClient() statt getSupabaseAdmin()
+// aus lib/supabase.ts, damit hier keine Node-spezifischen Importe in die
+// Edge-Runtime der Middleware hineingezogen werden.
+async function findeAktivenRedirect(pathname: string): Promise<{ neue_url: string; status_code: number } | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  const supabase = createClient(url, key, { auth: { persistSession: false } });
+  const { data } = await supabase
+    .from("insights_redirects")
+    .select("neue_url, status_code")
+    .eq("alte_url", pathname)
+    .eq("aktiv", true)
+    .maybeSingle();
+  return data;
+}
+
 function mitRobotsHeader(response: NextResponse, request: NextRequest) {
   const host = request.headers.get("host")?.toLowerCase() || "";
   if (!PUBLIC_HOSTS.includes(host)) {
@@ -29,6 +52,17 @@ function mitRobotsHeader(response: NextResponse, request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = request.headers.get("host")?.toLowerCase() || "";
+
+  if (PUBLIC_HOSTS.includes(host) && pathname !== "/" && !pathname.startsWith("/_next")) {
+    const redirect = await findeAktivenRedirect(pathname);
+    if (redirect) {
+      return mitRobotsHeader(
+        NextResponse.redirect(new URL(redirect.neue_url, request.url), redirect.status_code),
+        request
+      );
+    }
+  }
 
   if (
     pathname.startsWith("/api/cron/") ||

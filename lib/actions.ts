@@ -2429,3 +2429,102 @@ export async function fuehreTriageClusterZusammen(formData: FormData) {
   revalidatePath("/insights");
   redirect(`/insights/${neuerEintrag.id}`);
 }
+
+// ---------- 301-Weiterleitungen (insights_redirects) ----------
+// Fuer die Migration alter agencyuplifted.de-URLs (Contao) auf die neuen
+// .com-URLs (Wissen/Insights). Wird von middleware.ts gelesen (nur fuer
+// Hosts in PUBLIC_HOSTS). alte_url/neue_url sind reine Pfade (z. B.
+// "/blog/mein-artikel"), keine vollstaendigen URLs.
+
+function normalisierePfad(wert: string): string {
+  let pfad = wert.trim();
+  // Falls versehentlich eine volle URL eingefuegt wurde, nur den Pfad behalten.
+  try {
+    if (/^https?:\/\//i.test(pfad)) {
+      pfad = new URL(pfad).pathname;
+    }
+  } catch {
+    // ignorieren, dann greift die Fallback-Normalisierung unten
+  }
+  if (!pfad.startsWith("/")) pfad = "/" + pfad;
+  if (pfad.length > 1 && pfad.endsWith("/")) pfad = pfad.slice(0, -1);
+  return pfad;
+}
+
+export async function erstelleRedirect(formData: FormData) {
+  const alteUrl = normalisierePfad(String(formData.get("alte_url") || ""));
+  const neueUrl = String(formData.get("neue_url") || "").trim();
+  const statusCode = Number(formData.get("status_code")) || 301;
+  if (!alteUrl || alteUrl === "/") throw new Error("Bitte eine gültige alte URL (Pfad) angeben.");
+  if (!neueUrl) throw new Error("Bitte eine Ziel-URL angeben.");
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("insights_redirects").insert({
+    alte_url: alteUrl,
+    neue_url: neueUrl,
+    status_code: statusCode,
+    aktiv: true,
+  });
+  if (error) {
+    if (error.code === "23505") throw new Error(`Für "${alteUrl}" existiert bereits eine Weiterleitung.`);
+    throw new Error(error.message);
+  }
+  revalidatePath("/redirects");
+  redirect("/redirects");
+}
+
+// Bulk-Import: eine Zeile pro Weiterleitung, alte und neue URL getrennt durch
+// Tab, "->", "→" oder mehrere Leerzeichen. Zeilen ohne erkennbares Trennzeichen
+// werden übersprungen und als Fehler zurückgemeldet.
+export async function importiereRedirectsBulk(formData: FormData) {
+  const rohtext = String(formData.get("bulk_text") || "");
+  const zeilen = rohtext.split("\n").map((z) => z.trim()).filter(Boolean);
+
+  const eintraege: { alte_url: string; neue_url: string; status_code: number; aktiv: boolean }[] = [];
+  const fehlerZeilen: string[] = [];
+
+  for (const zeile of zeilen) {
+    const teile = zeile.split(/\t|->|→|\s{2,}/).map((t) => t.trim()).filter(Boolean);
+    if (teile.length < 2) {
+      fehlerZeilen.push(zeile);
+      continue;
+    }
+    const [alt, neu] = teile;
+    const alteUrl = normalisierePfad(alt);
+    if (!alteUrl || alteUrl === "/" || !neu) {
+      fehlerZeilen.push(zeile);
+      continue;
+    }
+    eintraege.push({ alte_url: alteUrl, neue_url: neu, status_code: 301, aktiv: true });
+  }
+
+  if (eintraege.length) {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from("insights_redirects")
+      .upsert(eintraege, { onConflict: "alte_url" });
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath("/redirects");
+  redirect(
+    `/redirects?importiert=${eintraege.length}${fehlerZeilen.length ? `&fehler=${fehlerZeilen.length}` : ""}`
+  );
+}
+
+export async function toggleRedirectAktiv(formData: FormData) {
+  const id = String(formData.get("id"));
+  const aktiv = formData.get("aktiv") === "true";
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("insights_redirects").update({ aktiv: !aktiv }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/redirects");
+}
+
+export async function loescheRedirect(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("insights_redirects").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/redirects");
+}

@@ -54,6 +54,7 @@ const GROUPS: NavGroup[] = [
       { href: "/buch-versand", label: "Buch-Versand" },
       { href: "/buch-empfaenger", label: "Buch-Empfänger" },
       { href: "/geburtstage", label: "Geburtstage" },
+      { href: "/redirects", label: "Weiterleitungen" },
     ],
   },
 ];
