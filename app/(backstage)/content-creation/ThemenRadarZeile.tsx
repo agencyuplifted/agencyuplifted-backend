@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { useRef } from "react";
 import {
   aktualisiereThemenRadarStatus,
   toggleThemenRadarLinkedin,
   loescheThemenRadarIdee,
   uebernehmeThemenRadarIdeeInInsights,
+  aktualisiereThemenRadarClusterLabel,
 } from "@/lib/actions";
 import { STATUS, STATUS_LABEL } from "@/lib/themen-radar";
 
@@ -14,13 +16,16 @@ export default function ThemenRadarZeile({
   thema,
   status,
   fuerLinkedin,
+  clusterLabel,
 }: {
   id: string;
   thema: string;
   status: string;
   fuerLinkedin: boolean;
+  clusterLabel: string | null;
 }) {
   const statusFormRef = useRef<HTMLFormElement>(null);
+  const [label, setLabel] = useState(clusterLabel || "");
 
   return (
     <>
@@ -39,6 +44,20 @@ export default function ThemenRadarZeile({
               </option>
             ))}
           </select>
+        </form>
+      </td>
+      <td>
+        <form action={aktualisiereThemenRadarClusterLabel} onSubmit={(e) => { if (label === (clusterLabel || "")) e.preventDefault(); }}>
+          <input type="hidden" name="id" value={id} />
+          <input
+            type="text"
+            name="cluster_label"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            onBlur={(e) => e.currentTarget.form?.requestSubmit()}
+            placeholder="z.B. Budget-Fragen-Cluster"
+            style={{ minWidth: 200 }}
+          />
         </form>
       </td>
       <td>

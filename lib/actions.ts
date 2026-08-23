@@ -1777,6 +1777,22 @@ export async function loescheThemenRadarIdee(formData: FormData) {
   revalidatePath("/content-creation");
 }
 
+// Cluster-Label auf einer Themen-Radar-Idee -- dasselbe freie Textfeld-Konzept wie
+// triage_cluster_label auf insights_eintraege. Damit lassen sich neue Ideen und alte
+// Entwuerfe unter demselben Label buendeln und gemeinsam zusammenfuehren (siehe
+// fuehreTriageClusterZusammen).
+export async function aktualisiereThemenRadarClusterLabel(formData: FormData) {
+  const id = String(formData.get("id"));
+  const clusterLabel = String(formData.get("cluster_label") || "").trim() || null;
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("themen_radar_ideen")
+    .update({ cluster_label: clusterLabel, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}
+
 // Legt aus einer Themen-Radar-Idee direkt einen Insights-Entwurf an (Status "entwurf")
 // und verknuepft beide Datensaetze -- kein Copy-Paste zwischen den Bereichen noetig.
 export async function uebernehmeThemenRadarIdeeInInsights(formData: FormData) {
@@ -2377,17 +2393,42 @@ export async function fuehreTriageClusterZusammen(formData: FormData) {
     .in("status", ["entwurf", "review"])
     .order("erstellt_am", { ascending: true });
   if (quellenFehler) throw new Error(quellenFehler.message);
-  if (!quellen || quellen.length < 2) throw new Error("Für dieses Cluster-Label gibt es keine (mindestens zwei) offenen Entwürfe mehr.");
+
+  // Themen-Radar-Ideen mit demselben Cluster-Label -- dasselbe Label buendelt jetzt
+  // sowohl alte Entwuerfe als auch neue, noch nicht geschriebene Ideen (vereinheitlichtes
+  // Cluster-Konzept, siehe lib/themen-radar.ts). Nur nicht abgeschlossene Ideen
+  // (weder veroeffentlicht noch verworfen) werden mitgezogen.
+  const { data: ideen, error: ideenFehler } = await supabase
+    .from("themen_radar_ideen")
+    .select("id, thema, notiz")
+    .eq("cluster_label", label)
+    .not("status", "in", "(veroeffentlicht,verworfen)")
+    .order("erstellt_am", { ascending: true });
+  if (ideenFehler) throw new Error(ideenFehler.message);
+
+  const quellenListe = (quellen || []) as any[];
+  const ideenListe = (ideen || []) as any[];
+  if (quellenListe.length + ideenListe.length < 2) {
+    throw new Error("Für dieses Cluster-Label gibt es keine (mindestens zwei) offenen Entwürfe/Ideen mehr.");
+  }
 
   const zusammengefuehrteBloecke: any[] = [];
-  for (const q of quellen as any[]) {
+  for (const q of quellenListe) {
     zusammengefuehrteBloecke.push({ typ: "ueberschrift", ebene: 2, text: q.titel });
     if (Array.isArray(q.bloecke)) zusammengefuehrteBloecke.push(...q.bloecke);
   }
+  // Neue Ideen bekommen nur ein Ueberschrift/Platzhalter-Geruest (Ebene 3 -- Unterabschnitt
+  // im Pillar-Artikel, kein eigenstaendiger H2 wie die vollen Alt-Entwuerfe), da noch kein
+  // Fliesstext existiert. Siehe Konzeptdokument Abschnitt 3 ("In Insights-Entwurf uebernehmen
+  // auf Pillar-Ebene").
+  for (const i of ideenListe) {
+    zusammengefuehrteBloecke.push({ typ: "ueberschrift", ebene: 3, text: i.thema });
+    zusammengefuehrteBloecke.push({ typ: "absatz", text: i.notiz || "" });
+  }
 
   const hauptkategorieId =
-    (quellen[0] as any).insights_eintrag_kategorien?.find((k: any) => k.ist_hauptkategorie)?.kategorie_id ||
-    (quellen[0] as any).insights_eintrag_kategorien?.[0]?.kategorie_id ||
+    quellenListe[0]?.insights_eintrag_kategorien?.find((k: any) => k.ist_hauptkategorie)?.kategorie_id ||
+    quellenListe[0]?.insights_eintrag_kategorien?.[0]?.kategorie_id ||
     null;
 
   const basisSlug = erzeugeSlug(neuerTitel);
@@ -2416,16 +2457,31 @@ export async function fuehreTriageClusterZusammen(formData: FormData) {
       .insert({ eintrag_id: neuerEintrag.id, kategorie_id: hauptkategorieId, ist_hauptkategorie: true });
   }
 
-  const quellIds = (quellen as any[]).map((q) => q.id);
-  const { error: archivFehler } = await supabase
-    .from("insights_eintraege")
-    .update({
-      status: "archiviert",
-      merged_in_eintrag_id: neuerEintrag.id,
-      triage_bearbeitet_am: new Date().toISOString(),
-    })
-    .in("id", quellIds);
-  if (archivFehler) throw new Error(archivFehler.message);
+  if (quellenListe.length) {
+    const quellIds = quellenListe.map((q) => q.id);
+    const { error: archivFehler } = await supabase
+      .from("insights_eintraege")
+      .update({
+        status: "archiviert",
+        merged_in_eintrag_id: neuerEintrag.id,
+        triage_bearbeitet_am: new Date().toISOString(),
+      })
+      .in("id", quellIds);
+    if (archivFehler) throw new Error(archivFehler.message);
+  }
+
+  if (ideenListe.length) {
+    const ideenIds = ideenListe.map((i) => i.id);
+    const { error: ideenUpdateFehler } = await supabase
+      .from("themen_radar_ideen")
+      .update({
+        status: "in_arbeit",
+        insights_eintrag_id: neuerEintrag.id,
+        aktualisiert_am: new Date().toISOString(),
+      })
+      .in("id", ideenIds);
+    if (ideenUpdateFehler) throw new Error(ideenUpdateFehler.message);
+  }
 
   revalidatePath("/content-creation");
   revalidatePath("/insights");

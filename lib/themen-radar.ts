@@ -7,9 +7,16 @@ import { getSupabaseAdmin } from "./supabase";
 
 // Muss zu den tatsaechlichen Content-Pillar-Werten in insights_kategorien passen
 // (Preisfindung/Kundengespraeche/Fuehrung/Organisation/Vertrieb/Fokussierung/
-// Agenturaufbau/Recht) -- sonst laufen Themen-Radar-Cluster und die Hauptkategorie
+// Agenturaufbau/Recht) -- sonst laufen Themen-Radar-Themenfeld und die Hauptkategorie
 // eines Insights-Eintrags auseinander.
-export const CLUSTER = [
+//
+// Bewusst NICHT mehr "Cluster" genannt (das hiess frueher CLUSTER/ThemenRadarCluster):
+// "Cluster" ist jetzt ausschliesslich das freie Gruppierungs-Label (cluster_label),
+// mit dem einzelne Ideen UND alte Entwuerfe zu einem gemeinsamen Ziel-Artikel
+// zusammengefuehrt werden (siehe triage_cluster_label auf insights_eintraege und
+// fuehreTriageClusterZusammen in lib/actions.ts). Themenfeld ist nur das grobe
+// Themengebiet einer einzelnen Idee -- entspricht 1:1 dem Content-Pillar.
+export const THEMENFELD = [
   "Preisfindung",
   "Kundengespräche",
   "Führung",
@@ -20,7 +27,7 @@ export const CLUSTER = [
   "Recht",
   "Sonstige",
 ] as const;
-export type ThemenRadarCluster = (typeof CLUSTER)[number];
+export type Themenfeld = (typeof THEMENFELD)[number];
 
 export const STATUS = ["neu", "vorgemerkt", "in_arbeit", "veroeffentlicht", "verworfen"] as const;
 export type ThemenRadarStatus = (typeof STATUS)[number];
@@ -43,6 +50,7 @@ export type ThemenRadarIdee = {
   id: string;
   thema: string;
   cluster: string;
+  cluster_label: string | null;
   quelle: string;
   status: string;
   fuer_linkedin: boolean;

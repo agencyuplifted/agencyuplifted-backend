@@ -9,7 +9,7 @@ import {
   erstelleThemenRadarIdee,
   holeAutocompleteIdeen,
 } from "@/lib/actions";
-import { CLUSTER, QUELLE_LABEL, ladeThemenRadarIdeen, ladeNaechsteThemenRadarIdeen } from "@/lib/themen-radar";
+import { THEMENFELD, QUELLE_LABEL, ladeThemenRadarIdeen, ladeNaechsteThemenRadarIdeen } from "@/lib/themen-radar";
 import ThemenRadarZeile from "./ThemenRadarZeile";
 import { ladeTriageEintraege, gruppiereClusterKandidaten, GROESSE_LABEL, TRIAGE_AKTION, TRIAGE_AKTION_LABEL, type Groesse, type TriageAktion } from "@/lib/triage";
 import TriageZeile from "./TriageZeile";
@@ -102,7 +102,16 @@ export default async function ContentCreationPage({
     triageNachGroesse[e.groesse] = (triageNachGroesse[e.groesse] || 0) + 1;
   }
 
-  const clusterGruppen = tab === "triage" ? gruppiereClusterKandidaten(alleTriageEintraege) : [];
+  let clusterIdeen: { id: string; thema: string; status: string; cluster_label: string | null }[] = [];
+  if (tab === "triage") {
+    const { data } = await supabase
+      .from("themen_radar_ideen")
+      .select("id, thema, status, cluster_label")
+      .not("cluster_label", "is", null)
+      .not("status", "in", "(veroeffentlicht,verworfen)");
+    clusterIdeen = data || [];
+  }
+  const clusterGruppen = tab === "triage" ? gruppiereClusterKandidaten(alleTriageEintraege, clusterIdeen) : [];
 
   let offsitePlatzierungen: any[] = [];
   let gespraechsmaterial: any[] = [];
@@ -303,9 +312,9 @@ export default async function ContentCreationPage({
               </label>
               <div className="au-row-2">
                 <label>
-                  Cluster
+                  Content-Pillar
                   <select className="au-select" name="cluster" defaultValue="Sonstige">
-                    {CLUSTER.map((c) => (
+                    {THEMENFELD.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
@@ -335,7 +344,7 @@ export default async function ContentCreationPage({
             <form action={holeAutocompleteIdeen} className="au-row-2" style={{ maxWidth: 560 }}>
               <input type="text" name="seed" required placeholder="z.B. Stundensatz Agentur" />
               <select className="au-select" name="cluster" defaultValue="Sonstige">
-                {CLUSTER.map((c) => (
+                {THEMENFELD.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
@@ -345,9 +354,9 @@ export default async function ContentCreationPage({
 
           <div className="au-toolbar" style={{ flexWrap: "wrap" }}>
             <Link href="/content-creation?tab=themen-radar" className={`au-btn au-btn-sm ${!clusterFilter ? "au-btn-primary" : "au-btn-secondary"}`}>
-              Alle Cluster
+              Alle Content-Pillars
             </Link>
-            {CLUSTER.map((c) => (
+            {THEMENFELD.map((c) => (
               <Link
                 key={c}
                 href={`/content-creation?tab=themen-radar&cluster=${encodeURIComponent(c)}`}
@@ -364,9 +373,10 @@ export default async function ContentCreationPage({
               <thead>
                 <tr>
                   <th>Thema</th>
-                  <th>Cluster</th>
+                  <th>Content-Pillar</th>
                   <th>Quelle</th>
                   <th>Status</th>
+                  <th>Cluster-Label</th>
                   <th>LinkedIn</th>
                   <th>Aktionen</th>
                 </tr>
@@ -393,11 +403,11 @@ export default async function ContentCreationPage({
                       <span className="au-badge au-badge-neutral">{i.cluster}</span>
                     </td>
                     <td>{QUELLE_LABEL[i.quelle] || i.quelle}</td>
-                    <ThemenRadarZeile id={i.id} thema={i.thema} status={i.status} fuerLinkedin={i.fuer_linkedin} />
+                    <ThemenRadarZeile id={i.id} thema={i.thema} status={i.status} fuerLinkedin={i.fuer_linkedin} clusterLabel={i.cluster_label} />
                   </tr>
                 ))}
                 {!ideen.length && (
-                  <tr className="au-table-empty"><td colSpan={6}>Noch keine Ideen — oben eine anlegen oder Autocomplete-Vorschläge holen.</td></tr>
+                  <tr className="au-table-empty"><td colSpan={7}>Noch keine Ideen — oben eine anlegen oder Autocomplete-Vorschläge holen.</td></tr>
                 )}
               </tbody>
             </table>
@@ -458,7 +468,7 @@ export default async function ContentCreationPage({
                   >
                     Alle
                   </Link>
-                  {CLUSTER.filter((c) => c !== "Sonstige").map((c) => (
+                  {THEMENFELD.filter((c) => c !== "Sonstige").map((c) => (
                     <Link
                       key={c}
                       href={`/content-creation?tab=triage&triage_kategorie=${encodeURIComponent(c)}`}
@@ -520,21 +530,29 @@ export default async function ContentCreationPage({
             <div className="au-card">
               <h2>Cluster-Gruppen zum Zusammenführen · {clusterGruppen.length}</h2>
               <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: "-0.5rem" }}>
-                Entwürfe mit derselben Aktion „Cluster-Kandidat" und demselben Cluster-Label. Beim Zusammenführen
-                entsteht ein neuer Insights-Entwurf, der jeden Quell-Entwurf als eigenen Abschnitt enthält; die
-                Quellen selbst werden archiviert (nicht gelöscht) und auf den neuen Entwurf verlinkt.
+                Ein Cluster-Label buendelt zwei Quellen: Alt-Entwürfe mit Aktion „Cluster-Kandidat" UND
+                Themen-Radar-Ideen mit demselben Label (im Themen-Radar-Tab setzbar). Beim Zusammenführen
+                entsteht ein neuer Insights-Entwurf — Alt-Entwürfe werden als vollständige Abschnitte
+                übernommen, neue Ideen als Überschrift-Platzhalter zum Ausfüllen. Quellen werden danach
+                archiviert bzw. auf „In Arbeit" gesetzt und auf den neuen Entwurf verlinkt.
               </p>
               {clusterGruppen.map((g) => (
                 <div key={g.label} style={{ borderTop: "1px solid var(--color-border)", padding: "0.85rem 0" }}>
                   <div style={{ fontWeight: 600, marginBottom: "0.3rem" }}>
                     {g.label} <span className="au-badge au-badge-neutral">{g.eintraege.length} Entwürfe</span>
+                    {g.ideen.length > 0 && (
+                      <span className="au-badge au-badge-gold" style={{ marginLeft: "0.4rem" }}>{g.ideen.length} Themen-Radar-Ideen</span>
+                    )}
                   </div>
                   <ul style={{ margin: "0 0 0.6rem", paddingLeft: "1.1rem", color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
                     {g.eintraege.map((e) => (
                       <li key={e.id}>{e.titel}</li>
                     ))}
+                    {g.ideen.map((i) => (
+                      <li key={i.id} style={{ fontStyle: "italic" }}>{i.thema} <span className="au-badge au-badge-gold" style={{ marginLeft: "0.3rem" }}>neue Idee</span></li>
+                    ))}
                   </ul>
-                  <ClusterMergeForm label={g.label} anzahl={g.eintraege.length} />
+                  <ClusterMergeForm label={g.label} anzahl={g.eintraege.length + g.ideen.length} />
                 </div>
               ))}
             </div>

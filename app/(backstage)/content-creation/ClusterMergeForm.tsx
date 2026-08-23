@@ -10,7 +10,7 @@ export default function ClusterMergeForm({ label, anzahl }: { label: string; anz
       style={{ maxWidth: 640 }}
       onSubmit={(e) => {
         const ok = window.confirm(
-          `${anzahl} Entwürfe zu einem neuen Pillar-Entwurf zusammenführen? Die Quellen werden danach archiviert.`
+          `${anzahl} Entwürfe/Ideen zu einem neuen Pillar-Entwurf zusammenführen? Die Quellen werden danach archiviert bzw. auf "In Arbeit" gesetzt.`
         );
         if (!ok) e.preventDefault();
       }}

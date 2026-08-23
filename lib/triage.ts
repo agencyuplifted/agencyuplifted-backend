@@ -110,23 +110,41 @@ export async function ladeTriageEintraege(filter?: { kategorie?: string; groesse
 }
 
 
+export type TriageIdeenEintrag = {
+  id: string;
+  thema: string;
+  status: string;
+};
+
 export type TriageClusterGruppe = {
   label: string;
   eintraege: TriageEintrag[];
+  ideen: TriageIdeenEintrag[];
 };
 
 // Gruppiert alle als "Cluster-Kandidat" markierten Entwuerfe nach ihrem Cluster-Label
-// -- Grundlage fuer den "Zu einem Pillar-Entwurf zusammenfuehren"-Workflow.
-export function gruppiereClusterKandidaten(eintraege: TriageEintrag[]): TriageClusterGruppe[] {
-  const gruppen = new Map<string, TriageEintrag[]>();
+// -- Grundlage fuer den "Zu einem Pillar-Entwurf zusammenfuehren"-Workflow. Buendelt
+// zusaetzlich Themen-Radar-Ideen mit demselben Label (vereinheitlichtes Cluster-Konzept
+// -- ein Label, zwei Quellen: alte Entwuerfe UND neue, noch nicht geschriebene Ideen).
+export function gruppiereClusterKandidaten(
+  eintraege: TriageEintrag[],
+  ideen: TriageIdeenEintrag[] = []
+): TriageClusterGruppe[] {
+  const gruppen = new Map<string, { eintraege: TriageEintrag[]; ideen: TriageIdeenEintrag[] }>();
   for (const e of eintraege) {
     if (e.triage_aktion !== "cluster_sammeln") continue;
     const label = (e.triage_cluster_label || "").trim();
     if (!label) continue;
-    if (!gruppen.has(label)) gruppen.set(label, []);
-    gruppen.get(label)!.push(e);
+    if (!gruppen.has(label)) gruppen.set(label, { eintraege: [], ideen: [] });
+    gruppen.get(label)!.eintraege.push(e);
+  }
+  for (const i of ideen as (TriageIdeenEintrag & { cluster_label?: string | null })[]) {
+    const label = (i.cluster_label || "").trim();
+    if (!label) continue;
+    if (!gruppen.has(label)) gruppen.set(label, { eintraege: [], ideen: [] });
+    gruppen.get(label)!.ideen.push(i);
   }
   return Array.from(gruppen.entries())
-    .map(([label, eintraege]) => ({ label, eintraege }))
-    .sort((a, b) => b.eintraege.length - a.eintraege.length);
+    .map(([label, g]) => ({ label, eintraege: g.eintraege, ideen: g.ideen }))
+    .sort((a, b) => b.eintraege.length + b.ideen.length - (a.eintraege.length + a.ideen.length));
 }
