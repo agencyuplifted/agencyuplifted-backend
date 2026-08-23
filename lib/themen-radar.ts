@@ -5,11 +5,19 @@ import { getSupabaseAdmin } from "./supabase";
 // GSC folgt als weitere Quelle, sobald Search Console fuer die Domain eingerichtet ist --
 // das Datenmodell (Spalte "quelle") ist dafuer bereits vorbereitet.
 
+// Muss zu den tatsaechlichen Content-Pillar-Werten in insights_kategorien passen
+// (Preisfindung/Kundengespraeche/Fuehrung/Organisation/Vertrieb/Fokussierung/
+// Agenturaufbau/Recht) -- sonst laufen Themen-Radar-Cluster und die Hauptkategorie
+// eines Insights-Eintrags auseinander.
 export const CLUSTER = [
   "Preisfindung",
+  "Kundengespräche",
   "Führung",
-  "Organisation & Zusammenarbeit",
-  "Fokussierung/Akquise",
+  "Organisation",
+  "Vertrieb",
+  "Fokussierung",
+  "Agenturaufbau",
+  "Recht",
   "Sonstige",
 ] as const;
 export type ThemenRadarCluster = (typeof CLUSTER)[number];
