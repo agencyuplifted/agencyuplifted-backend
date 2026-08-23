@@ -2353,3 +2353,79 @@ export async function aktualisiereTriageClusterLabel(formData: FormData) {
 
   revalidatePath("/content-creation");
 }
+
+// Fuehrt alle Entwuerfe mit demselben Triage-Cluster-Label (und Aktion "cluster_sammeln")
+// zu einem neuen, zusammengefuehrten Insights-Pillar-Entwurf zusammen: jeder Quell-Entwurf
+// wird als eigener Abschnitt (Ueberschrift + seine Bloecke) uebernommen, die Quellen selbst
+// werden auf "archiviert" gesetzt und auf den neuen Entwurf verlinkt (kein Datenverlust,
+// jederzeit im Insights-Editor nachvollziehbar).
+export async function fuehreTriageClusterZusammen(formData: FormData) {
+  const label = String(formData.get("triage_cluster_label") || "").trim();
+  const neuerTitel = String(formData.get("neuer_titel") || "").trim();
+  if (!label) throw new Error("Kein Cluster-Label angegeben.");
+  if (!neuerTitel) throw new Error("Bitte einen Titel für den zusammengeführten Entwurf angeben.");
+
+  const supabase = getSupabaseAdmin();
+
+  const { data: quellen, error: quellenFehler } = await supabase
+    .from("insights_eintraege")
+    .select("id, titel, bloecke, kurzfassung, insights_eintrag_kategorien(ist_hauptkategorie, kategorie_id)")
+    .eq("triage_cluster_label", label)
+    .eq("triage_aktion", "cluster_sammeln")
+    .in("status", ["entwurf", "review"])
+    .order("erstellt_am", { ascending: true });
+  if (quellenFehler) throw new Error(quellenFehler.message);
+  if (!quellen || quellen.length < 2) throw new Error("Für dieses Cluster-Label gibt es keine (mindestens zwei) offenen Entwürfe mehr.");
+
+  const zusammengefuehrteBloecke: any[] = [];
+  for (const q of quellen as any[]) {
+    zusammengefuehrteBloecke.push({ typ: "ueberschrift", ebene: 2, text: q.titel });
+    if (Array.isArray(q.bloecke)) zusammengefuehrteBloecke.push(...q.bloecke);
+  }
+
+  const hauptkategorieId =
+    (quellen[0] as any).insights_eintrag_kategorien?.find((k: any) => k.ist_hauptkategorie)?.kategorie_id ||
+    (quellen[0] as any).insights_eintrag_kategorien?.[0]?.kategorie_id ||
+    null;
+
+  const basisSlug = erzeugeSlug(neuerTitel);
+  const slug = await eindeutigerSlug(basisSlug, "artikel");
+  const benutzer = await getAktuellerBenutzer();
+
+  const { data: neuerEintrag, error: einfuegeFehler } = await supabase
+    .from("insights_eintraege")
+    .insert({
+      typ: "artikel",
+      slug,
+      titel: neuerTitel,
+      bloecke: zusammengefuehrteBloecke,
+      status: "entwurf",
+      autor_id: benutzer?.id || null,
+      quelle_typ: "manuell",
+      quelle_referenz: `triage_cluster:${label}`,
+    })
+    .select("id")
+    .single();
+  if (einfuegeFehler) throw new Error(einfuegeFehler.message);
+
+  if (hauptkategorieId) {
+    await supabase
+      .from("insights_eintrag_kategorien")
+      .insert({ eintrag_id: neuerEintrag.id, kategorie_id: hauptkategorieId, ist_hauptkategorie: true });
+  }
+
+  const quellIds = (quellen as any[]).map((q) => q.id);
+  const { error: archivFehler } = await supabase
+    .from("insights_eintraege")
+    .update({
+      status: "archiviert",
+      merged_in_eintrag_id: neuerEintrag.id,
+      triage_bearbeitet_am: new Date().toISOString(),
+    })
+    .in("id", quellIds);
+  if (archivFehler) throw new Error(archivFehler.message);
+
+  revalidatePath("/content-creation");
+  revalidatePath("/insights");
+  redirect(`/insights/${neuerEintrag.id}`);
+}

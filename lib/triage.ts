@@ -59,6 +59,7 @@ export type TriageEintrag = {
   status: string;
   quelle_typ: string;
   kategorie: string | null;
+  kategorie_id: string | null;
   block_count: number;
   text_len: number;
   groesse: Groesse;
@@ -72,17 +73,17 @@ export async function ladeTriageEintraege(filter?: { kategorie?: string; groesse
   const { data, error } = await supabase
     .from("insights_eintraege")
     .select(
-      "id, titel, status, quelle_typ, bloecke, suchtext, triage_aktion, triage_cluster_label, erstellt_am, insights_eintrag_kategorien(ist_hauptkategorie, insights_kategorien(name))"
+      "id, titel, status, quelle_typ, bloecke, suchtext, triage_aktion, triage_cluster_label, erstellt_am, insights_eintrag_kategorien(ist_hauptkategorie, kategorie_id, insights_kategorien(name))"
     )
-    .neq("status", "veroeffentlicht")
+    .in("status", ["entwurf", "review"])
     .order("erstellt_am", { ascending: true });
 
   if (error) throw new Error(error.message);
 
   let eintraege: TriageEintrag[] = (data || []).map((e: any) => {
-    const hauptkategorie =
-      (e.insights_eintrag_kategorien || []).find((k: any) => k.ist_hauptkategorie)?.insights_kategorien?.name ||
-      (e.insights_eintrag_kategorien || [])[0]?.insights_kategorien?.name ||
+    const hauptEintrag =
+      (e.insights_eintrag_kategorien || []).find((k: any) => k.ist_hauptkategorie) ||
+      (e.insights_eintrag_kategorien || [])[0] ||
       null;
     const textLen = (e.suchtext || "").length;
     return {
@@ -90,7 +91,8 @@ export async function ladeTriageEintraege(filter?: { kategorie?: string; groesse
       titel: e.titel,
       status: e.status,
       quelle_typ: e.quelle_typ,
-      kategorie: hauptkategorie,
+      kategorie: hauptEintrag?.insights_kategorien?.name || null,
+      kategorie_id: hauptEintrag?.kategorie_id || null,
       block_count: Array.isArray(e.bloecke) ? e.bloecke.length : 0,
       text_len: textLen,
       groesse: ermittleGroesse(textLen),
@@ -105,4 +107,26 @@ export async function ladeTriageEintraege(filter?: { kategorie?: string; groesse
   if (filter?.aktion) eintraege = eintraege.filter((e) => e.triage_aktion === filter.aktion);
 
   return eintraege;
+}
+
+
+export type TriageClusterGruppe = {
+  label: string;
+  eintraege: TriageEintrag[];
+};
+
+// Gruppiert alle als "Cluster-Kandidat" markierten Entwuerfe nach ihrem Cluster-Label
+// -- Grundlage fuer den "Zu einem Pillar-Entwurf zusammenfuehren"-Workflow.
+export function gruppiereClusterKandidaten(eintraege: TriageEintrag[]): TriageClusterGruppe[] {
+  const gruppen = new Map<string, TriageEintrag[]>();
+  for (const e of eintraege) {
+    if (e.triage_aktion !== "cluster_sammeln") continue;
+    const label = (e.triage_cluster_label || "").trim();
+    if (!label) continue;
+    if (!gruppen.has(label)) gruppen.set(label, []);
+    gruppen.get(label)!.push(e);
+  }
+  return Array.from(gruppen.entries())
+    .map(([label, eintraege]) => ({ label, eintraege }))
+    .sort((a, b) => b.eintraege.length - a.eintraege.length);
 }

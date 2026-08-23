@@ -11,8 +11,9 @@ import {
 } from "@/lib/actions";
 import { CLUSTER, QUELLE_LABEL, ladeThemenRadarIdeen, ladeNaechsteThemenRadarIdeen } from "@/lib/themen-radar";
 import ThemenRadarZeile from "./ThemenRadarZeile";
-import { ladeTriageEintraege, GROESSE_LABEL, TRIAGE_AKTION, TRIAGE_AKTION_LABEL, type Groesse, type TriageAktion } from "@/lib/triage";
+import { ladeTriageEintraege, gruppiereClusterKandidaten, GROESSE_LABEL, TRIAGE_AKTION, TRIAGE_AKTION_LABEL, type Groesse, type TriageAktion } from "@/lib/triage";
 import TriageZeile from "./TriageZeile";
+import ClusterMergeForm from "./ClusterMergeForm";
 
 const RHYTHMUS_LABEL: Record<string, string> = {
   einmalig: "Einmalig",
@@ -94,6 +95,8 @@ export default async function ContentCreationPage({
     triageNachKategorie[k] = (triageNachKategorie[k] || 0) + 1;
     triageNachGroesse[e.groesse] = (triageNachGroesse[e.groesse] || 0) + 1;
   }
+
+  const clusterGruppen = tab === "triage" ? gruppiereClusterKandidaten(alleTriageEintraege) : [];
 
   return (
     <main>
@@ -481,6 +484,30 @@ export default async function ContentCreationPage({
               </div>
             </div>
           </div>
+
+          {clusterGruppen.length > 0 && (
+            <div className="au-card">
+              <h2>Cluster-Gruppen zum Zusammenführen · {clusterGruppen.length}</h2>
+              <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: "-0.5rem" }}>
+                Entwürfe mit derselben Aktion „Cluster-Kandidat" und demselben Cluster-Label. Beim Zusammenführen
+                entsteht ein neuer Insights-Entwurf, der jeden Quell-Entwurf als eigenen Abschnitt enthält; die
+                Quellen selbst werden archiviert (nicht gelöscht) und auf den neuen Entwurf verlinkt.
+              </p>
+              {clusterGruppen.map((g) => (
+                <div key={g.label} style={{ borderTop: "1px solid var(--color-border)", padding: "0.85rem 0" }}>
+                  <div style={{ fontWeight: 600, marginBottom: "0.3rem" }}>
+                    {g.label} <span className="au-badge au-badge-neutral">{g.eintraege.length} Entwürfe</span>
+                  </div>
+                  <ul style={{ margin: "0 0 0.6rem", paddingLeft: "1.1rem", color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
+                    {g.eintraege.map((e) => (
+                      <li key={e.id}>{e.titel}</li>
+                    ))}
+                  </ul>
+                  <ClusterMergeForm label={g.label} anzahl={g.eintraege.length} />
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="au-card">
             <h2>Entwürfe · {triageEintraege.length}</h2>
