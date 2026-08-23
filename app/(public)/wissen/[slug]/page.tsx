@@ -19,6 +19,23 @@ async function ladeVeroeffentlichtenEintrag(slug: string) {
   return data;
 }
 
+// Vorschau fuer noch nicht veroeffentlichte Entwuerfe: die Backstage-Editor-
+// Seite verlinkt hierher mit ?vorschau=<eintrag-id> (die UUID selbst dient als
+// unratbares Token -- kein zusaetzliches Secret noetig). Ohne passenden
+// vorschau-Parameter bleibt der bisherige oeffentliche Status-Filter aktiv,
+// damit Entwuerfe niemals ohne den Link sichtbar werden.
+async function ladeEintragMitVorschau(slug: string, vorschauId?: string) {
+  if (!vorschauId) return ladeVeroeffentlichtenEintrag(slug);
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("insights_eintraege")
+    .select("*")
+    .eq("slug", slug)
+    .eq("id", vorschauId)
+    .maybeSingle();
+  return data;
+}
+
 // Der Wissen-Autor ist aktuell bewusst fest an eine Person gebunden (siehe
 // mitarbeiter.ist_wissen_autor), unabhaengig davon, wer den Beitrag im
 // Editor angelegt hat -- Bio/Foto/LinkedIn sind im Backstage unter
@@ -129,10 +146,18 @@ function berechneLesezeit(bloecke: Block[]): number {
   return Math.max(1, Math.round(woerter / 200));
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ vorschau?: string }>;
+}): Promise<Metadata> {
   const { slug } = await params;
-  const eintrag = await ladeVeroeffentlichtenEintrag(slug);
+  const { vorschau } = await searchParams;
+  const eintrag = await ladeEintragMitVorschau(slug, vorschau);
   if (!eintrag) return {};
+  const istVorschau = eintrag.status !== "veroeffentlicht";
   const [basis, autor] = await Promise.all([basisUrl(), ladeWissenAutor()]);
   const seoTitel = eintrag.seo_titel || `${eintrag.titel} – AgencyUplifted`;
   const seoBeschreibung = eintrag.seo_beschreibung || eintrag.kurzfassung || undefined;
@@ -143,10 +168,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   // wie (public) automatisch vergibt (z. B. /opengraph-image-1tiezv). Eine
   // manuell zusammengesetzte URL ohne diesen Suffix wuerde 404en.
   return {
-    title: seoTitel,
+    title: istVorschau ? `[Vorschau] ${seoTitel}` : seoTitel,
     description: seoBeschreibung,
     alternates: { canonical: `${basis}/wissen/${eintrag.slug}` },
     authors: autor ? [{ name: autor.name }] : undefined,
+    robots: istVorschau ? { index: false, follow: false } : undefined,
     openGraph: {
       type: "article",
       title: eintrag.titel,
@@ -355,10 +381,18 @@ function AutorBox({ autor }: { autor: { name: string; bio_rolle: string | null; 
   );
 }
 
-export default async function WissenDetailSeite({ params }: { params: Promise<{ slug: string }> }) {
+export default async function WissenDetailSeite({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ vorschau?: string }>;
+}) {
   const { slug } = await params;
-  const eintrag = await ladeVeroeffentlichtenEintrag(slug);
+  const { vorschau } = await searchParams;
+  const eintrag = await ladeEintragMitVorschau(slug, vorschau);
   if (!eintrag) notFound();
+  const istVorschau = eintrag.status !== "veroeffentlicht";
 
   const basis = await basisUrl();
   const [autor, kategorieUndTags] = await Promise.all([
@@ -378,6 +412,22 @@ export default async function WissenDetailSeite({ params }: { params: Promise<{ 
 
   return (
     <div className="wp-container">
+      {istVorschau && (
+        <div
+          style={{
+            background: "#fbeecd",
+            color: "#8a5b00",
+            padding: "0.75rem 1rem",
+            borderRadius: "0.5rem",
+            marginBottom: "1.5rem",
+            fontWeight: 600,
+            fontSize: "0.9rem",
+          }}
+        >
+          Vorschau — Status: {eintrag.status} · nicht veröffentlicht, nicht indexiert. Diese Seite ist nur über
+          diesen Link sichtbar.
+        </div>
+      )}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.artikel) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.breadcrumb) }} />
       {jsonLd.faq && (

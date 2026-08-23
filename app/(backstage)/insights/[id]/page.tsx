@@ -51,13 +51,24 @@ export default async function InsightsDetailPage({
       <p style={{ color: "var(--color-text-muted)" }}>
         {insightsTypLabel(eintrag.typ)} · Slug: {eintrag.slug} · Sprache: {eintrag.sprache} · Status: {eintrag.status}
         {eintrag.quelle_typ && <> · Quelle: {eintrag.quelle_typ}</>}
-        {eintrag.status === "veroeffentlicht" && (
+        {eintrag.status === "veroeffentlicht" ? (
           <>
             {" "}
             ·{" "}
             <a href={`/wissen/${eintrag.slug}`} target="_blank" rel="noopener noreferrer">
               Live ansehen ↗
             </a>
+          </>
+        ) : (
+          <>
+            {" "}
+            ·{" "}
+            <a href={`/wissen/${eintrag.slug}?vorschau=${eintrag.id}`} target="_blank" rel="noopener noreferrer">
+              Vorschau ansehen ↗
+            </a>
+            <span style={{ color: "var(--color-text-faint)", fontSize: "0.8rem" }}>
+              {" "}(zeigt, wie der Beitrag mit dem Wissen-Layout aussehen würde — nicht öffentlich sichtbar)
+            </span>
           </>
         )}
       </p>
