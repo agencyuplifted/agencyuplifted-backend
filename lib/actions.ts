@@ -2111,6 +2111,7 @@ export async function speichereInsightsEintrag(formData: FormData) {
   const hauptkategorieId = String(formData.get("hauptkategorie_id") || "") || null;
   const seoTitel = String(formData.get("seo_titel") || "").trim() || null;
   const seoBeschreibung = String(formData.get("seo_beschreibung") || "").trim() || null;
+  const istGespraechsmaterial = formData.get("ist_gespraechsmaterial") === "on";
   const tagIds = formData.getAll("tag_ids").map((v) => String(v)).filter(Boolean);
   const neueTagsRoh = String(formData.get("neue_tags") || "").trim();
   if (!titel) throw new Error("Bitte einen Titel angeben.");
@@ -2146,6 +2147,7 @@ export async function speichereInsightsEintrag(formData: FormData) {
       bloecke,
       seo_titel: seoTitel,
       seo_beschreibung: seoBeschreibung,
+      ist_gespraechsmaterial: istGespraechsmaterial,
     })
     .eq("id", id);
   if (error) throw new Error(error.message);
@@ -2527,4 +2529,63 @@ export async function loescheRedirect(formData: FormData) {
   const { error } = await supabase.from("insights_redirects").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/redirects");
+}
+
+// ---------- Off-Site-Autoritäts-Pipeline (content_offsite_platzierungen) ----------
+// Podcasts, Gastbeiträge, Interviews, Erwähnungen durch Dritte -- siehe
+// Konzeptdokument Abschnitt 14.4. Unabhängig von den Insights-Artikeln.
+
+export async function erstelleOffsitePlatzierung(formData: FormData) {
+  const titel = String(formData.get("titel") || "").trim();
+  const typ = String(formData.get("typ") || "sonstiges");
+  const plattform = String(formData.get("plattform") || "").trim() || null;
+  const notizen = String(formData.get("notizen") || "").trim() || null;
+  if (!titel) throw new Error("Bitte einen Titel angeben.");
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("content_offsite_platzierungen").insert({
+    titel,
+    typ,
+    plattform,
+    notizen,
+    status: "idee",
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/content-creation");
+  redirect("/content-creation?tab=offsite");
+}
+
+export async function aktualisiereOffsitePlatzierungStatus(formData: FormData) {
+  const id = String(formData.get("id"));
+  const status = String(formData.get("status"));
+  if (!["idee", "angefragt", "geplant", "veroeffentlicht", "abgelehnt"].includes(status)) {
+    throw new Error("Unbekannter Status.");
+  }
+  const supabase = getSupabaseAdmin();
+  const felder: Record<string, unknown> = { status, aktualisiert_am: new Date().toISOString() };
+  if (status === "veroeffentlicht") felder.veroeffentlicht_am = new Date().toISOString().slice(0, 10);
+  const { error } = await supabase.from("content_offsite_platzierungen").update(felder).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}
+
+export async function aktualisiereOffsitePlatzierungZielUrl(formData: FormData) {
+  const id = String(formData.get("id"));
+  const zielUrl = String(formData.get("ziel_url") || "").trim() || null;
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("content_offsite_platzierungen")
+    .update({ ziel_url: zielUrl, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
+}
+
+export async function loescheOffsitePlatzierung(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("content_offsite_platzierungen").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/content-creation");
 }

@@ -30,6 +30,7 @@ export type InsightsEintrag = {
   aktualisiert_am: string;
   seo_titel: string | null;
   seo_beschreibung: string | null;
+  ist_gespraechsmaterial: boolean;
 };
 
 const TYP_LABEL: Record<InsightsTyp, string> = {

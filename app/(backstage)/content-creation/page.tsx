@@ -14,6 +14,8 @@ import ThemenRadarZeile from "./ThemenRadarZeile";
 import { ladeTriageEintraege, gruppiereClusterKandidaten, GROESSE_LABEL, TRIAGE_AKTION, TRIAGE_AKTION_LABEL, type Groesse, type TriageAktion } from "@/lib/triage";
 import TriageZeile from "./TriageZeile";
 import ClusterMergeForm from "./ClusterMergeForm";
+import OffsiteZeile, { OFFSITE_STATUS_LABEL, OFFSITE_STATUS_BADGE } from "./OffsiteZeile";
+import { erstelleOffsitePlatzierung, loescheOffsitePlatzierung } from "@/lib/actions";
 
 const RHYTHMUS_LABEL: Record<string, string> = {
   einmalig: "Einmalig",
@@ -39,7 +41,11 @@ export default async function ContentCreationPage({
     triage_groesse: triageGroesseFilter,
     triage_aktion: triageAktionFilter,
   } = await searchParams;
-  const tab = tabParam === "themen-radar" ? "themen-radar" : tabParam === "triage" ? "triage" : "uebersicht";
+  const tab =
+    tabParam === "themen-radar" ? "themen-radar" :
+    tabParam === "triage" ? "triage" :
+    tabParam === "offsite" ? "offsite" :
+    "uebersicht";
 
   const supabase = getSupabaseAdmin();
 
@@ -98,6 +104,25 @@ export default async function ContentCreationPage({
 
   const clusterGruppen = tab === "triage" ? gruppiereClusterKandidaten(alleTriageEintraege) : [];
 
+  let offsitePlatzierungen: any[] = [];
+  let gespraechsmaterial: any[] = [];
+  if (tab === "offsite") {
+    const [{ data: platzierungen }, { data: material }] = await Promise.all([
+      supabase.from("content_offsite_platzierungen").select("*").order("erstellt_am", { ascending: false }),
+      supabase
+        .from("insights_eintraege")
+        .select("id, titel, slug, status")
+        .eq("ist_gespraechsmaterial", true)
+        .order("titel"),
+    ]);
+    offsitePlatzierungen = platzierungen || [];
+    gespraechsmaterial = material || [];
+  }
+  const offsiteNachStatus: Record<string, number> = {};
+  for (const p of offsitePlatzierungen) {
+    offsiteNachStatus[p.status] = (offsiteNachStatus[p.status] || 0) + 1;
+  }
+
   return (
     <main>
       <h1>Content Creation</h1>
@@ -124,6 +149,12 @@ export default async function ContentCreationPage({
           className={`au-btn au-btn-sm ${tab === "triage" ? "au-btn-primary" : "au-btn-secondary"}`}
         >
           Alt-Content-Triage
+        </Link>
+        <Link
+          href="/content-creation?tab=offsite"
+          className={`au-btn au-btn-sm ${tab === "offsite" ? "au-btn-primary" : "au-btn-secondary"}`}
+        >
+          Off-Site & Zitierfähigkeit
         </Link>
       </div>
 
@@ -543,6 +574,119 @@ export default async function ContentCreationPage({
                 ))}
                 {!triageEintraege.length && (
                   <tr className="au-table-empty"><td colSpan={5}>Keine Entwürfe für diesen Filter.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {tab === "offsite" && (
+        <>
+          <div className="au-card">
+            <h2>Off-Site-Autorität – auf einen Blick</h2>
+            <p style={{ color: "var(--color-text-muted)", marginTop: "-0.5rem" }}>
+              Podcasts, Gastbeiträge, Interviews und Erwähnungen durch Dritte – unabhängig von den eigenen
+              Insights-Artikeln. Cross-Referenzierung über mehrere Quellen hinweg erhöht die Wahrscheinlichkeit,
+              als Quelle in KI-Antworten genannt zu werden (Konzeptdokument Abschnitt 14.4).
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", marginTop: "0.5rem" }}>
+              {Object.entries(OFFSITE_STATUS_LABEL).map(([status, label]) => (
+                <div key={status}>
+                  <div style={{ fontSize: "1.4rem", fontWeight: 700 }}>{offsiteNachStatus[status] || 0}</div>
+                  <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="au-card">
+            <h2>Pipeline · {offsitePlatzierungen.length}</h2>
+            <table className="au-table">
+              <thead>
+                <tr>
+                  <th>Titel</th>
+                  <th>Typ</th>
+                  <th>Plattform</th>
+                  <th>Status</th>
+                  <th>Ziel-Link</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {offsitePlatzierungen.map((p) => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 600 }}>{p.titel}</td>
+                    <td><span className="au-badge au-badge-neutral">{p.typ}</span></td>
+                    <td>{p.plattform || "—"}</td>
+                    <OffsiteZeile id={p.id} status={p.status} zielUrl={p.ziel_url} />
+                    <td>
+                      <form action={loescheOffsitePlatzierung}>
+                        <input type="hidden" name="id" value={p.id} />
+                        <button type="submit" className="au-btn au-btn-danger au-btn-sm">Löschen</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+                {!offsitePlatzierungen.length && (
+                  <tr className="au-table-empty"><td colSpan={6}>Noch keine Off-Site-Platzierungen angelegt.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="au-card" style={{ maxWidth: 560 }}>
+            <h2>Neue Platzierung</h2>
+            <form action={erstelleOffsitePlatzierung}>
+              <label className="au-label">Titel (z. B. "Podcast XY: Wertorientierte Preisfindung")</label>
+              <input className="au-input" name="titel" required />
+
+              <label className="au-label" style={{ marginTop: "0.75rem" }}>Typ</label>
+              <select className="au-select" name="typ" defaultValue="podcast">
+                <option value="podcast">Podcast-Gast</option>
+                <option value="gastbeitrag">Gastbeitrag</option>
+                <option value="interview">Interview</option>
+                <option value="erwaehnung">Erwähnung/Zitat durch Dritte</option>
+                <option value="verzeichnis">Verzeichnis/Auszeichnung</option>
+                <option value="sonstiges">Sonstiges</option>
+              </select>
+
+              <label className="au-label" style={{ marginTop: "0.75rem" }}>Plattform (optional)</label>
+              <input className="au-input" name="plattform" placeholder="z. B. Marketing Insider Podcast" />
+
+              <label className="au-label" style={{ marginTop: "0.75rem" }}>Notizen (optional)</label>
+              <textarea className="au-textarea" name="notizen" rows={2} />
+
+              <button type="submit" className="au-btn au-btn-primary" style={{ marginTop: "0.75rem" }}>
+                Anlegen
+              </button>
+            </form>
+          </div>
+
+          <div className="au-card">
+            <h2>Gesprächsmaterial · {gespraechsmaterial.length}</h2>
+            <p style={{ color: "var(--color-text-muted)", marginTop: "-0.5rem" }}>
+              Wissen-Artikel, die im Editor als "Gesprächsmaterial" markiert wurden – gedacht zum direkten
+              Verlinken/Verschicken in echten Kundengesprächen (Erfolgsmetrik unabhängig von Traffic, Abschnitt 14.3).
+            </p>
+            <table className="au-table">
+              <thead>
+                <tr>
+                  <th>Titel</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gespraechsmaterial.map((e) => (
+                  <tr key={e.id}>
+                    <td>
+                      <Link href={`/insights/${e.id}`} style={{ fontWeight: 600 }}>{e.titel}</Link>
+                    </td>
+                    <td><span className="au-badge au-badge-neutral">{e.status}</span></td>
+                  </tr>
+                ))}
+                {!gespraechsmaterial.length && (
+                  <tr className="au-table-empty"><td colSpan={2}>Noch keine Artikel als Gesprächsmaterial markiert.</td></tr>
                 )}
               </tbody>
             </table>

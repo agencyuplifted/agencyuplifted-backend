@@ -140,6 +140,14 @@ export default async function InsightsDetailPage({
           <p style={{ color: "var(--color-text-muted)", fontSize: "0.8rem", marginTop: "0.3rem" }}>
             Leer lassen, um automatisch aus Titel/Einleitung zu übernehmen.
           </p>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "1rem", fontSize: "0.9rem" }}>
+            <input type="checkbox" name="ist_gespraechsmaterial" defaultChecked={eintrag.ist_gespraechsmaterial === true} />
+            Gesprächsmaterial – eignet sich zum Verlinken/Verschicken in echten Kundengesprächen
+          </label>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "0.8rem", marginTop: "0.2rem" }}>
+            Unabhängig von Traffic/Ranking: Erfolgsmetrik ist hier direkte Nutzung im Vertrieb, nicht organische Reichweite.
+          </p>
         </div>
 
         <div className="au-card">
