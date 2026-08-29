@@ -20,6 +20,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ fehler: "State stimmt nicht überein (möglicher CSRF-Versuch)." }, { status: 400 });
   }
 
+  // Zusaetzliche Absicherung: der Shop im Callback muss exakt dem
+  // konfigurierten Store entsprechen -- sonst koennte (theoretisch, mit
+  // gestohlenem State-Cookie) ein Access-Token fuer einen fremden Shop in
+  // shopify_verbindung landen und von lib/shopify.ts verwendet werden.
+  const erwarteterShop = process.env.SHOPIFY_STORE_DOMAIN;
+  if (!erwarteterShop || shop !== erwarteterShop) {
+    return NextResponse.json({ fehler: "Shop-Domain stimmt nicht mit der konfigurierten Domain überein." }, { status: 400 });
+  }
+
   const clientId = process.env.SHOPIFY_CLIENT_ID;
   const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
