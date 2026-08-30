@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("seminartermine")
     .select(
-      "id, titel, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, urgency_label_template, onepage_slug, status, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(preisstaffeln(stichtag_tage_vor_start, preis))"
+      "id, titel, kennung, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(preisstaffeln(stichtag_tage_vor_start, preis))"
     )
     .gte("datum_start", heuteIso)
     .neq("status", "abgesagt")
@@ -160,6 +160,8 @@ export async function GET(request: NextRequest) {
 
     return {
       id: t.id,
+      kennung: t.kennung || null,
+      seminartyp_id: t.seminartyp_id,
       titel: t.titel || t.seminartypen?.name || null,
       seminarart: t.seminartypen?.name || null,
       datum_start: t.datum_start,
