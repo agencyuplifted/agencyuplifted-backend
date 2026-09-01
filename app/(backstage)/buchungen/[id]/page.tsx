@@ -40,6 +40,18 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
         Status: <strong>{buchung.status}</strong> · Rechnungsempfänger: {buchung.organisationen?.name || (buchung.teilnehmer ? `${buchung.teilnehmer.vorname} ${buchung.teilnehmer.nachname}` : "—")} · Gebucht am {formatDatum(buchung.gebucht_am)}
       </p>
 
+      {(() => {
+        const metadata: any = buchung.metadata || {};
+        if (!metadata.privacy_accepted && !metadata.trust_guarantee_accepted) return null;
+        const erfasstAm = metadata.consent_erfasst_am ? formatDatum(metadata.consent_erfasst_am) : null;
+        return (
+          <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
+            Einwilligungen: Datenschutz {metadata.privacy_accepted ? "✓" : "—"} · Vertrauensgarantie {metadata.trust_guarantee_accepted ? "✓" : "—"}
+            {erfasstAm ? ` (erfasst am ${erfasstAm})` : ""}
+          </p>
+        );
+      })()}
+
       <div className="au-card">
         <h2>Positionen</h2>
         <table className="au-table">
