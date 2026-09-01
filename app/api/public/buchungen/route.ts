@@ -42,6 +42,26 @@ function aktuellerPreisNetto(preisstaffeln: { stichtag_tage_vor_start: number; p
   return gewaehlt ? Number(gewaehlt.preis) : 0;
 }
 
+// Der 1. Teilnehmer (Hauptkontakt) zahlt immer den vollen (Staffel-)Preis.
+// Ab dem 2. Teilnehmer gilt - falls am Termin hinterlegt - der
+// Zusatzteilnehmer-Festpreis, sonst der Zusatzteilnehmer-Rabatt in Prozent
+// auf den vollen Preis, sonst (nichts hinterlegt) ebenfalls der volle Preis.
+// Vorher wurde hier faelschlich fuer jede Person derselbe volle Preis
+// multipliziert, ohne den Zusatzteilnehmer-Preis/-Rabatt zu beruecksichtigen.
+function preisFuerTeilnehmer(
+  index: number,
+  preisNettoVoll: number,
+  zusatzteilnehmerPreis: number | null | undefined,
+  zusatzteilnehmerRabattProzent: number | null | undefined
+): number {
+  if (index === 0) return preisNettoVoll;
+  if (zusatzteilnehmerPreis !== null && zusatzteilnehmerPreis !== undefined) return Number(zusatzteilnehmerPreis);
+  if (zusatzteilnehmerRabattProzent !== null && zusatzteilnehmerRabattProzent !== undefined) {
+    return Math.round(preisNettoVoll * (1 - Number(zusatzteilnehmerRabattProzent) / 100) * 100) / 100;
+  }
+  return preisNettoVoll;
+}
+
 type Teilnehmerangabe = {
   firstName: string;
   lastName: string;
@@ -73,12 +93,17 @@ export async function POST(request: NextRequest) {
   if (body.privacyAccepted !== true) {
     return withCors(NextResponse.json({ error: "privacy_not_accepted" }, { status: 400 }));
   }
+  if (body.trustGuaranteeAccepted !== true) {
+    return withCors(NextResponse.json({ error: "trust_guarantee_not_accepted" }, { status: 400 }));
+  }
 
   const supabase = getSupabaseAdmin();
 
   const { data: termin } = await supabase
     .from("seminartermine")
-    .select("id, titel, datum_start, datum_ende, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, seminartypen(name)")
+    .select(
+      "id, titel, datum_start, datum_ende, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name)"
+    )
     .eq("id", seminarterminId)
     .single();
 
@@ -237,6 +262,11 @@ export async function POST(request: NextRequest) {
       rechnungsempfaenger_teilnehmer_id: hauptkontaktTeilnehmerId,
       status: "angefragt",
       notizen: comment ? String(comment) : null,
+      metadata: {
+        privacy_accepted: true,
+        trust_guarantee_accepted: true,
+        consent_erfasst_am: new Date().toISOString(),
+      },
     })
     .select("id, buchungsnummer")
     .single();
@@ -245,14 +275,16 @@ export async function POST(request: NextRequest) {
   }
 
   const positionen: any[] = [];
-  for (const t of teilnehmerIds) {
+  for (let i = 0; i < teilnehmerIds.length; i++) {
+    const t = teilnehmerIds[i];
+    const listenpreisTeilnehmer = preisFuerTeilnehmer(i, preisNetto, termin.zusatzteilnehmer_preis, termin.zusatzteilnehmer_rabatt_prozent);
     positionen.push({
       buchung_id: buchung.id,
       teilnehmer_id: t.id,
       seminartermin_id: seminarterminId,
       seminartermin_option_id: tierId,
       beschreibung: option.titel,
-      listenpreis: preisNetto,
+      listenpreis: listenpreisTeilnehmer,
       startdatum: termin.datum_start,
       enddatum: termin.datum_ende,
     });
@@ -326,7 +358,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Interne Benachrichtigung an Markus, dass eine neue Buchung eingegangen ist.
-  // Bewusst in einem eigenen try/catch: ein Fehler hier darf die fuer den
+  // Bewusst in einem eigenen try/catch: ein Fehler hier darf die fueb den
   // Teilnehmer bereits erfolgreiche Buchung nicht mehr gefaehrden.
   try {
     const resend = getResend();
