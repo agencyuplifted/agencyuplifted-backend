@@ -442,20 +442,25 @@ export async function updateSeminartermin(formData: FormData) {
 
   const { data: alterTermin } = await supabase
     .from("seminartermine")
-    .select("*, veranstaltungsorte(name), trainer(name)")
+    .select("*, seminartypen(name), veranstaltungsorte(name), trainer(name)")
     .eq("id", id)
     .single();
 
   const neuerOrtId = formData.get("veranstaltungsort_id");
   const neuerTrainerId = formData.get("trainer_id");
+  const neuerSeminartypId = formData.get("seminartyp_id");
   const neuerOrt = neuerOrtId
     ? (await supabase.from("veranstaltungsorte").select("name").eq("id", String(neuerOrtId)).single()).data?.name
     : null;
   const neuerTrainer = neuerTrainerId
     ? (await supabase.from("trainer").select("name").eq("id", String(neuerTrainerId)).single()).data?.name
     : null;
+  const neuerSeminartyp = neuerSeminartypId
+    ? (await supabase.from("seminartypen").select("name").eq("id", String(neuerSeminartypId)).single()).data?.name
+    : null;
 
   const update = {
+    seminartyp_id: formData.get("seminartyp_id") || null,
     titel: formData.get("titel") || null,
     kennung: formData.get("kennung") || null,
     datum_start: datumStart,
@@ -498,12 +503,14 @@ export async function updateSeminartermin(formData: FormData) {
     const neuAnzeige = (feld: string): string => {
       if (feld === "veranstaltungsort_id") return neuerOrt || "—";
       if (feld === "trainer_id") return neuerTrainer || "—";
+      if (feld === "seminartyp_id") return neuerSeminartyp || "—";
       const wert = (update as any)[feld];
       return wert === null || wert === undefined || wert === "" ? "—" : String(wert);
     };
     const altAnzeige = (feld: string): string => {
       if (feld === "veranstaltungsort_id") return (alterTermin as any).veranstaltungsorte?.name || "—";
       if (feld === "trainer_id") return (alterTermin as any).trainer?.name || "—";
+      if (feld === "seminartyp_id") return (alterTermin as any).seminartypen?.name || "—";
       const wert = (alterTermin as any)[feld];
       return wert === null || wert === undefined || wert === "" ? "—" : String(wert);
     };
