@@ -8,6 +8,8 @@ import {
   createOptionFeature,
   duplicateSeminartermin,
   previewSeminarterminLoeschen,
+  previewSeminarterminStornieren,
+  reaktiviereSeminartermin,
   duplicateSeminarOption,
   importSeminarOptions,
   updateOptionBadge,
@@ -260,6 +262,21 @@ export default async function TerminDetailPage({
               Termin duplizieren
             </button>
           </form>
+          {termin.status === "abgesagt" ? (
+            <form action={reaktiviereSeminartermin}>
+              <input type="hidden" name="seminartermin_id" value={id} />
+              <button type="submit" className="au-btn au-btn-secondary" title="Setzt den Termin zurück auf 'geplant' -- erscheint danach wieder auf der Website und kann wieder gebucht werden">
+                Termin wieder aktivieren
+              </button>
+            </form>
+          ) : (
+            <form action={previewSeminarterminStornieren}>
+              <input type="hidden" name="seminartermin_id" value={id} />
+              <button type="submit" className="au-btn au-btn-danger" title="Führt zu einer Bestätigungsseite -- storniert den Termin (verschwindet von der Website, bestehende Buchungen bleiben und können umgebucht werden)">
+                Termin stornieren
+              </button>
+            </form>
+          )}
           <form action={previewSeminarterminLoeschen}>
             <input type="hidden" name="seminartermin_id" value={id} />
             <button type="submit" className="au-btn au-btn-danger" title="Führt zu einer Bestätigungsseite, bevor der Termin wirklich gelöscht wird">
