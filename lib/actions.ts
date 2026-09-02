@@ -1697,6 +1697,85 @@ export async function loescheSeminartermin(formData: FormData) {
   redirect("/termine");
 }
 
+// Vorschau/Bestaetigungsseite fuers Stornieren eines Termins (statt hartem
+// Loeschen) -- anders als loescheSeminartermin funktioniert das auch, wenn
+// bereits Buchungen/Teilnehmer an diesem Termin haengen.
+export async function previewSeminarterminStornieren(formData: FormData) {
+  const id = String(formData.get("seminartermin_id"));
+  redirect(`/termine/${id}/stornieren`);
+}
+
+// Storniert einen Termin: setzt status auf "abgesagt". Dieser Wert wird
+// bereits von der oeffentlichen Terminliste, der Detail-API und der
+// Buchungs-API respektiert (Termin verschwindet von der Website, keine neuen
+// Buchungen mehr moeglich) -- keine Aenderung an den /api/public/* Routen
+// noetig. Bestehende Buchungen bleiben unangetastet; Teilnehmer muessen
+// einzeln ueber die "Umbuchen"-Funktion an der jeweiligen Buchung auf einen
+// anderen Termin verschoben werden.
+export async function stornierSeminartermin(formData: FormData) {
+  const id = String(formData.get("seminartermin_id"));
+  const grund = String(formData.get("grund") || "");
+  const supabase = getSupabaseAdmin();
+
+  const { data: termin } = await supabase
+    .from("seminartermine")
+    .select("titel, kennung, seminartypen(name)")
+    .eq("id", id)
+    .single();
+
+  const { error } = await supabase
+    .from("seminartermine")
+    .update({ status: "abgesagt", deaktiviert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  const benutzer = await getAktuellerBenutzer();
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "seminartermin",
+    bezug_id: id,
+    ereignis: "stornierung",
+    beschreibung: `Termin storniert: ${termin?.kennung ? termin.kennung + " – " : ""}${termin?.titel || (termin as any)?.seminartypen?.name || "(ohne Titel)"}${grund ? ` · Grund: ${grund}` : ""}`,
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
+
+  revalidatePath("/termine");
+  revalidatePath(`/termine/${id}`);
+  redirect(`/termine/${id}`);
+}
+
+// Macht eine Stornierung rueckgaengig: status zurueck auf "geplant". Der
+// Termin erscheint danach wieder auf der Website und kann wieder gebucht
+// werden.
+export async function reaktiviereSeminartermin(formData: FormData) {
+  const id = String(formData.get("seminartermin_id"));
+  const supabase = getSupabaseAdmin();
+
+  const { data: termin } = await supabase
+    .from("seminartermine")
+    .select("titel, kennung, seminartypen(name)")
+    .eq("id", id)
+    .single();
+
+  const { error } = await supabase
+    .from("seminartermine")
+    .update({ status: "geplant", deaktiviert_am: null })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  const benutzer = await getAktuellerBenutzer();
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "seminartermin",
+    bezug_id: id,
+    ereignis: "reaktivierung",
+    beschreibung: `Termin wieder aktiviert (Stornierung zurueckgenommen): ${termin?.kennung ? termin.kennung + " – " : ""}${termin?.titel || (termin as any)?.seminartypen?.name || "(ohne Titel)"}`,
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
+
+  revalidatePath("/termine");
+  revalidatePath(`/termine/${id}`);
+  redirect(`/termine/${id}`);
+}
+
 // ---------- Content Creation (Content-/GEO-Pflegeaufgaben) ----------
 
 export async function erledigtMarkierenContentAufgabe(formData: FormData) {
