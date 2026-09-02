@@ -389,6 +389,14 @@ export default async function TerminDetailPage({
         <h2>Termin bearbeiten</h2>
         <form action={previewSeminarterminUpdate} style={{ maxWidth: 560 }}>
           <input type="hidden" name="seminartermin_id" value={id} />
+
+          <label className="au-label">Seminarkategorie</label>
+          <select className="au-input" name="seminartyp_id" defaultValue={termin.seminartyp_id || ""} required>
+            {seminartypen?.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+
           <div className="au-row-2">
             <div>
               <label className="au-label">Titel des Seminars</label>
