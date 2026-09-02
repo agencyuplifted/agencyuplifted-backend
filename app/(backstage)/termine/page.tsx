@@ -240,9 +240,12 @@ export default async function TerminePage({
   alleProTermin.forEach((set, id) => gesamtProTermin.set(id, set.size));
 
   const heuteISO = heute.toISOString().slice(0, 10);
-  const anstehend = (termine || []).filter((t: any) => t.datum_start >= heuteISO);
+  const anstehend = (termine || []).filter((t: any) => t.datum_start >= heuteISO && t.status !== "abgesagt");
   const alt = (termine || [])
-    .filter((t: any) => t.datum_start < heuteISO)
+    .filter((t: any) => t.datum_start < heuteISO && t.status !== "abgesagt")
+    .sort((a: any, b: any) => (a.datum_start < b.datum_start ? 1 : -1));
+  const storniert = (termine || [])
+    .filter((t: any) => t.status === "abgesagt")
     .sort((a: any, b: any) => (a.datum_start < b.datum_start ? 1 : -1));
 
   return (
@@ -287,6 +290,13 @@ export default async function TerminePage({
         <>
           <h2 style={{ marginTop: "1.5rem" }}>Anstehende Seminare</h2>
           <TerminTabelle termine={anstehend} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} heuteISO={heuteISO} />
+        </>
+      )}
+
+      {storniert.length > 0 && (
+        <>
+          <h2 style={{ marginTop: "1.5rem", color: "var(--color-danger, #c0392b)" }}>Stornierte Seminare</h2>
+          <TerminTabelle termine={storniert} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} heuteISO={heuteISO} />
         </>
       )}
 
