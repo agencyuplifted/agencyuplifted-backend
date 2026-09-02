@@ -8,9 +8,10 @@ import BestaetigenButton from "./BestaetigenButton";
 
 const FELDER = Object.keys(TERMIN_FELD_LABELS);
 
-function anzeige(feld: string, wert: string | undefined, ortName?: string | null, trainerName?: string | null): string {
+function anzeige(feld: string, wert: string | undefined, ortName?: string | null, trainerName?: string | null, seminartypName?: string | null): string {
   if (feld === "veranstaltungsort_id") return wert ? ortName || "—" : "—";
   if (feld === "trainer_id") return wert ? trainerName || "—" : "—";
+  if (feld === "seminartyp_id") return wert ? seminartypName || "—" : "—";
   if (feld === "datum_start" || feld === "datum_ende" || feld === "vorabend_anreise_datum") {
     return wert ? formatDatum(wert) : "—";
   }
@@ -39,12 +40,16 @@ export default async function TerminBestaetigenPage({
 
   const { data: orte } = await supabase.from("veranstaltungsorte").select("id, name").order("name");
   const { data: trainerListe } = await supabase.from("trainer").select("id, name").order("name");
+  const { data: seminartypen } = await supabase.from("seminartypen").select("id, name").order("name");
 
   const neuerOrtName = neueWerte.veranstaltungsort_id
     ? orte?.find((o) => o.id === neueWerte.veranstaltungsort_id)?.name
     : null;
   const neuerTrainerName = neueWerte.trainer_id
     ? trainerListe?.find((t) => t.id === neueWerte.trainer_id)?.name
+    : null;
+  const neuerSeminartypName = neueWerte.seminartyp_id
+    ? seminartypen?.find((s) => s.id === neueWerte.seminartyp_id)?.name
     : null;
 
   const geaenderteFelder = FELDER.filter((feld) => {
@@ -91,13 +96,15 @@ export default async function TerminBestaetigenPage({
                       ? termin.veranstaltungsorte?.name || "—"
                       : feld === "trainer_id"
                       ? termin.trainer?.name || "—"
+                      : feld === "seminartyp_id"
+                      ? termin.seminartypen?.name || "—"
                       : anzeige(feld, altWert !== null && altWert !== undefined ? String(altWert) : undefined);
                   return (
                     <tr key={feld}>
                       <td>{TERMIN_FELD_LABELS[feld]}</td>
                       <td>{altAnzeige}</td>
                       <td>
-                        <strong>{anzeige(feld, neueWerte[feld], neuerOrtName, neuerTrainerName)}</strong>
+                        <strong>{anzeige(feld, neueWerte[feld], neuerOrtName, neuerTrainerName, neuerSeminartypName)}</strong>
                       </td>
                     </tr>
                   );
