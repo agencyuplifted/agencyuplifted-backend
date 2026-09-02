@@ -60,6 +60,7 @@ export function monatsName(monatIndex: number): string {
 
 export const TERMIN_FELD_LABELS: Record<string, string> = {
   titel: "Titel",
+  seminartyp_id: "Seminarkategorie",
   kennung: "Kennung",
   datum_start: "Startdatum",
   zeit_start: "Startuhrzeit",
