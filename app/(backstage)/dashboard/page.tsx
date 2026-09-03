@@ -27,10 +27,11 @@ function balken(anteil: number, farbe = "var(--color-accent)"): React.ReactNode 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ansicht?: string }>;
+  searchParams: Promise<{ ansicht?: string; jahr?: string; seminartyp?: string }>;
 }) {
-  const { ansicht: ansichtRaw } = await searchParams;
+  const { ansicht: ansichtRaw, jahr: jahrRaw, seminartyp } = await searchParams;
   const ansicht: Ansicht = (TABS.some((t) => t.key === ansichtRaw) ? ansichtRaw : "uebersicht") as Ansicht;
+  const jahr = Number(jahrRaw) || new Date().getFullYear();
 
   const supabase = getSupabaseAdmin();
   const heute = new Date().toISOString().slice(0, 10);
@@ -48,7 +49,7 @@ export default async function DashboardPage({
         ))}
       </div>
 
-      {ansicht === "uebersicht" && <Uebersicht supabase={supabase} heute={heute} />}
+      {ansicht === "uebersicht" && <Uebersicht supabase={supabase} heute={heute} jahr={jahr} seminartypFilter={seminartyp} />}
       {ansicht === "nachfrage" && <Nachfrage supabase={supabase} />}
       {ansicht === "auslastung" && <Auslastung supabase={supabase} heute={heute} />}
       {ansicht === "kunden" && <Kunden supabase={supabase} />}
@@ -57,7 +58,17 @@ export default async function DashboardPage({
   );
 }
 
-async function Uebersicht({ supabase, heute }: { supabase: any; heute: string }) {
+async function Uebersicht({
+  supabase,
+  heute,
+  jahr,
+  seminartypFilter,
+}: {
+  supabase: any;
+  heute: string;
+  jahr: number;
+  seminartypFilter?: string;
+}) {
   const [
     { count: teilnehmerCount },
     { count: orgaCount },
@@ -118,6 +129,9 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
           <div className="au-kpi-label">Historische Teilnahmen (Altdaten)</div>
         </div>
       </div>
+
+      <UmsatzProSeminar supabase={supabase} jahr={jahr} seminartypFilter={seminartypFilter} />
+
       <div className="au-card">
         <h2>Nächste Termine</h2>
         {!naechsteTermine?.length && <p style={{ margin: 0 }}>Keine anstehenden Termine.</p>}
@@ -189,6 +203,166 @@ async function NaechsteGeburtstage() {
         ))}
       </tbody>
     </table>
+  );
+}
+
+async function UmsatzProSeminar({
+  supabase,
+  jahr,
+  seminartypFilter,
+}: {
+  supabase: any;
+  jahr: number;
+  seminartypFilter?: string;
+}) {
+  const { data: konfig } = await supabase
+    .from("finanz_konfiguration")
+    .select("fremdkosten_pro_person_netto")
+    .eq("id", 1)
+    .single();
+  const fremdkostenProPerson = Number(konfig?.fremdkosten_pro_person_netto ?? 300);
+
+  const { data: seminartypen } = await supabase.from("seminartypen").select("id, name").order("name");
+
+  let terminQuery = supabase
+    .from("seminartermine")
+    .select("id, titel, kennung, datum_start, seminartypen(id, name)")
+    .gte("datum_start", `${jahr}-01-01`)
+    .lte("datum_start", `${jahr}-12-31`)
+    .neq("status", "abgesagt")
+    .order("datum_start", { ascending: true });
+  if (seminartypFilter) terminQuery = terminQuery.eq("seminartyp_id", seminartypFilter);
+  const { data: termine } = await terminQuery;
+
+  const terminIds = (termine || []).map((t: any) => t.id);
+
+  const [{ data: positionen }, { data: legacyPositionen }] = await Promise.all([
+    terminIds.length
+      ? supabase
+          .from("buchungspositionen")
+          .select("seminartermin_id, teilnehmer_id, preis, buchungen!inner(status)")
+          .in("seminartermin_id", terminIds)
+          .neq("buchungen.status", "storniert")
+      : Promise.resolve({ data: [] }),
+    terminIds.length
+      ? supabase.from("legacy_buchungen").select("seminartermin_id, teilnehmer_id").in("seminartermin_id", terminIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const umsatzProTermin = new Map<string, number>();
+  const personenProTermin = new Map<string, Set<string>>();
+
+  (positionen || []).forEach((p: any) => {
+    if (!p.seminartermin_id) return;
+    umsatzProTermin.set(p.seminartermin_id, (umsatzProTermin.get(p.seminartermin_id) || 0) + Number(p.preis || 0));
+    if (p.teilnehmer_id) {
+      if (!personenProTermin.has(p.seminartermin_id)) personenProTermin.set(p.seminartermin_id, new Set());
+      personenProTermin.get(p.seminartermin_id)!.add(p.teilnehmer_id);
+    }
+  });
+  (legacyPositionen || []).forEach((l: any) => {
+    if (!l.seminartermin_id || !l.teilnehmer_id) return;
+    if (!personenProTermin.has(l.seminartermin_id)) personenProTermin.set(l.seminartermin_id, new Set());
+    personenProTermin.get(l.seminartermin_id)!.add(l.teilnehmer_id);
+  });
+
+  const zeilen = (termine || []).map((t: any) => {
+    const umsatz = umsatzProTermin.get(t.id) || 0;
+    const personen = personenProTermin.get(t.id)?.size || 0;
+    const fremdkosten = personen * fremdkostenProPerson;
+    const db = umsatz - fremdkosten;
+    return { ...t, umsatz, personen, fremdkosten, db };
+  });
+
+  const gesamtUmsatz = zeilen.reduce((s: number, z: any) => s + z.umsatz, 0);
+  const gesamtFremdkosten = zeilen.reduce((s: number, z: any) => s + z.fremdkosten, 0);
+  const gesamtDb = gesamtUmsatz - gesamtFremdkosten;
+
+  const jahre = [jahr - 2, jahr - 1, jahr, jahr + 1];
+
+  return (
+    <div className="au-card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+        <h2 style={{ margin: 0 }}>Umsatz pro Seminar</h2>
+        <Link href="/einstellungen" className="au-btn au-btn-secondary au-btn-sm" title="Fremdkosten-Pauschale einstellen">
+          ⚙ Einstellungen
+        </Link>
+      </div>
+
+      <form method="get" style={{ display: "flex", gap: "0.6rem", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1rem" }}>
+        <input type="hidden" name="ansicht" value="uebersicht" />
+        <div>
+          <label style={{ display: "block", fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Zeitraum</label>
+          <select name="jahr" defaultValue={jahr}>
+            {jahre.map((j) => (
+              <option key={j} value={j}>{j}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Seminar</label>
+          <select name="seminartyp" defaultValue={seminartypFilter || ""}>
+            <option value="">Alle Seminare</option>
+            {(seminartypen || []).map((s: any) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+        <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Filtern</button>
+      </form>
+
+      <div className="au-kpi-grid">
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{formatEUR(gesamtUmsatz)}</div>
+          <div className="au-kpi-label">Gesamtumsatz netto ({jahr})</div>
+        </div>
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{formatEUR(gesamtFremdkosten)}</div>
+          <div className="au-kpi-label">Fremdkosten geschätzt (à {formatEUR(fremdkostenProPerson)}/Person)</div>
+        </div>
+        <div className="au-kpi-card">
+          <div className="au-kpi-value">{formatEUR(Math.round(gesamtDb))}</div>
+          <div className="au-kpi-label">Deckungsbeitrag geschätzt ({jahr})</div>
+        </div>
+      </div>
+
+      <div style={{ overflowX: "auto" }}>
+        <table className="au-table">
+          <thead>
+            <tr>
+              <th>Termin</th>
+              <th>Datum</th>
+              <th style={{ textAlign: "right" }}>Personen</th>
+              <th style={{ textAlign: "right" }}>Umsatz</th>
+              <th style={{ textAlign: "right" }}>Fremdkosten</th>
+              <th style={{ textAlign: "right" }}>DB</th>
+            </tr>
+          </thead>
+          <tbody>
+            {zeilen.map((z: any) => (
+              <tr key={z.id}>
+                <td><Link href={`/termine/${z.id}`}>{z.titel || z.seminartypen?.name}{z.kennung ? ` (${z.kennung})` : ""}</Link></td>
+                <td>{formatDatum(z.datum_start)}</td>
+                <td style={{ textAlign: "right" }}>{z.personen}</td>
+                <td style={{ textAlign: "right" }}>{formatEUR(z.umsatz)}</td>
+                <td style={{ textAlign: "right" }}>{formatEUR(z.fremdkosten)}</td>
+                <td style={{ textAlign: "right", fontWeight: 600 }}>{formatEUR(Math.round(z.db))}</td>
+              </tr>
+            ))}
+            {!zeilen.length && (
+              <tr className="au-table-empty"><td colSpan={6}>Keine Seminare mit Umsatz in {jahr}.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: "0.75rem" }}>
+        Fremdkosten sind eine Schätzung: Personen (Teilnehmer + Mitarbeiter + Gastreferenten) × Pauschale pro Kopf
+        (aktuell {formatEUR(fremdkostenProPerson)} netto, einstellbar unter „Einstellungen"). Nur Buchungen aus dem
+        neuen System (mit hinterlegtem Preis) fließen in den Umsatz ein; stornierte Seminare und Buchungen sind
+        ausgeschlossen.
+      </p>
+    </div>
   );
 }
 
