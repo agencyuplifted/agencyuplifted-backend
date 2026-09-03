@@ -57,6 +57,12 @@ const GROUPS: NavGroup[] = [
       { href: "/redirects", label: "Weiterleitungen" },
     ],
   },
+  {
+    title: "System",
+    links: [
+      { href: "/einstellungen", label: "Einstellungen" },
+    ],
+  },
 ];
 
 export default function Sidebar({ benutzerName }: { benutzerName?: string | null }) {
