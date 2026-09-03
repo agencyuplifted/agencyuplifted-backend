@@ -1776,6 +1776,26 @@ export async function reaktiviereSeminartermin(formData: FormData) {
   redirect(`/termine/${id}`);
 }
 
+export async function updateFinanzKonfiguration(formData: FormData) {
+  const fremdkosten = Number(formData.get("fremdkosten_pro_person_netto"));
+  const supabase = getSupabaseAdmin();
+  const benutzer = await getAktuellerBenutzer();
+
+  const { error } = await supabase
+    .from("finanz_konfiguration")
+    .update({
+      fremdkosten_pro_person_netto: fremdkosten,
+      aktualisiert_am: new Date().toISOString(),
+      aktualisiert_von: benutzer?.name || "Unbekannt",
+    })
+    .eq("id", 1);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/einstellungen");
+  revalidatePath("/dashboard");
+  redirect("/einstellungen");
+}
+
 // ---------- Content Creation (Content-/GEO-Pflegeaufgaben) ----------
 
 export async function erledigtMarkierenContentAufgabe(formData: FormData) {
