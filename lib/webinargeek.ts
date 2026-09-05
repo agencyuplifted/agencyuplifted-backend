@@ -72,3 +72,51 @@ export async function subscribeToBroadcast(params: {
     emailVerified: data.email_verified,
   };
 }
+
+export type WebinarGeekBroadcastResult =
+  | {
+      ok: true;
+      title: string;
+      startEpochSeconds: number;
+      durationSeconds: number;
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+    };
+
+// Liest Titel, Starttermin und geschaetzte Dauer eines Broadcasts (konkreter
+// Webinar-Termin), z.B. um sie auf einer Onepage-Landingpage anzuzeigen.
+// nested_resources=episode,webinar liefert Titel und Dauer gleich mit, ohne
+// zusaetzliche Requests. Titel bevorzugt webinar.title (der eigentliche
+// Webinar-Name), episode.title als Fallback (identisch, sofern das Webinar
+// nur eine Episode hat).
+export async function getBroadcastInfo(broadcastId: number): Promise<WebinarGeekBroadcastResult> {
+  const res = await fetch(
+    `${WEBINARGEEK_BASE_URL}/broadcasts/${broadcastId}?nested_resources=episode,webinar`,
+    {
+      headers: {
+        "Api-Token": getApiKey(),
+      },
+    }
+  );
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = await res.text();
+    } catch {
+      // ignore
+    }
+    return { ok: false, status: res.status, error: detail || res.statusText };
+  }
+
+  const data = await res.json().catch(() => ({} as any));
+  return {
+    ok: true,
+    title: data?.webinar?.title || data?.episode?.title || "",
+    startEpochSeconds: data?.date,
+    durationSeconds: data?.episode?.estimated_duration ?? 3600,
+  };
+}
