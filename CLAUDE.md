@@ -67,3 +67,9 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 - ACHTUNG: Env-Variablen vom Typ "Secret" (z.B. WEBINARGEEK_API_KEY, Supabase-Keys, Resend-Key) kommen bei `vercel env pull` nur als Platzhalter "[SENSITIVE]" zurück. Den echten Wert bei Bedarf aus dem jeweiligen Ursprungs-Dashboard holen (z.B. WebinarGeek-Konto), nicht aus Vercel.
 - GitHub-Push läuft über `gh` CLI (Browser-Login, schon eingerichtet) — kein Personal Access Token nötig.
 - Vor jedem Commit an neuen API-Routen: ein echter Testaufruf gegen die externe API (z.B. curl) zur Feldnamen-Verifikation, danach `tsc --noEmit`.
+
+## Onepage-Architektur (extern, nicht in diesem Repo, aber wichtig für API-Änderungen)
+
+- Onepage-Landingpages (agencyuplifted.com) laufen NICHT mit echtem clientseitigem Live-Fetching -- das wurde getestet und funktioniert auf dieser Plattform nachweislich nicht (Sections frieren beim Publish quasi statisch ein, useEffect/fetch im Browser läuft nicht zuverlässig).
+- Stattdessen gibt es lokale, geplante Sync-Jobs (sichtbar unter /Users/markus/Claude/Scheduled/), die täglich die öffentlichen Backend-APIs abfragen und die Werte direkt in die statischen Onepage-Section-Controls (package.json "default"-Werte) schreiben, dann publish_page aufrufen. Relevante Jobs: onepage-seminar-fallback-sync, onepage-seminarpreise-sync, sps326-hero-sync.
+- Konsequenz: Wenn sich ein API-Response-Feld ändert (z.B. neues Feld, umbenannt), das eine dieser Sync-Skills nutzt, muss die jeweilige Skill-Datei ebenfalls angepasst werden -- sonst syncen die betroffenen Onepage-Seiten die neuen Daten nicht.
