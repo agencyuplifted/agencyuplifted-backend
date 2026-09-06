@@ -7,6 +7,7 @@ import { formatDatum } from "@/lib/format";
 import { renderPlatzhalter } from "@/lib/funnel";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "@/lib/organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "@/lib/geschlecht";
+import { aktuellerPreisNetto } from "@/lib/preisstaffeln";
 
 // Oeffentliche, schreibende Schnittstelle fuer das Onepage-Buchungsformular.
 // Ersetzt den fruehreren Umweg ueber Pipedrive bzw. das Onepage-eigene CRM:
@@ -29,17 +30,6 @@ function withCors(res: NextResponse) {
 
 export async function OPTIONS() {
   return withCors(new NextResponse(null, { status: 204 }));
-}
-
-function aktuellerPreisNetto(preisstaffeln: { stichtag_tage_vor_start: number; preis: number }[], datumStart: string): number {
-  if (!preisstaffeln.length) return 0;
-  const heute = new Date();
-  const start = new Date(datumStart);
-  const tageBisStart = Math.ceil((start.getTime() - heute.getTime()) / (1000 * 60 * 60 * 24));
-  const sortiert = [...preisstaffeln].sort((a, b) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start);
-  const aktiv = sortiert.find((p) => tageBisStart >= p.stichtag_tage_vor_start);
-  const gewaehlt = aktiv || sortiert[sortiert.length - 1];
-  return gewaehlt ? Number(gewaehlt.preis) : 0;
 }
 
 // Der 1. Teilnehmer (Hauptkontakt) zahlt immer den vollen (Staffel-)Preis.
@@ -113,7 +103,7 @@ export async function POST(request: NextRequest) {
 
   const { data: option } = await supabase
     .from("seminartermin_optionen")
-    .select("id, titel, preisstaffeln(stichtag_tage_vor_start, preis)")
+    .select("id, titel, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis)")
     .eq("id", tierId)
     .single();
 
@@ -121,10 +111,15 @@ export async function POST(request: NextRequest) {
     return withCors(NextResponse.json({ error: "option_not_found" }, { status: 404 }));
   }
 
-  const preisNetto = aktuellerPreisNetto(
-    (option.preisstaffeln || []).map((p: any) => ({ stichtag_tage_vor_start: p.stichtag_tage_vor_start, preis: Number(p.preis) })),
-    termin.datum_start
-  );
+  const preisNetto =
+    aktuellerPreisNetto(
+      (option.preisstaffeln || []).map((p: any) => ({
+        stichtag_tage_vor_start: p.stichtag_tage_vor_start,
+        stichtag_datum: p.stichtag_datum,
+        preis: Number(p.preis),
+      })),
+      termin.datum_start
+    ) ?? 0;
 
   const personen: Teilnehmerangabe[] = [
     {

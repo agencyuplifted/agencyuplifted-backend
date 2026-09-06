@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { createBuchung } from "@/lib/actions";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
+import { aktuellerPreisNetto, type Preisstaffel } from "@/lib/preisstaffeln";
 
 type Teilnehmer = { id: string; vorname: string; nachname: string; email: string };
 type Organisation = { id: string; name: string };
-type Preisstaffel = { id: string; name: string; stichtag_tage_vor_start: number; preis: number };
 type Option = { id: string; titel: string; preisstaffeln?: Preisstaffel[] };
 type Termin = {
   id: string;
@@ -22,15 +22,7 @@ const teilnehmerRowStyle: React.CSSProperties = { display: "grid", gridTemplateC
 let rowIdCounter = 1;
 
 function aktuellerPreis(preisstaffeln: Preisstaffel[] | undefined, datumStart: string): number | null {
-  if (!preisstaffeln?.length) return null;
-  const heute = new Date();
-  const start = new Date(datumStart);
-  const tageBisStart = Math.ceil((start.getTime() - heute.getTime()) / (1000 * 60 * 60 * 24));
-  const sortiert = [...preisstaffeln].sort((a, b) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start);
-  const aktiv = sortiert.find((p) => tageBisStart >= p.stichtag_tage_vor_start);
-  if (aktiv) return Number(aktiv.preis);
-  const letzte = sortiert[sortiert.length - 1];
-  return letzte ? Number(letzte.preis) : null;
+  return aktuellerPreisNetto(preisstaffeln || [], datumStart);
 }
 
 export default function BuchungForm({

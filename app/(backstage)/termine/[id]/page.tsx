@@ -26,6 +26,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
 import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
+import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
+import { aktuellerPreisNetto, sortierteStaffeln } from "@/lib/preisstaffeln";
 import Link from "next/link";
 
 const badgeLabel: Record<string, string> = {
@@ -35,21 +37,6 @@ const badgeLabel: Record<string, string> = {
 
 function formatZeit(t: string | null) {
   return t ? t.slice(0, 5) + " Uhr" : "";
-}
-
-// Gleiche Logik wie in der oeffentlichen API-Route (app/api/public/seminartermine/[id]),
-// damit die Vorschau exakt zeigt, welcher Preis gerade auf der Website ausgespielt
-// wuerde: die Preisstaffel mit dem groessten Stichtag, dessen Frist noch nicht
-// unterschritten ist (je naeher am Termin, desto teurer).
-function aktuellerPreisNettoVorschau(preisstaffeln: any[], datumStart: string): number | null {
-  if (!preisstaffeln || !preisstaffeln.length) return null;
-  const heute = new Date();
-  const start = new Date(datumStart);
-  const tageBisStart = Math.ceil((start.getTime() - heute.getTime()) / (1000 * 60 * 60 * 24));
-  const sortiert = [...preisstaffeln].sort((a, b) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start);
-  const aktiv = sortiert.find((p) => tageBisStart >= p.stichtag_tage_vor_start);
-  const gewaehlt = aktiv || sortiert[sortiert.length - 1];
-  return gewaehlt ? Number(gewaehlt.preis) : null;
 }
 
 export default async function TerminDetailPage({
@@ -650,7 +637,7 @@ export default async function TerminDetailPage({
         {optionen?.length ? (
           <div className="au-option-preview-grid">
             {optionen.map((opt: any) => {
-              const previewPreis = aktuellerPreisNettoVorschau(opt.preisstaffeln || [], termin.datum_start);
+              const previewPreis = aktuellerPreisNetto(opt.preisstaffeln || [], termin.datum_start);
               const featuresSortiert = (opt.seminartermin_options_features || [])
                 .slice()
                 .sort((a: any, b: any) => (a.sortierung ?? 0) - (b.sortierung ?? 0));
@@ -780,19 +767,18 @@ export default async function TerminDetailPage({
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Stichtag (Tage vorher)</th>
+                    <th>Stichtag</th>
                     <th>Preis (netto)</th>
                     <th>Preis (brutto, 19% USt.)</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {opt.preisstaffeln
-                    ?.sort((a: any, b: any) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start)
+                  {sortierteStaffeln(opt.preisstaffeln || [], termin.datum_start)
                     .map((p: any) => (
                       <tr key={p.id}>
                         <td>{p.name}</td>
-                        <td>{p.stichtag_tage_vor_start}</td>
+                        <td>{p.stichtag_datum ? formatDatum(p.stichtag_datum) : `${p.stichtag_tage_vor_start} Tage vorher`}</td>
                         <td>{formatEUR(Number(p.preis))}</td>
                         <td style={{ color: "var(--color-text-muted)" }}>{formatEURBrutto(Number(p.preis))}</td>
                         <td>
@@ -816,10 +802,7 @@ export default async function TerminDetailPage({
                   <label className="au-label">Name (z. B. Super-Frühbucher)</label>
                   <input className="au-input" name="name" required />
                 </div>
-                <div>
-                  <label className="au-label">Stichtag (Tage vor Start)</label>
-                  <input className="au-input" name="stichtag_tage_vor_start" type="number" required />
-                </div>
+                <PreisstaffelStichtagFelder />
                 <div>
                   <label className="au-label">Preis (€, netto zzgl. USt.)</label>
                   <input className="au-input" name="preis" type="number" step="0.01" required />

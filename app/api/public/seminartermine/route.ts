@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
+import { aktuellerPreisNetto } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Liste kuenftiger Seminartermine fuer die
 // Onepage-Website - z.B. fuer eine Terminuebersicht auf einer Kategorieseite
@@ -47,17 +48,6 @@ function formatDatumsspanne(datumStart: string, datumEnde: string): string {
   return `${start.getDate()}. – ${ende.getDate()}. ${monatStart} ${jahrStart}`;
 }
 
-function aktuellerPreisNetto(preisstaffeln: { stichtag_tage_vor_start: number; preis: number }[], datumStart: string): number | null {
-  if (!preisstaffeln.length) return null;
-  const heute = new Date();
-  const start = new Date(datumStart);
-  const tageBisStart = Math.ceil((start.getTime() - heute.getTime()) / (1000 * 60 * 60 * 24));
-  const sortiert = [...preisstaffeln].sort((a, b) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start);
-  const aktiv = sortiert.find((p) => tageBisStart >= p.stichtag_tage_vor_start);
-  const gewaehlt = aktiv || sortiert[sortiert.length - 1];
-  return gewaehlt ? Number(gewaehlt.preis) : null;
-}
-
 export async function GET(request: NextRequest) {
   const supabase = getSupabaseAdmin();
   const seminartypIdsRaw = request.nextUrl.searchParams.get("seminartyp_id");
@@ -68,7 +58,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("seminartermine")
     .select(
-      "id, titel, kennung, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(preisstaffeln(stichtag_tage_vor_start, preis))"
+      "id, titel, kennung, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis))"
     )
     .gte("datum_start", heuteIso)
     .neq("status", "abgesagt")

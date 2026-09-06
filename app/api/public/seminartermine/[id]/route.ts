@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
+import { aktuellerPreisNetto, sortierteStaffeln } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Schnittstelle fuer die Onepage-Website.
 // Gibt bewusst nur die Felder zurueck, die auf der Website angezeigt werden
@@ -53,17 +54,6 @@ function formatDatumsspanne(datumStart: string, datumEnde: string): string {
   return `${start.getDate()}. – ${ende.getDate()}. ${monatStart} ${jahrStart}`;
 }
 
-function aktuellerPreisNetto(preisstaffeln: { stichtag_tage_vor_start: number; preis: number }[], datumStart: string): number | null {
-  if (!preisstaffeln.length) return null;
-  const heute = new Date();
-  const start = new Date(datumStart);
-  const tageBisStart = Math.ceil((start.getTime() - heute.getTime()) / (1000 * 60 * 60 * 24));
-  const sortiert = [...preisstaffeln].sort((a, b) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start);
-  const aktiv = sortiert.find((p) => tageBisStart >= p.stichtag_tage_vor_start);
-  const gewaehlt = aktiv || sortiert[sortiert.length - 1];
-  return gewaehlt ? Number(gewaehlt.preis) : null;
-}
-
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -71,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
       )
     .eq("id", id)
     .single();
@@ -141,9 +131,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const optionen = ((termin as any).seminartermin_optionen || [])
     .sort((a: any, b: any) => (a.sortierung ?? 0) - (b.sortierung ?? 0))
     .map((o: any) => {
-      const staffeln = (o.preisstaffeln || []).sort(
-        (a: any, b: any) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start
-      );
+      const staffeln = sortierteStaffeln(o.preisstaffeln || [], termin.datum_start);
       const preisNetto = aktuellerPreisNetto(staffeln, termin.datum_start);
       return {
         id: o.id,
@@ -156,6 +144,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         preisstaffeln: staffeln.map((p: any) => ({
           name: p.name,
           stichtag_tage_vor_start: p.stichtag_tage_vor_start,
+          stichtag_datum: p.stichtag_datum || null,
           preis_netto: Number(p.preis),
           preis_brutto: brutto(Number(p.preis)),
         })),

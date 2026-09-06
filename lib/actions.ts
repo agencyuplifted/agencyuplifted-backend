@@ -15,6 +15,7 @@ import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
 import { erzeugeSlug, eindeutigerSlug, erzeugeTagSlug } from "./insights";
 import { holeAutocompleteVorschlaege } from "./themen-radar";
+import { stichtagsDatumEndeDesTages } from "./preisstaffeln";
 
 // Ermittelt Anrede + Quelle fuer ein Formularfeld: explizite Angabe (Herr/Frau/
 // Divers) gilt als 'manuell' und wird nie durch die Namens-Heuristik ersetzt.
@@ -608,6 +609,7 @@ export async function duplicateSeminartermin(formData: FormData) {
           seminartermin_option_id: neueOption.id,
           name: p.name,
           stichtag_tage_vor_start: p.stichtag_tage_vor_start,
+          stichtag_datum: p.stichtag_datum,
           preis: p.preis,
           waehrung: p.waehrung,
           sortierung: p.sortierung,
@@ -720,6 +722,7 @@ export async function duplicateSeminarOption(formData: FormData) {
         seminartermin_option_id: neueOption.id,
         name: p.name,
         stichtag_tage_vor_start: p.stichtag_tage_vor_start,
+        stichtag_datum: p.stichtag_datum,
         preis: p.preis,
         waehrung: p.waehrung,
         sortierung: p.sortierung,
@@ -793,6 +796,7 @@ export async function importSeminarOptions(formData: FormData) {
           seminartermin_option_id: neueOption.id,
           name: p.name,
           stichtag_tage_vor_start: p.stichtag_tage_vor_start,
+          stichtag_datum: p.stichtag_datum,
           preis: p.preis,
           waehrung: p.waehrung,
           sortierung: p.sortierung,
@@ -1078,12 +1082,23 @@ export async function createPreisstaffel(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
+
+  // Umschalter "Tage vor Start" / "Festes Datum" im Formular -- pro
+  // Preisstufe wird genau eines der beiden Stichtag-Felder gesetzt, das
+  // jeweils andere bleibt null (siehe lib/preisstaffeln.ts).
+  const stichtagModus = String(formData.get("stichtag_modus") || "tage");
+  const istFestesDatum = stichtagModus === "datum";
+  const stichtagTageVorStart = istFestesDatum ? null : Number(formData.get("stichtag_tage_vor_start") || 0);
+  const stichtagDatumRoh = String(formData.get("stichtag_datum") || "");
+  const stichtagDatum = istFestesDatum && stichtagDatumRoh ? stichtagsDatumEndeDesTages(stichtagDatumRoh) : null;
+
   const { error } = await supabase.from("preisstaffeln").insert({
     seminartermin_option_id: optionId,
     name: String(formData.get("name")),
-    stichtag_tage_vor_start: Number(formData.get("stichtag_tage_vor_start") || 0),
+    stichtag_tage_vor_start: stichtagTageVorStart,
+    stichtag_datum: stichtagDatum,
     preis: Number(formData.get("preis")),
-    sortierung: Number(formData.get("stichtag_tage_vor_start") || 0),
+    sortierung: stichtagTageVorStart ?? 0,
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
