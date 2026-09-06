@@ -822,12 +822,81 @@ export async function createOptionFeature(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
+
+  // Neues Feature ans Ende der Liste anhaengen (nicht sortierung: 0 fuer
+  // alle -- sonst laesst sich die Reihenfolge per Auf/Ab-Pfeil nicht mehr
+  // sinnvoll unterscheiden).
+  const { data: bestehende } = await supabase
+    .from("seminartermin_options_features")
+    .select("sortierung")
+    .eq("seminartermin_option_id", optionId)
+    .order("sortierung", { ascending: false })
+    .limit(1);
+  const naechsteSortierung = (bestehende?.[0]?.sortierung ?? -1) + 1;
+
   const { error } = await supabase.from("seminartermin_options_features").insert({
     seminartermin_option_id: optionId,
     text: String(formData.get("text")),
-    sortierung: Number(formData.get("sortierung") || 0),
+    sortierung: naechsteSortierung,
   });
   if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+export async function updateOptionFeature(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const featureId = String(formData.get("feature_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase
+    .from("seminartermin_options_features")
+    .update({ text: String(formData.get("text")) })
+    .eq("id", featureId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
+// Vertauscht per Auf/Ab-Pfeil die Reihenfolge eines Features mit seinem
+// Nachbarn. Bestehende Datensaetze haben durchgehend sortierung=0
+// (createOptionFeature hat das Feld vorher nie sinnvoll befuellt) -- deshalb
+// wird bei jeder Verschiebung die komplette Liste dieser Option anhand der
+// aktuell angezeigten Reihenfolge (sortierung, bei Gleichstand erstellt_am)
+// neu und luecken-/duplikatfrei durchnummeriert, statt nur zwei Werte zu
+// vertauschen. Das repariert bestehende Daten beim ersten Verschieben
+// automatisch mit.
+export async function moveOptionFeature(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const featureId = String(formData.get("feature_id"));
+  const optionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const richtung = String(formData.get("richtung"));
+
+  const { data: features, error: ladeFehler } = await supabase
+    .from("seminartermin_options_features")
+    .select("id, sortierung, erstellt_am")
+    .eq("seminartermin_option_id", optionId)
+    .order("sortierung", { ascending: true })
+    .order("erstellt_am", { ascending: true });
+  if (ladeFehler) throw new Error(ladeFehler.message);
+
+  const liste = features || [];
+  const index = liste.findIndex((f) => f.id === featureId);
+  const zielIndex = richtung === "hoch" ? index - 1 : index + 1;
+
+  if (index === -1 || zielIndex < 0 || zielIndex >= liste.length) {
+    redirect(`/termine/${seminarterminId}`);
+  }
+
+  const neueReihenfolge = [...liste];
+  [neueReihenfolge[index], neueReihenfolge[zielIndex]] = [neueReihenfolge[zielIndex], neueReihenfolge[index]];
+
+  for (let i = 0; i < neueReihenfolge.length; i++) {
+    if (neueReihenfolge[i].sortierung !== i) {
+      await supabase.from("seminartermin_options_features").update({ sortierung: i }).eq("id", neueReihenfolge[i].id);
+    }
+  }
+
   revalidatePath(`/termine/${seminarterminId}`);
   redirect(`/termine/${seminarterminId}`);
 }

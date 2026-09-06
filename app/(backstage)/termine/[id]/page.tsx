@@ -16,6 +16,8 @@ import {
   updateSeminarOption,
   deleteSeminarOption,
   deleteOptionFeature,
+  updateOptionFeature,
+  moveOptionFeature,
   deletePreisstaffel,
   updatePreisstaffel,
   addMitarbeiterZuTermin,
@@ -738,18 +740,46 @@ export default async function TerminDetailPage({
             <div style={{ marginTop: "0.75rem" }}>
               <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-muted)" }}>Features</span>
               <ul style={{ margin: "0.35rem 0 0.5rem", paddingLeft: "1.2rem" }}>
-                {opt.seminartermin_options_features
-                  ?.sort((a: any, b: any) => a.sortierung - b.sortierung)
-                  .map((f: any) => (
-                    <li key={f.id} style={{ fontSize: "0.9rem" }}>
-                      {renderFett(f.text)}
-                      <form action={deleteOptionFeature} style={{ display: "inline" }}>
-                        <input type="hidden" name="feature_id" value={f.id} />
-                        <input type="hidden" name="seminartermin_id" value={id} />
-                        <button type="submit" className="au-link-danger">entfernen</button>
-                      </form>
+                {(() => {
+                  const featuresGeordnet = [...(opt.seminartermin_options_features || [])].sort(
+                    (a: any, b: any) => a.sortierung - b.sortierung || new Date(a.erstellt_am).getTime() - new Date(b.erstellt_am).getTime()
+                  );
+                  return featuresGeordnet.map((f: any, idx: number) => (
+                    <li key={f.id} style={{ fontSize: "0.9rem", marginBottom: "0.35rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                        <span>{renderFett(f.text)}</span>
+                        <form action={moveOptionFeature} style={{ display: "inline" }}>
+                          <input type="hidden" name="feature_id" value={f.id} />
+                          <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                          <input type="hidden" name="seminartermin_id" value={id} />
+                          <input type="hidden" name="richtung" value="hoch" />
+                          <button type="submit" className="au-btn au-btn-secondary au-btn-sm" disabled={idx === 0} title="Nach oben verschieben">↑</button>
+                        </form>
+                        <form action={moveOptionFeature} style={{ display: "inline" }}>
+                          <input type="hidden" name="feature_id" value={f.id} />
+                          <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                          <input type="hidden" name="seminartermin_id" value={id} />
+                          <input type="hidden" name="richtung" value="runter" />
+                          <button type="submit" className="au-btn au-btn-secondary au-btn-sm" disabled={idx === featuresGeordnet.length - 1} title="Nach unten verschieben">↓</button>
+                        </form>
+                        <details>
+                          <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.8rem" }}>bearbeiten</summary>
+                          <form action={updateOptionFeature} style={{ marginTop: "0.35rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <input type="hidden" name="feature_id" value={f.id} />
+                            <input type="hidden" name="seminartermin_id" value={id} />
+                            <FettInput name="text" defaultValue={f.text} required />
+                            <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
+                          </form>
+                        </details>
+                        <form action={deleteOptionFeature} style={{ display: "inline" }}>
+                          <input type="hidden" name="feature_id" value={f.id} />
+                          <input type="hidden" name="seminartermin_id" value={id} />
+                          <button type="submit" className="au-link-danger">entfernen</button>
+                        </form>
+                      </div>
                     </li>
-                  ))}
+                  ));
+                })()}
                 {!opt.seminartermin_options_features?.length && (
                   <li style={{ fontSize: "0.9rem", color: "var(--color-text-faint)", listStyle: "none", marginLeft: "-1.2rem" }}>Noch keine Features.</li>
                 )}
