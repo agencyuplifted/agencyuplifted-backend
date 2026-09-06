@@ -490,8 +490,8 @@ export async function updateSeminartermin(formData: FormData) {
     urgency_label_template: formData.get("urgency_label_template") || null,
     onepage_slug: formData.get("onepage_slug") || null,
     zimmerupgrade_beschreibung: formData.get("zimmerupgrade_beschreibung") || null,
-    zimmerupgrade_preis_netto: formData.get("zimmerupgrade_preis_netto")
-      ? Number(formData.get("zimmerupgrade_preis_netto"))
+    zimmerupgrade_preis_pro_nacht_netto: formData.get("zimmerupgrade_preis_pro_nacht_netto")
+      ? Number(formData.get("zimmerupgrade_preis_pro_nacht_netto"))
       : null,
     selbstauskunft_label: formData.get("selbstauskunft_label") || null,
     selbstauskunft_aktiv: formData.get("selbstauskunft_aktiv") === "on",

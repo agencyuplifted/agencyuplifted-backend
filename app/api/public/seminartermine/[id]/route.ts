@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
+import { MWST_SATZ, MONATSNAMEN, naechteAnzahl } from "@/lib/format";
 import { aktuellerPreisNetto, sortierteStaffeln, gueltigBisText } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Schnittstelle fuer die Onepage-Website.
@@ -61,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
       )
     .eq("id", id)
     .single();
@@ -69,6 +69,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (!termin || termin.status === "abgesagt") {
     return withCors(NextResponse.json({ error: "not_found" }, { status: 404 }));
   }
+
+  // Der Zimmerupgrade-Aufpreis gilt pro Nacht -- die Naechteanzahl kommt aus
+  // datum_start/datum_ende des Termins (keine eigenen Datumsfelder je Option,
+  // die Aufenthaltsdauer ist also fuer alle Optionen gleich).
+  const zimmerupgradeNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende);
 
   // Belegung = Anzahl unterschiedlicher Teilnehmer (aktuelle Buchungen + Alt-Daten
   // aus legacy_buchungen zusammengefuehrt, doppelt gezaehlte Personen vermieden).
@@ -188,8 +193,18 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             .join(" ")
         : "Ort wird noch bekannt gegeben",
       datumsspanne_anzeige: formatDatumsspanne(termin.datum_start, termin.datum_ende),
-      zimmerupgrade: termin.zimmerupgrade_preis_netto
-        ? { beschreibung: termin.zimmerupgrade_beschreibung || "Zimmer-Upgrade", preis_netto: Number(termin.zimmerupgrade_preis_netto) }
+      zimmerupgrade: termin.zimmerupgrade_preis_pro_nacht_netto
+        ? {
+            beschreibung: termin.zimmerupgrade_beschreibung || "Zimmer-Upgrade",
+            naechte: zimmerupgradeNaechte,
+            preis_pro_nacht_netto: Number(termin.zimmerupgrade_preis_pro_nacht_netto),
+            preis_pro_nacht_brutto: brutto(Number(termin.zimmerupgrade_preis_pro_nacht_netto)),
+            // Gesamtaufpreis (Aufpreis pro Nacht x Naechte dieses Termins) --
+            // bewusst vorberechnet zurueckgegeben, damit Onepage nicht selbst
+            // rechnen muss.
+            preis_netto: Number(termin.zimmerupgrade_preis_pro_nacht_netto) * zimmerupgradeNaechte,
+            preis_brutto: brutto(Number(termin.zimmerupgrade_preis_pro_nacht_netto) * zimmerupgradeNaechte),
+          }
         : null,
       selbstauskunft: termin.selbstauskunft_aktiv ? (termin.selbstauskunft_label || "Ich bestaetige die untenstehende Angabe.") : null,
       zusatzteilnehmer_preis: termin.zusatzteilnehmer_preis !== null && termin.zusatzteilnehmer_preis !== undefined ? Number(termin.zusatzteilnehmer_preis) : null,

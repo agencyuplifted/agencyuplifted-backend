@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getResend, ABSENDER } from "@/lib/email";
-import { formatDatum } from "@/lib/format";
+import { formatDatum, naechteAnzahl } from "@/lib/format";
 import { renderPlatzhalter } from "@/lib/funnel";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "@/lib/organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "@/lib/geschlecht";
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, datum_start, datum_ende, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_netto, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name)"
+      "id, titel, datum_start, datum_ende, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name)"
     )
     .eq("id", seminarterminId)
     .single();
@@ -283,14 +283,15 @@ export async function POST(request: NextRequest) {
       startdatum: termin.datum_start,
       enddatum: termin.datum_ende,
     });
-    if (t.roomOption === "komfort" && termin.zimmerupgrade_preis_netto) {
+    if (t.roomOption === "komfort" && termin.zimmerupgrade_preis_pro_nacht_netto) {
+      const zimmerupgradeNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende);
       positionen.push({
         buchung_id: buchung.id,
         teilnehmer_id: t.id,
         seminartermin_id: seminarterminId,
         seminartermin_option_id: null,
         beschreibung: termin.zimmerupgrade_beschreibung || "Zimmer-Upgrade",
-        listenpreis: Number(termin.zimmerupgrade_preis_netto),
+        listenpreis: Number(termin.zimmerupgrade_preis_pro_nacht_netto) * zimmerupgradeNaechte,
         startdatum: termin.datum_start,
         enddatum: termin.datum_ende,
       });

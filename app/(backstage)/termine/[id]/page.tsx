@@ -27,7 +27,7 @@ import {
   entferneZimmerpartner,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
+import { formatDatum, formatEUR, formatEURBrutto, naechteAnzahl } from "@/lib/format";
 import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
@@ -257,6 +257,13 @@ export default async function TerminDetailPage({
     kopierbareGruppenMap.get(o.seminartyp)!.push(o);
   });
   const kopierbareGruppen = [...kopierbareGruppenMap.entries()];
+
+  // Der Zimmerupgrade-Aufpreis gilt pro Nacht (siehe zimmerupgrade_preis_pro_nacht_netto) --
+  // die Naechteanzahl selbst wird nicht separat gepflegt, sondern immer aus
+  // datum_start/datum_ende dieses Termins abgeleitet (Optionen haben keine
+  // eigenen Datumsfelder, die Aufenthaltsdauer ist also fuer alle Optionen
+  // eines Termins gleich).
+  const terminNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende);
 
   return (
     <main>
@@ -563,8 +570,12 @@ export default async function TerminDetailPage({
         <input className="au-input" name="zimmerupgrade_beschreibung" defaultValue={termin.zimmerupgrade_beschreibung || ""} placeholder="z. B. Komfortzimmer statt Standardzimmer" />
               </div>
               <div>
-                <label className="au-label">Aufpreis pro Person (€, netto)</label>
-                <input className="au-input" name="zimmerupgrade_preis_netto" type="number" step="0.01" defaultValue={termin.zimmerupgrade_preis_netto ?? ""} placeholder="z. B. 178" />
+                <label className="au-label">Aufpreis pro Nacht (€, netto)</label>
+                <input className="au-input" name="zimmerupgrade_preis_pro_nacht_netto" type="number" step="0.01" defaultValue={termin.zimmerupgrade_preis_pro_nacht_netto ?? ""} placeholder="z. B. 89" />
+                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
+                  Dieser Termin hat {terminNaechte} {terminNaechte === 1 ? "Nacht" : "Nächte"} ({formatDatum(termin.datum_start)}
+                  {termin.datum_ende && termin.datum_ende !== termin.datum_start ? ` – ${formatDatum(termin.datum_ende)}` : ""}) — der Gesamtaufpreis ergibt sich automatisch aus Aufpreis × Nächte.
+                </p>
               </div>
             </div>
           </div>

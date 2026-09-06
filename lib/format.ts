@@ -26,6 +26,18 @@ export function formatDatumsspanne(start: string, ende?: string | null) {
   return `${tag(startDatum)}. – ${tag(endeDatum)}.${monat(endeDatum)}.${jahr(endeDatum)}`;
 }
 
+// Anzahl Uebernachtungen aus dem Datumsbereich eines Termins (datum_start bis
+// datum_ende, beide vom Typ "date" ohne Uhrzeit) -- z.B. 14. bis 15. August =
+// 1 Nacht. Grundlage fuer den Zimmerupgrade-Gesamtpreis (Aufpreis pro Nacht x
+// Naechte, siehe zimmerupgrade_preis_pro_nacht_netto), da Seminare/Optionen
+// unterschiedlich lang dauern koennen. Eintaegige Termine (kein Enddatum oder
+// Enddatum = Startdatum) haben 0 Naechte.
+export function naechteAnzahl(datumStart: string, datumEnde: string | null | undefined): number {
+  if (!datumEnde || datumEnde === datumStart) return 0;
+  const ms = new Date(datumEnde).getTime() - new Date(datumStart).getTime();
+  return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
+}
+
 // Fuer Zeitstempel (z.B. Resend-Tracking: zugestellt/geoeffnet/geklickt am),
 // bei denen zusaetzlich zum Datum auch die Uhrzeit relevant ist.
 export function formatDatumZeit(d: string) {
@@ -82,7 +94,7 @@ export const TERMIN_FELD_LABELS: Record<string, string> = {
   urgency_label_template: "Urgency-Text Standard (Onepage-Hero, ohne Platzzahl)",
   onepage_slug: "Onepage-Zielseite (Buchen-Button in Termin-Uebersichten)",
   zimmerupgrade_beschreibung: "Zimmer-Upgrade Beschreibung",
-  zimmerupgrade_preis_netto: "Zimmer-Upgrade Aufpreis (netto, pro Person)",
+  zimmerupgrade_preis_pro_nacht_netto: "Zimmer-Upgrade Aufpreis (netto, pro Nacht)",
   selbstauskunft_label: "Selbstauskunft-Checkbox Text",
   selbstauskunft_aktiv: "Selbstauskunft-Checkbox aktiv",
 };
