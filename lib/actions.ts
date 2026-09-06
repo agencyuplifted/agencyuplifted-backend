@@ -1192,6 +1192,56 @@ export async function updatePreisstaffel(formData: FormData) {
   revalidatePath(`/termine/${seminarterminId}`);
 }
 
+// Uebernimmt die komplette Preisstaffel-Konfiguration einer beliebigen
+// anderen Option (ueber alle Termine hinweg) in die Zieloption. Loeschen der
+// bisherigen Staffeln der Zieloption + Einfuegen der kopierten Staffeln in
+// einem Aufwasch deckt beide Faelle ab: hat die Zieloption noch keine
+// Preisstaffeln, ist das Loeschen ein No-Op und es ist reine Ergaenzung; hat
+// sie bereits welche, werden sie ersetzt (dafuer fragt das Frontend vorher
+// per window.confirm nach, siehe KopierePreisstaffelnButton.tsx).
+// stichtag_tage_vor_start wird 1:1 uebernommen (relativ zum jeweiligen
+// Terminstart weiterhin sinnvoll). stichtag_datum wird unveraendert
+// mitkopiert, aber im Namen markiert -- ein fester Kalendertag der
+// Quelloption passt nicht automatisch zum Starttermin der Zieloption und
+// muss von Hand geprueft/angepasst werden.
+export async function copyPreisstaffelnFromOption(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const zielOptionId = String(formData.get("ziel_option_id"));
+  const quellOptionId = String(formData.get("quell_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+
+  const { data: quellStaffeln, error: qErr } = await supabase
+    .from("preisstaffeln")
+    .select("name, stichtag_tage_vor_start, stichtag_datum, preis, waehrung")
+    .eq("seminartermin_option_id", quellOptionId);
+  if (qErr) throw new Error(qErr.message);
+  if (!quellStaffeln?.length) {
+    revalidatePath(`/termine/${seminarterminId}`);
+    return;
+  }
+
+  const { error: delError } = await supabase
+    .from("preisstaffeln")
+    .delete()
+    .eq("seminartermin_option_id", zielOptionId);
+  if (delError) throw new Error(delError.message);
+
+  const { error: insError } = await supabase.from("preisstaffeln").insert(
+    quellStaffeln.map((p) => ({
+      seminartermin_option_id: zielOptionId,
+      name: p.stichtag_datum ? `${p.name} (Datum ggf. anpassen)` : p.name,
+      stichtag_tage_vor_start: p.stichtag_tage_vor_start,
+      stichtag_datum: p.stichtag_datum,
+      preis: p.preis,
+      waehrung: p.waehrung,
+      sortierung: p.stichtag_tage_vor_start ?? 0,
+    }))
+  );
+  if (insError) throw new Error(insError.message);
+
+  revalidatePath(`/termine/${seminarterminId}`);
+}
+
 export async function createUrgencyStufe(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));

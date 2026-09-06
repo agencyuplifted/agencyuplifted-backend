@@ -20,6 +20,7 @@ import {
   moveOptionFeature,
   deletePreisstaffel,
   updatePreisstaffel,
+  copyPreisstaffelnFromOption,
   addMitarbeiterZuTermin,
   removeMitarbeiterVonTermin,
   setzeZimmerpartner,
@@ -30,6 +31,7 @@ import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
 import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
+import KopierePreisstaffelnButton from "./KopierePreisstaffelnButton";
 import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag } from "@/lib/preisstaffeln";
 import Link from "next/link";
 
@@ -77,6 +79,7 @@ export default async function TerminDetailPage({
     { data: legacyTeilnehmer },
     { data: zimmerpartner },
     { data: andereTermine },
+    { data: alleOptionenFuerKopie },
   ] = await Promise.all([
     supabase
       .from("seminartermine")
@@ -131,6 +134,12 @@ export default async function TerminDetailPage({
       .select("id, kennung, titel, datum_start, seminartypen(name)")
       .neq("id", id)
       .order("datum_start", { ascending: true }),
+    // Fuer "Preisstaffeln aus anderem Seminar kopieren" (ueber alle Termine
+    // hinweg, nicht nur diesen) -- nur Optionen mit mind. einer Preisstaffel
+    // sind als Quelle sinnvoll, der Rest wird unten herausgefiltert.
+    supabase
+      .from("seminartermin_optionen")
+      .select("id, titel, preisstaffeln(id), seminartermine(kennung, titel, datum_start, seminartypen(name))"),
   ]);
 
   // Optionen des gewaehlten Quell-Termins fuer den Options-Import (nur geladen,
@@ -224,6 +233,30 @@ export default async function TerminDetailPage({
   const zeitraum = termin.datum_ende && termin.datum_ende !== termin.datum_start
     ? `${formatDatum(termin.datum_start)}${termin.zeit_start ? ", " + formatZeit(termin.zeit_start) : ""} bis ${formatDatum(termin.datum_ende)}${termin.zeit_ende ? ", " + formatZeit(termin.zeit_ende) : ""}`
     : `${formatDatum(termin.datum_start)}${termin.zeit_start ? ", " + formatZeit(termin.zeit_start) : ""}${termin.zeit_ende ? " – " + formatZeit(termin.zeit_ende) : ""}`;
+
+  // Fuer "Preisstaffeln aus anderem Seminar kopieren" (pro Option angeboten):
+  // alle Optionen mit mind. einer Preisstaffel, gruppiert nach Seminarkategorie,
+  // je Gruppe sortiert nach Termin-Bezeichnung. Die aktuell bearbeitete Option
+  // selbst wird erst beim Rendern pro Option herausgefiltert (dort ist ihre id
+  // bekannt).
+  const kopierbareOptionenFlat = ((alleOptionenFuerKopie as any[]) || [])
+    .filter((o) => (o.preisstaffeln?.length || 0) > 0)
+    .map((o) => ({
+      id: o.id as string,
+      titel: o.titel as string,
+      seminartyp: o.seminartermine?.seminartypen?.name || "Ohne Kategorie",
+      terminLabel: `${o.seminartermine?.kennung ? o.seminartermine.kennung + " – " : ""}${
+        o.seminartermine?.titel || o.seminartermine?.seminartypen?.name || "Termin"
+      } (${o.seminartermine?.datum_start ? formatDatum(o.seminartermine.datum_start) : "?"})`,
+    }))
+    .sort((a, b) => a.seminartyp.localeCompare(b.seminartyp, "de") || a.terminLabel.localeCompare(b.terminLabel, "de"));
+
+  const kopierbareGruppenMap = new Map<string, typeof kopierbareOptionenFlat>();
+  kopierbareOptionenFlat.forEach((o) => {
+    if (!kopierbareGruppenMap.has(o.seminartyp)) kopierbareGruppenMap.set(o.seminartyp, []);
+    kopierbareGruppenMap.get(o.seminartyp)!.push(o);
+  });
+  const kopierbareGruppen = [...kopierbareGruppenMap.entries()];
 
   return (
     <main>
@@ -871,6 +904,45 @@ export default async function TerminDetailPage({
                   <button type="submit" className="au-btn au-btn-secondary">+ Staffel</button>
                 </div>
               </form>
+
+              <details style={{ marginTop: "0.5rem" }}>
+                <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.85rem" }}>
+                  Preisstaffeln aus anderem Seminar kopieren
+                </summary>
+                <form
+                  action={copyPreisstaffelnFromOption}
+                  style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}
+                >
+                  <input type="hidden" name="ziel_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <div style={{ flex: 1, minWidth: 260 }}>
+                    <label className="au-label">Quell-Option (Seminarkategorie – Termin – Option)</label>
+                    <select className="au-select" name="quell_option_id" required defaultValue="">
+                      <option value="" disabled>— bitte wählen —</option>
+                      {kopierbareGruppen.map(([seminartyp, gruppe]) => {
+                        const wählbar = gruppe.filter((k) => k.id !== opt.id);
+                        if (!wählbar.length) return null;
+                        return (
+                          <optgroup key={seminartyp} label={seminartyp}>
+                            {wählbar.map((k) => (
+                              <option key={k.id} value={k.id}>
+                                {k.terminLabel} – {k.titel}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <KopierePreisstaffelnButton ersetztBestehende={(opt.preisstaffeln?.length || 0) > 0} />
+                </form>
+                <p style={{ fontSize: "0.75rem", color: "var(--color-text-faint)", margin: "0.3rem 0 0" }}>
+                  {(opt.preisstaffeln?.length || 0) > 0
+                    ? `Ersetzt alle ${opt.preisstaffeln.length} bestehende(n) Preisstaffel(n) dieser Option. `
+                    : ""}
+                  Feste Datums-Stichtage werden unverändert mitkopiert und im Namen mit „(Datum ggf. anpassen)" markiert – der Kalendertag der Quelloption passt ggf. nicht zum Starttermin dieser Option und sollte danach geprüft werden.
+                </p>
+              </details>
             </div>
           </div>
         ))}
