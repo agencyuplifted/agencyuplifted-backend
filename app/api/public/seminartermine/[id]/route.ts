@@ -61,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
       )
     .eq("id", id)
     .single();
@@ -70,10 +70,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return withCors(NextResponse.json({ error: "not_found" }, { status: 404 }));
   }
 
-  // Der Zimmerupgrade-Aufpreis gilt pro Nacht -- die Naechteanzahl kommt aus
-  // datum_start/datum_ende des Termins (keine eigenen Datumsfelder je Option,
-  // die Aufenthaltsdauer ist also fuer alle Optionen gleich).
-  const zimmerupgradeNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende);
+  // Der Zimmerupgrade-Aufpreis gilt pro Nacht. Basis-Naechte kommen aus
+  // datum_start/datum_ende des Termins (Vorabendanreise inklusive) -- das ist
+  // fuer alle Optionen dieses Termins gleich, da seminartermin_optionen keine
+  // eigenen Datumsfelder hat. Einzelne Optionen koennen aber eine
+  // Zusatzuebernachtung drauflegen (zimmerupgrade_zusatznaechte, z.B. eine
+  // Verlaengerungsoption) -- deshalb wandert das Zimmerupgrade unten in die
+  // Options-Ausgabe statt einmal fuer den ganzen Termin.
+  const terminBasisNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende);
 
   // Belegung = Anzahl unterschiedlicher Teilnehmer (aktuelle Buchungen + Alt-Daten
   // aus legacy_buchungen zusammengefuehrt, doppelt gezaehlte Personen vermieden).
@@ -138,6 +142,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     .map((o: any) => {
       const staffeln = sortierteStaffeln(o.preisstaffeln || [], termin.datum_start);
       const preisNetto = aktuellerPreisNetto(staffeln, termin.datum_start);
+      // Effektive Naechte dieser Option = Termin-Basisnaechte + ggf. eigene
+      // Zusatzuebernachtung (siehe terminBasisNaechte oben) -- Beschreibung
+      // und Preis pro Nacht sind termin-weit gleich, nur die Naechteanzahl
+      // (und damit der Gesamtpreis) kann pro Option abweichen.
+      const optionNaechte = terminBasisNaechte + (o.zimmerupgrade_zusatznaechte || 0);
       return {
         id: o.id,
         titel: o.titel,
@@ -156,6 +165,19 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         })),
         aktueller_preis_netto: preisNetto,
         aktueller_preis_brutto: preisNetto !== null ? brutto(preisNetto) : null,
+        zimmerupgrade: termin.zimmerupgrade_preis_pro_nacht_netto
+          ? {
+              beschreibung: termin.zimmerupgrade_beschreibung || "Zimmer-Upgrade",
+              naechte: optionNaechte,
+              preis_pro_nacht_netto: Number(termin.zimmerupgrade_preis_pro_nacht_netto),
+              preis_pro_nacht_brutto: brutto(Number(termin.zimmerupgrade_preis_pro_nacht_netto)),
+              // Gesamtaufpreis (Aufpreis pro Nacht x Naechte dieser Option) --
+              // bewusst vorberechnet zurueckgegeben, damit Onepage nicht
+              // selbst rechnen muss.
+              preis_netto: Number(termin.zimmerupgrade_preis_pro_nacht_netto) * optionNaechte,
+              preis_brutto: brutto(Number(termin.zimmerupgrade_preis_pro_nacht_netto) * optionNaechte),
+            }
+          : null,
       };
     });
 
@@ -193,19 +215,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             .join(" ")
         : "Ort wird noch bekannt gegeben",
       datumsspanne_anzeige: formatDatumsspanne(termin.datum_start, termin.datum_ende),
-      zimmerupgrade: termin.zimmerupgrade_preis_pro_nacht_netto
-        ? {
-            beschreibung: termin.zimmerupgrade_beschreibung || "Zimmer-Upgrade",
-            naechte: zimmerupgradeNaechte,
-            preis_pro_nacht_netto: Number(termin.zimmerupgrade_preis_pro_nacht_netto),
-            preis_pro_nacht_brutto: brutto(Number(termin.zimmerupgrade_preis_pro_nacht_netto)),
-            // Gesamtaufpreis (Aufpreis pro Nacht x Naechte dieses Termins) --
-            // bewusst vorberechnet zurueckgegeben, damit Onepage nicht selbst
-            // rechnen muss.
-            preis_netto: Number(termin.zimmerupgrade_preis_pro_nacht_netto) * zimmerupgradeNaechte,
-            preis_brutto: brutto(Number(termin.zimmerupgrade_preis_pro_nacht_netto) * zimmerupgradeNaechte),
-          }
-        : null,
       selbstauskunft: termin.selbstauskunft_aktiv ? (termin.selbstauskunft_label || "Ich bestaetige die untenstehende Angabe.") : null,
       zusatzteilnehmer_preis: termin.zusatzteilnehmer_preis !== null && termin.zusatzteilnehmer_preis !== undefined ? Number(termin.zusatzteilnehmer_preis) : null,
       zusatzteilnehmer_rabatt_prozent: termin.zusatzteilnehmer_rabatt_prozent !== null && termin.zusatzteilnehmer_rabatt_prozent !== undefined ? Number(termin.zusatzteilnehmer_rabatt_prozent) : null,

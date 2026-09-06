@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
 
   const { data: option } = await supabase
     .from("seminartermin_optionen")
-    .select("id, titel, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis)")
+    .select("id, titel, zimmerupgrade_zusatznaechte, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis)")
     .eq("id", tierId)
     .single();
 
@@ -284,7 +284,10 @@ export async function POST(request: NextRequest) {
       enddatum: termin.datum_ende,
     });
     if (t.roomOption === "komfort" && termin.zimmerupgrade_preis_pro_nacht_netto) {
-      const zimmerupgradeNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende);
+      // Termin-Basisnaechte + ggf. Zusatzuebernachtung dieser konkreten
+      // Option (z.B. Verlaengerungsoption) -- siehe app/api/public/seminartermine/[id]/route.ts
+      // fuer dieselbe Logik in der Vorschau-API.
+      const zimmerupgradeNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende) + (option.zimmerupgrade_zusatznaechte || 0);
       positionen.push({
         buchung_id: buchung.id,
         teilnehmer_id: t.id,

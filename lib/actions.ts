@@ -1430,6 +1430,9 @@ export async function updateSeminarOption(formData: FormData) {
       beschreibung: formData.get("beschreibung") || null,
       sortierung: Number(formData.get("sortierung") || 0),
       zusatz_teilnehmer_hinweis: formData.get("zusatz_teilnehmer_hinweis") || null,
+      zimmerupgrade_zusatznaechte: formData.get("zimmerupgrade_zusatznaechte")
+        ? Number(formData.get("zimmerupgrade_zusatznaechte"))
+        : null,
     })
     .eq("id", optionId);
   if (error) throw new Error(error.message);

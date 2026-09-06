@@ -752,6 +752,8 @@ export default async function TerminDetailPage({
                 <FettTextarea name="beschreibung" defaultValue={opt.beschreibung || ""} placeholder="Kurze Beschreibung dieser Option" />
                 <label className="au-label">Sortierung (0 = zuerst)</label>
                 <input className="au-input" name="sortierung" type="number" defaultValue={opt.sortierung ?? 0} />
+                <label className="au-label">Zusätzliche Nächte für Zimmer-Upgrade (nur bei Verlängerung/Zusatzübernachtung, sonst leer lassen)</label>
+                <input className="au-input" name="zimmerupgrade_zusatznaechte" type="number" min={0} defaultValue={opt.zimmerupgrade_zusatznaechte || ""} placeholder="z. B. 1" />
                 <label className="au-label">Hinweis: zusätzlicher Teilnehmer (erscheint unter der Preistabelle auf Onepage)</label>
                 <FettTextarea
                   name="zusatz_teilnehmer_hinweis"
