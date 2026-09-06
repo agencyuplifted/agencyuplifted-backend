@@ -663,7 +663,6 @@ export async function createSeminarOption(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function updateOptionBadge(formData: FormData) {
@@ -677,7 +676,6 @@ export async function updateOptionBadge(formData: FormData) {
     .eq("id", optionId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function duplicateSeminarOption(formData: FormData) {
@@ -731,7 +729,6 @@ export async function duplicateSeminarOption(formData: FormData) {
   }
 
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function importSeminarOptions(formData: FormData) {
@@ -740,7 +737,7 @@ export async function importSeminarOptions(formData: FormData) {
   const optionIds = formData.getAll("option_ids").map(String).filter(Boolean);
 
   if (!optionIds.length) {
-    redirect(`/termine/${seminarterminId}`);
+    return;
   }
 
   const { data: quellOptionen, error: qErr } = await supabase
@@ -815,7 +812,6 @@ export async function importSeminarOptions(formData: FormData) {
   });
 
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function createOptionFeature(formData: FormData) {
@@ -841,7 +837,6 @@ export async function createOptionFeature(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function updateOptionFeature(formData: FormData) {
@@ -854,7 +849,6 @@ export async function updateOptionFeature(formData: FormData) {
     .eq("id", featureId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 // Vertauscht per Auf/Ab-Pfeil die Reihenfolge eines Features mit seinem
@@ -885,7 +879,7 @@ export async function moveOptionFeature(formData: FormData) {
   const zielIndex = richtung === "hoch" ? index - 1 : index + 1;
 
   if (index === -1 || zielIndex < 0 || zielIndex >= liste.length) {
-    redirect(`/termine/${seminarterminId}`);
+    return;
   }
 
   const neueReihenfolge = [...liste];
@@ -898,7 +892,6 @@ export async function moveOptionFeature(formData: FormData) {
   }
 
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function createBuchung(formData: FormData) {
@@ -1171,7 +1164,6 @@ export async function createPreisstaffel(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function updatePreisstaffel(formData: FormData) {
@@ -1198,7 +1190,6 @@ export async function updatePreisstaffel(formData: FormData) {
     .eq("id", preisstaffelId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function createUrgencyStufe(formData: FormData) {
@@ -1213,7 +1204,6 @@ export async function createUrgencyStufe(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function createLead(formData: FormData) {
@@ -1332,7 +1322,6 @@ export async function addMitarbeiterZuTermin(formData: FormData) {
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function removeMitarbeiterVonTermin(formData: FormData) {
@@ -1345,7 +1334,6 @@ export async function removeMitarbeiterVonTermin(formData: FormData) {
     .eq("id", zuordnungId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function setzeZimmerpartner(formData: FormData) {
@@ -1367,7 +1355,6 @@ export async function setzeZimmerpartner(formData: FormData) {
   );
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function entferneZimmerpartner(formData: FormData) {
@@ -1380,7 +1367,6 @@ export async function entferneZimmerpartner(formData: FormData) {
     .eq("id", zuordnungId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function updateSeminarOption(formData: FormData) {
@@ -1398,7 +1384,6 @@ export async function updateSeminarOption(formData: FormData) {
     .eq("id", optionId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function deleteSeminarOption(formData: FormData) {
@@ -1408,7 +1393,6 @@ export async function deleteSeminarOption(formData: FormData) {
   const { error } = await supabase.from("seminartermin_optionen").delete().eq("id", optionId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function deleteOptionFeature(formData: FormData) {
@@ -1418,7 +1402,6 @@ export async function deleteOptionFeature(formData: FormData) {
   const { error } = await supabase.from("seminartermin_options_features").delete().eq("id", featureId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function deletePreisstaffel(formData: FormData) {
@@ -1428,7 +1411,6 @@ export async function deletePreisstaffel(formData: FormData) {
   const { error } = await supabase.from("preisstaffeln").delete().eq("id", preisstaffelId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
-  redirect(`/termine/${seminarterminId}`);
 }
 
 export async function sendeTestMail(formData: FormData) {
@@ -1884,7 +1866,6 @@ export async function reaktiviereSeminartermin(formData: FormData) {
 
   revalidatePath("/termine");
   revalidatePath(`/termine/${id}`);
-  redirect(`/termine/${id}`);
 }
 
 export async function updateFinanzKonfiguration(formData: FormData) {
