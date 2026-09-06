@@ -78,3 +78,17 @@ export function stichtagsDatumEndeDesTages(datumISO: string): string {
   const offset = berlinOffsetStunden(mittagUTC);
   return new Date(Date.UTC(jahr, monat - 1, tag, 23 - offset, 59, 59)).toISOString();
 }
+
+// Kehrwert zu stichtagsDatumEndeDesTages: liefert das Kalenderdatum
+// (YYYY-MM-DD) in Berliner Zeit fuer einen gespeicherten Stichtag-Zeitpunkt
+// -- zum Vorbefuellen des Datumsfelds beim Bearbeiten einer Preisstufe.
+export function berlinKalendertag(zeitpunktISO: string): string {
+  const teile = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(zeitpunktISO));
+  const wert = (typ: string) => teile.find((t) => t.type === typ)?.value ?? "";
+  return `${wert("year")}-${wert("month")}-${wert("day")}`;
+}

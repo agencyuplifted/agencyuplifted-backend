@@ -2,15 +2,25 @@
 
 import { useState } from "react";
 
-// Umschalter fuer das "Preisstufe anlegen"-Formular: eine Preisstufe endet
-// entweder nach einer relativen Frist vor Terminstart ("Tage vor Start") oder
-// zu einem festen Kalendertag ("Festes Datum"), nie beides gleichzeitig. Je
-// nach Auswahl wird nur das passende Input gerendert -- das nicht gerenderte
-// Feld fehlt dann in der FormData, createPreisstaffel (lib/actions.ts) liest
-// zusaetzlich stichtag_modus, um eindeutig zu wissen, welches Feld gemeint
-// ist (falls beide leer waeren).
-export default function PreisstaffelStichtagFelder() {
-  const [modus, setModus] = useState<"tage" | "datum">("tage");
+// Umschalter fuer das "Preisstufe anlegen/bearbeiten"-Formular: eine
+// Preisstufe endet entweder nach einer relativen Frist vor Terminstart
+// ("Tage vor Start") oder zu einem festen Kalendertag ("Festes Datum"), nie
+// beides gleichzeitig. Je nach Auswahl wird nur das passende Input gerendert
+// -- das nicht gerenderte Feld fehlt dann in der FormData, create-/
+// updatePreisstaffel (lib/actions.ts) lesen zusaetzlich stichtag_modus, um
+// eindeutig zu wissen, welches Feld gemeint ist (falls beide leer waeren).
+// initialModus/-TageVorStart/-Datum fuellen das Formular beim Bearbeiten
+// einer bestehenden Preisstufe mit deren aktuellen Werten vor.
+export default function PreisstaffelStichtagFelder({
+  initialModus = "tage",
+  initialTageVorStart,
+  initialDatum,
+}: {
+  initialModus?: "tage" | "datum";
+  initialTageVorStart?: number | null;
+  initialDatum?: string | null;
+}) {
+  const [modus, setModus] = useState<"tage" | "datum">(initialModus);
 
   return (
     <div>
@@ -26,9 +36,9 @@ export default function PreisstaffelStichtagFelder() {
         </label>
       </div>
       {modus === "tage" ? (
-        <input className="au-input" name="stichtag_tage_vor_start" type="number" required />
+        <input className="au-input" name="stichtag_tage_vor_start" type="number" defaultValue={initialTageVorStart ?? undefined} required />
       ) : (
-        <input className="au-input" name="stichtag_datum" type="date" required />
+        <input className="au-input" name="stichtag_datum" type="date" defaultValue={initialDatum ?? undefined} required />
       )}
     </div>
   );

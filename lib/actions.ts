@@ -1105,6 +1105,33 @@ export async function createPreisstaffel(formData: FormData) {
   redirect(`/termine/${seminarterminId}`);
 }
 
+export async function updatePreisstaffel(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const preisstaffelId = String(formData.get("preisstaffel_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+
+  const stichtagModus = String(formData.get("stichtag_modus") || "tage");
+  const istFestesDatum = stichtagModus === "datum";
+  const stichtagTageVorStart = istFestesDatum ? null : Number(formData.get("stichtag_tage_vor_start") || 0);
+  const stichtagDatumRoh = String(formData.get("stichtag_datum") || "");
+  const stichtagDatum = istFestesDatum && stichtagDatumRoh ? stichtagsDatumEndeDesTages(stichtagDatumRoh) : null;
+
+  const { error } = await supabase
+    .from("preisstaffeln")
+    .update({
+      name: String(formData.get("name")),
+      stichtag_tage_vor_start: stichtagTageVorStart,
+      stichtag_datum: stichtagDatum,
+      preis: Number(formData.get("preis")),
+      waehrung: String(formData.get("waehrung") || "EUR"),
+      sortierung: Number(formData.get("sortierung") ?? stichtagTageVorStart ?? 0),
+    })
+    .eq("id", preisstaffelId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  redirect(`/termine/${seminarterminId}`);
+}
+
 export async function createUrgencyStufe(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));

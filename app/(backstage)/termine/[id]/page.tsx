@@ -17,6 +17,7 @@ import {
   deleteSeminarOption,
   deleteOptionFeature,
   deletePreisstaffel,
+  updatePreisstaffel,
   addMitarbeiterZuTermin,
   removeMitarbeiterVonTermin,
   setzeZimmerpartner,
@@ -27,7 +28,7 @@ import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
 import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
-import { aktuellerPreisNetto, sortierteStaffeln } from "@/lib/preisstaffeln";
+import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag } from "@/lib/preisstaffeln";
 import Link from "next/link";
 
 const badgeLabel: Record<string, string> = {
@@ -782,7 +783,36 @@ export default async function TerminDetailPage({
                         <td>{formatEUR(Number(p.preis))}</td>
                         <td style={{ color: "var(--color-text-muted)" }}>{formatEURBrutto(Number(p.preis))}</td>
                         <td>
-                          <form action={deletePreisstaffel}>
+                          <details>
+                            <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600 }}>bearbeiten</summary>
+                            <form action={updatePreisstaffel} style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.4rem", minWidth: 220 }}>
+                              <input type="hidden" name="preisstaffel_id" value={p.id} />
+                              <input type="hidden" name="seminartermin_id" value={id} />
+                              <div>
+                                <label className="au-label">Name</label>
+                                <input className="au-input" name="name" defaultValue={p.name} required />
+                              </div>
+                              <PreisstaffelStichtagFelder
+                                initialModus={p.stichtag_datum ? "datum" : "tage"}
+                                initialTageVorStart={p.stichtag_tage_vor_start}
+                                initialDatum={p.stichtag_datum ? berlinKalendertag(p.stichtag_datum) : undefined}
+                              />
+                              <div>
+                                <label className="au-label">Preis (€, netto)</label>
+                                <input className="au-input" name="preis" type="number" step="0.01" defaultValue={p.preis} required />
+                              </div>
+                              <div>
+                                <label className="au-label">Währung</label>
+                                <input className="au-input" name="waehrung" defaultValue={p.waehrung || "EUR"} />
+                              </div>
+                              <div>
+                                <label className="au-label">Sortierung</label>
+                                <input className="au-input" name="sortierung" type="number" defaultValue={p.sortierung ?? 0} />
+                              </div>
+                              <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
+                            </form>
+                          </details>
+                          <form action={deletePreisstaffel} style={{ marginTop: "0.35rem" }}>
                             <input type="hidden" name="preisstaffel_id" value={p.id} />
                             <input type="hidden" name="seminartermin_id" value={id} />
                             <button type="submit" className="au-link-danger">entfernen</button>
