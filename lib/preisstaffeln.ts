@@ -1,3 +1,5 @@
+import { MONATSNAMEN } from "./format";
+
 // Gemeinsame Logik fuer Preisstaffeln (Fruehbucher-/Normalpreise einer
 // Seminaroption) -- verwendet sowohl von den oeffentlichen APIs (Onepage-
 // Preisanzeige, Buchungserstellung) als auch von den Backstage-Vorschauen
@@ -91,4 +93,17 @@ export function berlinKalendertag(zeitpunktISO: string): string {
   }).formatToParts(new Date(zeitpunktISO));
   const wert = (typ: string) => teile.find((t) => t.type === typ)?.value ?? "";
   return `${wert("year")}-${wert("month")}-${wert("day")}`;
+}
+
+// Menschenlesbarer Stichtag fuer die oeffentliche Preisanzeige, z.B.
+// "10. September" -- Tag ohne fuehrende Null + deutscher Monatsname, in
+// Berliner Zeit (relevant nahe der Tagesgrenze/DST-Wechsel).
+export function gueltigBisText(zeitpunktISO: string): string {
+  const teile = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Berlin",
+    day: "numeric",
+    month: "numeric",
+  }).formatToParts(new Date(zeitpunktISO));
+  const wert = (typ: string) => teile.find((t) => t.type === typ)?.value ?? "";
+  return `${Number(wert("day"))}. ${MONATSNAMEN[Number(wert("month")) - 1]}`;
 }

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
-import { aktuellerPreisNetto, sortierteStaffeln } from "@/lib/preisstaffeln";
+import { aktuellerPreisNetto, sortierteStaffeln, gueltigBisText } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Schnittstelle fuer die Onepage-Website.
 // Gibt bewusst nur die Felder zurueck, die auf der Website angezeigt werden
@@ -145,6 +145,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           name: p.name,
           stichtag_tage_vor_start: p.stichtag_tage_vor_start,
           stichtag_datum: p.stichtag_datum || null,
+          ...(p.stichtag_datum ? { gueltigBisText: gueltigBisText(p.stichtag_datum) } : {}),
           preis_netto: Number(p.preis),
           preis_brutto: brutto(Number(p.preis)),
         })),
