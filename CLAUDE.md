@@ -67,6 +67,7 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 - ACHTUNG: Env-Variablen vom Typ "Secret" (z.B. WEBINARGEEK_API_KEY, Supabase-Keys, Resend-Key) kommen bei `vercel env pull` nur als Platzhalter "[SENSITIVE]" zurück. Den echten Wert bei Bedarf aus dem jeweiligen Ursprungs-Dashboard holen (z.B. WebinarGeek-Konto), nicht aus Vercel.
 - GitHub-Push läuft über `gh` CLI (Browser-Login, schon eingerichtet) — kein Personal Access Token nötig.
 - Vor jedem Commit an neuen API-Routen: ein echter Testaufruf gegen die externe API (z.B. curl) zur Feldnamen-Verifikation, danach `tsc --noEmit`.
+- Onepage Live-Fetch-Widerspruch (offen, ungeklärt): Die Onepage-Vibe-Sections sollen laut bisheriger Doku clientseitig kein Live-Fetching können (Sections werden bei Publish quasi eingefroren). Beobachtung vom 06.09.2026: Auf der AUK127-Konferenzseite zeigte das Buchungsformular echte, aktuelle Live-Daten (eine neue Preisoption "AgencyUplifted Premium"), obwohl kein Sync-Job das in die statischen Fallback-Werte geschrieben hatte — und der interne Test-Browser zeigt dieselbe Sektion nur mit den statischen Fallback-Werten, nicht live. Möglich: Live-Fetch funktioniert bei echten Endnutzer-Browsern doch manchmal, aber nicht im internen Test-Tool. Nicht root-caused. Wichtig für künftige Bugfixes an Preis-/Buchungssektionen: IMMER beide Pfade (Live-Fetch-Branch UND Fallback-Branch) im Code korrigieren, nicht nur den, der gerade im Test sichtbar ist.
 
 ## Onepage-Architektur (extern, nicht in diesem Repo, aber wichtig für API-Änderungen)
 
