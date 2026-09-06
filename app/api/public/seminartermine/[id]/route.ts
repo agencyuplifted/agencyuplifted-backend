@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { MWST_SATZ, MONATSNAMEN, naechteAnzahl } from "@/lib/format";
+import { MWST_SATZ, MONATSNAMEN, naechteAnzahl, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
 import { aktuellerPreisNetto, sortierteStaffeln, gueltigBisText } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Schnittstelle fuer die Onepage-Website.
@@ -61,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
       )
     .eq("id", id)
     .single();
@@ -129,13 +129,17 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       ?.replace("{total}", String(termin.kapazitaet)) || null;
 
   // Fallback: falls keine prozentualen Urgency-Stufen greifen, den am Termin
-  // hinterlegten Standard-Text verwenden (z.B. "Noch Plätze frei").
+  // hinterlegten Standard-Text verwenden (z.B. "Noch Plätze frei"). Im
+  // neutralen Anzeige-Modus duerfen aber keine Platzzahlen durchsickern --
+  // deshalb dort immer der feste neutrale Text, unabhaengig von Stufen/Template.
   const dringlichkeitstext =
-    dringlichkeitstextGestuft ||
-    (termin as any).urgency_label_template
-      ?.replace("{remaining}", String(freiePlaetze))
-      ?.replace("{total}", String(termin.kapazitaet)) ||
-    null;
+    (termin as any).verfuegbarkeit_anzeige_modus === "neutral"
+      ? VERFUEGBARKEIT_NEUTRAL_TEXT
+      : dringlichkeitstextGestuft ||
+        (termin as any).urgency_label_template
+          ?.replace("{remaining}", String(freiePlaetze))
+          ?.replace("{total}", String(termin.kapazitaet)) ||
+        null;
 
   const optionen = ((termin as any).seminartermin_optionen || [])
     .sort((a: any, b: any) => (a.sortierung ?? 0) - (b.sortierung ?? 0))
@@ -221,6 +225,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       kapazitaet: termin.kapazitaet,
       freie_plaetze: freiePlaetze,
       belegt_prozent: Math.round(belegtProzent),
+      // "zahlen" = Restplatzzahl + Fuellstandsbalken anzeigen (bisheriges
+      // Verhalten), "neutral" = Onepage soll Zahlen/Balken ausblenden und
+      // stattdessen nur dringlichkeitstext (den festen neutralen Text) zeigen.
+      verfuegbarkeit_anzeige_modus: (termin as any).verfuegbarkeit_anzeige_modus,
       dringlichkeitstext,
       mwst_satz: MWST_SATZ,
       optionen,

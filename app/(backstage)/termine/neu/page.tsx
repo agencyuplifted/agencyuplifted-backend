@@ -121,6 +121,14 @@ export default async function NeuerTerminPage() {
           </div>
         </div>
 
+        <div>
+          <label className="au-label">Anzeige-Modus Verfügbarkeit (Onepage-Hero)</label>
+          <select className="au-select" name="verfuegbarkeit_anzeige_modus" defaultValue="zahlen">
+            <option value="zahlen">Platzzahl anzeigen (Zahl + Füllstandsbalken)</option>
+            <option value="neutral">Neutral (ohne Zahlen/Balken)</option>
+          </select>
+        </div>
+
         <p style={{ fontSize: "0.85rem" }}>
           Preise, Optionen (A/B/C) und Frühbucherstaffeln werden nach dem Anlegen auf der Termin-Detailseite eingerichtet.
         </p>

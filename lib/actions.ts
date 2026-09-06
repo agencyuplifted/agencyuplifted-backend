@@ -409,6 +409,7 @@ export async function createSeminartermin(formData: FormData) {
       angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
         ? Number(formData.get("angezeigte_restplaetze"))
         : null,
+      verfuegbarkeit_anzeige_modus: String(formData.get("verfuegbarkeit_anzeige_modus") || "zahlen"),
       zusatzteilnehmer_preis: formData.get("zusatzteilnehmer_preis")
         ? Number(formData.get("zusatzteilnehmer_preis"))
         : null,
@@ -479,6 +480,7 @@ export async function updateSeminartermin(formData: FormData) {
     angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
       ? Number(formData.get("angezeigte_restplaetze"))
       : null,
+    verfuegbarkeit_anzeige_modus: String(formData.get("verfuegbarkeit_anzeige_modus") || "zahlen"),
     zusatzteilnehmer_preis: formData.get("zusatzteilnehmer_preis")
       ? Number(formData.get("zusatzteilnehmer_preis"))
       : null,

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
+import { MWST_SATZ, MONATSNAMEN, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
 import { aktuellerPreisNetto } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Liste kuenftiger Seminartermine fuer die
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("seminartermine")
     .select(
-      "id, titel, kennung, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, kennung, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis))"
     )
     .gte("datum_start", heuteIso)
     .neq("status", "abgesagt")
@@ -135,12 +135,17 @@ export async function GET(request: NextRequest) {
       ?.replace("{remaining}", String(freiePlaetze))
       ?.replace("{total}", String(t.kapazitaet));
 
+    // Im neutralen Anzeige-Modus duerfen keine Platzzahlen durchsickern --
+    // deshalb hier NICHT die stufen-/template-basierten Texte verwenden (die
+    // {remaining}/{total} einsetzen), sondern immer der feste neutrale Text.
     const dringlichkeitstext =
-      dringlichkeitstextGestuft ||
-      (t.urgency_label_template
-        ?.replace("{remaining}", String(freiePlaetze))
-        ?.replace("{total}", String(t.kapazitaet))) ||
-      null;
+      t.verfuegbarkeit_anzeige_modus === "neutral"
+        ? VERFUEGBARKEIT_NEUTRAL_TEXT
+        : dringlichkeitstextGestuft ||
+          (t.urgency_label_template
+            ?.replace("{remaining}", String(freiePlaetze))
+            ?.replace("{total}", String(t.kapazitaet))) ||
+          null;
 
     const alleStaffeln = (t.seminartermin_optionen || []).flatMap((o: any) => o.preisstaffeln || []);
     const preiseProOption = (t.seminartermin_optionen || [])
@@ -168,6 +173,10 @@ export async function GET(request: NextRequest) {
       kapazitaet: t.kapazitaet,
       freie_plaetze: freiePlaetze,
       belegt_prozent: Math.round(belegtProzent),
+      // "zahlen" = Restplatzzahl + Fuellstandsbalken anzeigen (bisheriges
+      // Verhalten), "neutral" = Onepage soll Zahlen/Balken ausblenden und
+      // stattdessen nur dringlichkeitstext (den festen neutralen Text) zeigen.
+      verfuegbarkeit_anzeige_modus: t.verfuegbarkeit_anzeige_modus,
       dringlichkeitstext,
       onepage_slug: t.onepage_slug || null,
       ab_preis_netto: abPreisNetto,

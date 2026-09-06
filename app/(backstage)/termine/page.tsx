@@ -140,6 +140,14 @@ function TerminTabelle({
                         <span style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
                           Gesamt (TN+MA+Gastreferent): {gesamt}
                         </span>
+                        {t.angezeigte_restplaetze !== null && t.angezeigte_restplaetze !== undefined && (
+                          <>
+                            <br />
+                            <span className="au-badge au-badge-warning" title="Onepage zeigt eine manuell festgelegte Restplatzzahl statt der echten Buchungen">
+                              Anzeige überschrieben: {t.angezeigte_restplaetze} frei
+                            </span>
+                          </>
+                        )}
                       </td>
                       <td>{t.status}</td>
                       <td>

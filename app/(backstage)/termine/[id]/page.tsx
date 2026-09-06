@@ -536,7 +536,23 @@ export default async function TerminDetailPage({
             <div>
               <label className="au-label">Angezeigte Restplätze (manuell, Urgency)</label>
               <input className="au-input" name="angezeigte_restplaetze" type="number" defaultValue={termin.angezeigte_restplaetze ?? ""} placeholder="leer = kein Hinweis" />
+              {termin.angezeigte_restplaetze !== null && termin.angezeigte_restplaetze !== undefined && (
+                <p style={{ margin: "-0.5rem 0 0.75rem" }}>
+                  <span className="au-badge au-badge-warning">Manuell überschrieben</span>{" "}
+                  <span style={{ color: "var(--color-text-faint)", fontSize: "0.8rem" }}>
+                    — zeigt {termin.angezeigte_restplaetze} statt der echten Restplätze an
+                  </span>
+                </p>
+              )}
             </div>
+          </div>
+
+          <div>
+            <label className="au-label">Anzeige-Modus Verfügbarkeit (Onepage-Hero)</label>
+            <select className="au-select" name="verfuegbarkeit_anzeige_modus" defaultValue={termin.verfuegbarkeit_anzeige_modus || "zahlen"}>
+              <option value="zahlen">Platzzahl anzeigen (Zahl + Füllstandsbalken)</option>
+              <option value="neutral">Neutral (ohne Zahlen/Balken)</option>
+            </select>
           </div>
 
           <div>

@@ -70,6 +70,13 @@ export function monatsName(monatIndex: number): string {
   return MONATSNAMEN[monatIndex] || "";
 }
 
+// Fester Anzeigetext, wenn ein Termin auf verfuegbarkeit_anzeige_modus =
+// "neutral" steht (statt Restplaetze-Zahl + Fuellstandsbalken) -- verwendet
+// von beiden oeffentlichen seminartermine-APIs anstelle des sonst aus
+// urgency_stufen/urgency_label_template berechneten dringlichkeitstext, damit
+// dort keine Platzzahlen durchsickern.
+export const VERFUEGBARKEIT_NEUTRAL_TEXT = "Noch genügend Plätze frei";
+
 export const TERMIN_FELD_LABELS: Record<string, string> = {
   titel: "Titel",
   seminartyp_id: "Seminarkategorie",
@@ -87,6 +94,7 @@ export const TERMIN_FELD_LABELS: Record<string, string> = {
   mindestteilnehmerzahl: "Mindestteilnehmerzahl",
   ueberbuchungspuffer: "Überbuchungspuffer (intern)",
   angezeigte_restplaetze: "Angezeigte Restplätze (Urgency)",
+  verfuegbarkeit_anzeige_modus: "Anzeige-Modus Verfügbarkeit (Onepage-Hero)",
   zusatzteilnehmer_preis: "Zusatzteilnehmer-Festpreis",
   zusatzteilnehmer_rabatt_prozent: "Zusatzteilnehmer-Rabatt (%)",
   untertitel: "Untertitel (Onepage-Hero)",
