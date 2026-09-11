@@ -14,6 +14,7 @@ import {
   importSeminarOptions,
   updateOptionBadge,
   updateSeminarOption,
+  uebernehmeOptionSchnelleinfuegen,
   deaktivierenSeminarOption,
   reaktiviereSeminarOption,
   deleteOptionFeature,
@@ -34,6 +35,8 @@ import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
 import KopierePreisstaffelnButton from "./KopierePreisstaffelnButton";
 import DeaktivierenOptionButton from "./DeaktivierenOptionButton";
+import NeueOptionSchnelleinfuegen from "./NeueOptionSchnelleinfuegen";
+import OptionSchnelleinfuegen from "./OptionSchnelleinfuegen";
 import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag } from "@/lib/preisstaffeln";
 import Link from "next/link";
 
@@ -775,6 +778,14 @@ export default async function TerminDetailPage({
 
             <details style={{ margin: "0.5rem 0" }}>
               <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>Option bearbeiten</summary>
+              <OptionSchnelleinfuegen
+                seminarterminOptionId={opt.id}
+                seminarterminId={id}
+                titelAktuell={opt.titel || ""}
+                beschreibungAktuell={opt.beschreibung || ""}
+                featuresAnzahlAktuell={(opt.seminartermin_options_features || []).length}
+                uebernehmenAction={uebernehmeOptionSchnelleinfuegen}
+              />
               <form action={updateSeminarOption} style={{ marginTop: "0.6rem", maxWidth: 480 }}>
                 <input type="hidden" name="seminartermin_option_id" value={opt.id} />
                 <input type="hidden" name="seminartermin_id" value={id} />
@@ -1068,6 +1079,8 @@ export default async function TerminDetailPage({
           <strong>Neue Option hinzufügen</strong>
           <form action={createSeminarOption} style={{ marginTop: "0.75rem" }}>
             <input type="hidden" name="seminartermin_id" value={id} />
+            <input type="hidden" name="features_text" />
+            <NeueOptionSchnelleinfuegen />
             <div className="au-row-2">
               <div>
                 <label className="au-label">Titel (z. B. "Option A – Basis")</label>

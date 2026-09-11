@@ -657,14 +657,71 @@ export async function duplicateSeminartermin(formData: FormData) {
 export async function createSeminarOption(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
-  const { error } = await supabase.from("seminartermin_optionen").insert({
-    seminartermin_id: seminarterminId,
-    titel: String(formData.get("titel")),
-    beschreibung: formData.get("beschreibung") || null,
-    badge: formData.get("badge") || null,
-    sortierung: Number(formData.get("sortierung") || 0),
-  });
+  const { data: neueOption, error } = await supabase
+    .from("seminartermin_optionen")
+    .insert({
+      seminartermin_id: seminarterminId,
+      titel: String(formData.get("titel")),
+      beschreibung: formData.get("beschreibung") || null,
+      badge: formData.get("badge") || null,
+      sortierung: Number(formData.get("sortierung") || 0),
+    })
+    .select()
+    .single();
   if (error) throw new Error(error.message);
+
+  // "Schnelleinfuegen" (siehe NeueOptionSchnelleinfuegen.tsx) fuellt dieses
+  // versteckte Feld mit den geparsten Feature-Zeilen (eine pro Zeile), bevor
+  // das Formular abgeschickt wird -- normalerweise leer.
+  const featuresRoh = String(formData.get("features_text") || "");
+  const features = featuresRoh.split("\n").map((z) => z.trim()).filter(Boolean);
+  if (features.length) {
+    const { error: featuresError } = await supabase.from("seminartermin_options_features").insert(
+      features.map((text, i) => ({ seminartermin_option_id: neueOption.id, text, sortierung: i }))
+    );
+    if (featuresError) throw new Error(featuresError.message);
+  }
+
+  revalidatePath(`/termine/${seminarterminId}`);
+}
+
+// "Schnelleinfuegen" fuer eine BESTEHENDE Option (siehe OptionSchnelleinfuegen.tsx
+// + lib/schnelleinfuegen.ts): ersetzt Titel, Beschreibung und ALLE Features
+// dieser Option atomar in einem Schritt -- kein Zusammenfuehren/Anhaengen,
+// damit erneutes Uebernehmen keine Dubletten anhaeuft. Andere Felder (Badge,
+// Sortierung, Zimmerupgrade, Ratenzahlung) bleiben unberuehrt, dafuer bleibt
+// das normale "Option bearbeiten"-Formular (updateSeminarOption). Wird direkt
+// (nicht per <form>) aus dem Client aufgerufen, damit nach dem Uebernehmen
+// per revalidatePath sofort Titel-Feld, Beschreibungsfeld und Features-Liste
+// mit dem neuen Inhalt nachladen -- ohne das noch offene Formular zu verlassen.
+export async function uebernehmeOptionSchnelleinfuegen(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const titel = String(formData.get("titel") || "").trim();
+  const beschreibung = String(formData.get("beschreibung") || "").trim();
+  const featuresRoh = String(formData.get("features_text") || "");
+  const features = featuresRoh.split("\n").map((z) => z.trim()).filter(Boolean);
+
+  const { error } = await supabase
+    .from("seminartermin_optionen")
+    .update({ titel, beschreibung: beschreibung || null })
+    .eq("id", optionId);
+  if (error) throw new Error(error.message);
+
+  const { error: delError } = await supabase
+    .from("seminartermin_options_features")
+    .delete()
+    .eq("seminartermin_option_id", optionId);
+  if (delError) throw new Error(delError.message);
+
+  if (features.length) {
+    const { error: insError } = await supabase.from("seminartermin_options_features").insert(
+      features.map((text, i) => ({ seminartermin_option_id: optionId, text, sortierung: i }))
+    );
+    if (insError) throw new Error(insError.message);
+  }
+
   revalidatePath(`/termine/${seminarterminId}`);
 }
 
