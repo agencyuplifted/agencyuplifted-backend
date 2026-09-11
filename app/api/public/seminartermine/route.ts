@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("seminartermine")
     .select(
-      "id, titel, kennung, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, kennung, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(deaktiviert_am, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis))"
     )
     .gte("datum_start", heuteIso)
     .neq("status", "abgesagt")
@@ -147,8 +147,12 @@ export async function GET(request: NextRequest) {
             ?.replace("{total}", String(t.kapazitaet))) ||
           null;
 
-    const alleStaffeln = (t.seminartermin_optionen || []).flatMap((o: any) => o.preisstaffeln || []);
-    const preiseProOption = (t.seminartermin_optionen || [])
+    // Deaktivierte Optionen (deaktiviert_am gesetzt) nie in Preis-/Verfuegbarkeitsberechnung
+    // einbeziehen -- sonst koennte z.B. der guenstigste Preis einer laengst
+    // deaktivierten Option als "ab Preis" angezeigt werden.
+    const aktiveOptionen = (t.seminartermin_optionen || []).filter((o: any) => !o.deaktiviert_am);
+    const alleStaffeln = aktiveOptionen.flatMap((o: any) => o.preisstaffeln || []);
+    const preiseProOption = aktiveOptionen
       .map((o: any) => aktuellerPreisNetto(o.preisstaffeln || [], t.datum_start))
       .filter((p: number | null): p is number => p !== null);
     const abPreisNetto = preiseProOption.length ? Math.min(...preiseProOption) : null;

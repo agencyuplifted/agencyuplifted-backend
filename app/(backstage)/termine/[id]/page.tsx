@@ -14,7 +14,8 @@ import {
   importSeminarOptions,
   updateOptionBadge,
   updateSeminarOption,
-  deleteSeminarOption,
+  deaktivierenSeminarOption,
+  reaktiviereSeminarOption,
   deleteOptionFeature,
   updateOptionFeature,
   moveOptionFeature,
@@ -32,6 +33,7 @@ import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
 import KopierePreisstaffelnButton from "./KopierePreisstaffelnButton";
+import DeaktivierenOptionButton from "./DeaktivierenOptionButton";
 import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag } from "@/lib/preisstaffeln";
 import Link from "next/link";
 
@@ -264,6 +266,12 @@ export default async function TerminDetailPage({
   // eigenen Datumsfelder, die Aufenthaltsdauer ist also fuer alle Optionen
   // eines Termins gleich).
   const terminNaechte = effektiveTerminNaechte(termin.datum_start, termin.datum_ende, termin.vorabendanreise_inklusive);
+
+  // Deaktivierte Optionen bleiben in der Bearbeiten-Liste sichtbar (ausgegraut,
+  // mit Badge), erscheinen aber nicht in der Vorschau -- die zeigt, wie es
+  // auf Onepage aussieht, und dort werden deaktivierte Optionen ja gefiltert
+  // (siehe app/api/public/seminartermine/*).
+  const aktiveOptionen = (optionen || []).filter((o: any) => !o.deaktiviert_am);
 
   return (
     <main>
@@ -704,9 +712,9 @@ export default async function TerminDetailPage({
         <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "0 0 0.25rem" }}>
           So kommen die Optionen ungefähr auf der Website an (Preis-Sektion und Buchungsformular auf Onepage) – zum Gegenchecken, bevor die Preise dorthin übertragen werden.
         </p>
-        {optionen?.length ? (
+        {aktiveOptionen.length ? (
           <div className="au-option-preview-grid">
-            {optionen.map((opt: any) => {
+            {aktiveOptionen.map((opt: any) => {
               const previewPreis = aktuellerPreisNetto(opt.preisstaffeln || [], termin.datum_start);
               const featuresSortiert = (opt.seminartermin_options_features || [])
                 .slice()
@@ -746,11 +754,12 @@ export default async function TerminDetailPage({
         )}
 
         {optionen?.map((opt: any) => (
-          <div key={opt.id} className="au-subcard">
+          <div key={opt.id} className="au-subcard" style={opt.deaktiviert_am ? { opacity: 0.55 } : undefined}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <strong>{opt.titel}</strong>
                 {opt.badge && <span className="au-badge au-badge-gold">{badgeLabel[opt.badge] || opt.badge}</span>}
+                {opt.deaktiviert_am && <span className="au-badge au-badge-neutral">Deaktiviert</span>}
               </div>
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 <form action={duplicateSeminarOption}>
@@ -787,11 +796,19 @@ export default async function TerminDetailPage({
                   <button type="submit" className="au-btn au-btn-secondary">Speichern</button>
                 </div>
               </form>
-              <form action={deleteSeminarOption} style={{ marginTop: "0.5rem" }}>
-                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                <input type="hidden" name="seminartermin_id" value={id} />
-                <button type="submit" className="au-btn au-btn-danger">Option löschen</button>
-              </form>
+              {opt.deaktiviert_am ? (
+                <form action={reaktiviereSeminarOption} style={{ marginTop: "0.5rem" }}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Wieder aktivieren</button>
+                </form>
+              ) : (
+                <form action={deaktivierenSeminarOption} style={{ marginTop: "0.5rem" }}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <DeaktivierenOptionButton titel={opt.titel} />
+                </form>
+              )}
             </details>
 
             <form action={updateOptionBadge} style={{ display: "flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" }}>

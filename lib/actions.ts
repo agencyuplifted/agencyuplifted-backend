@@ -1442,12 +1442,70 @@ export async function updateSeminarOption(formData: FormData) {
   revalidatePath(`/termine/${seminarterminId}`);
 }
 
-export async function deleteSeminarOption(formData: FormData) {
+// Optionen werden nicht hart geloescht (FKs von preisstaffeln/
+// seminartermin_options_features sind CASCADE -- ein Hard-Delete wuerde
+// Preise/Features stillschweigend mitloeschen; buchungspositionen ist NO
+// ACTION, d.h. eine Option mit echten Buchungen liesse sich ohnehin nicht
+// loeschen, sondern nur mit einem kryptischen DB-Fehler abbrechen).
+// Stattdessen wie beim Termin-Storno (stornierSeminartermin) ein weiches
+// "deaktiviert_am"-Flag -- die Option bleibt inkl. Historie erhalten, wird
+// aber aus der oeffentlichen Auslieferung gefiltert (siehe
+// app/api/public/seminartermine/*) und in der Backstage-Liste ausgegraut.
+export async function deaktivierenSeminarOption(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
-  const { error } = await supabase.from("seminartermin_optionen").delete().eq("id", optionId);
+
+  const { data: option } = await supabase
+    .from("seminartermin_optionen")
+    .select("titel")
+    .eq("id", optionId)
+    .single();
+
+  const { error } = await supabase
+    .from("seminartermin_optionen")
+    .update({ deaktiviert_am: new Date().toISOString() })
+    .eq("id", optionId);
   if (error) throw new Error(error.message);
+
+  const benutzer = await getAktuellerBenutzer();
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "seminartermin",
+    bezug_id: seminarterminId,
+    ereignis: "option_deaktiviert",
+    beschreibung: `Option deaktiviert: ${option?.titel || "(ohne Titel)"}`,
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
+
+  revalidatePath(`/termine/${seminarterminId}`);
+}
+
+export async function reaktiviereSeminarOption(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+
+  const { data: option } = await supabase
+    .from("seminartermin_optionen")
+    .select("titel")
+    .eq("id", optionId)
+    .single();
+
+  const { error } = await supabase
+    .from("seminartermin_optionen")
+    .update({ deaktiviert_am: null })
+    .eq("id", optionId);
+  if (error) throw new Error(error.message);
+
+  const benutzer = await getAktuellerBenutzer();
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "seminartermin",
+    bezug_id: seminarterminId,
+    ereignis: "option_reaktiviert",
+    beschreibung: `Option wieder aktiviert: ${option?.titel || "(ohne Titel)"}`,
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
+
   revalidatePath(`/termine/${seminarterminId}`);
 }
 

@@ -103,11 +103,14 @@ export async function POST(request: NextRequest) {
 
   const { data: option } = await supabase
     .from("seminartermin_optionen")
-    .select("id, titel, zimmerupgrade_zusatznaechte, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis)")
+    .select("id, titel, zimmerupgrade_zusatznaechte, deaktiviert_am, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis)")
     .eq("id", tierId)
     .single();
 
-  if (!option) {
+  // Deaktivierte Optionen sind nicht mehr buchbar (z.B. veraltete/gecachte
+  // Onepage-Seite mit einer inzwischen deaktivierten Option) -- derselbe
+  // Fehler wie bei einer nicht existierenden Option.
+  if (!option || option.deaktiviert_am) {
     return withCors(NextResponse.json({ error: "option_not_found" }, { status: 404 }));
   }
 
