@@ -61,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, deaktiviert_am, ratenzahlung_aktiv, ratenzahlung_anzahl_raten, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, deaktiviert_am, ratenzahlung_aktiv, ratenzahlung_anzahl_raten, vorspann_text, vorspann_anzeigen, seminartermin_options_features(text, label, hervorgehoben, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
       )
     .eq("id", id)
     .single();
@@ -160,9 +160,18 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         titel: o.titel,
         beschreibung: o.beschreibung || null,
         badge: o.badge || null,
+        // Vorspann-Text ("Alles aus Move, plus:") -- bereits serverseitig zur
+        // Anzeige-Entscheidung verdichtet (Freitext + Ein/Aus-Schalter), damit
+        // Onepage nur noch "vorhanden -> anzeigen" pruefen muss, statt beide
+        // Rohfelder selbst kombinieren zu muessen.
+        introLabel: o.vorspann_anzeigen && o.vorspann_text ? o.vorspann_text : null,
         features: (o.seminartermin_options_features || [])
           .sort((a: any, b: any) => (a.sortierung ?? 0) - (b.sortierung ?? 0))
-          .map((f: any) => f.text),
+          .map((f: any) => ({
+            label: f.label || null,
+            detail: f.text,
+            isHighlighted: !!f.hervorgehoben,
+          })),
         preisstaffeln: staffeln.map((p: any) => ({
           name: p.name,
           stichtag_tage_vor_start: p.stichtag_tage_vor_start,

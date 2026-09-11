@@ -592,6 +592,8 @@ export async function duplicateSeminartermin(formData: FormData) {
         beschreibung: opt.beschreibung,
         badge: opt.badge,
         sortierung: opt.sortierung,
+        vorspann_text: opt.vorspann_text,
+        vorspann_anzeigen: opt.vorspann_anzeigen || false,
       })
       .select()
       .single();
@@ -602,6 +604,8 @@ export async function duplicateSeminartermin(formData: FormData) {
         opt.seminartermin_options_features.map((f: any) => ({
           seminartermin_option_id: neueOption.id,
           text: f.text,
+          label: f.label,
+          hervorgehoben: f.hervorgehoben || false,
           sortierung: f.sortierung,
         }))
       );
@@ -654,6 +658,31 @@ export async function duplicateSeminartermin(formData: FormData) {
   redirect(`/termine/${neuerTermin.id}`);
 }
 
+// "Schnelleinfuegen" (siehe NeueOptionSchnelleinfuegen.tsx/
+// OptionSchnelleinfuegen.tsx) fuellt das versteckte Feld "features_text" mit
+// den geparsten Feature-Zeilen als JSON-Array ({label?, detail,
+// isHighlighted}[]) statt reinem Zeilentext, da eine Feature-Zeile jetzt aus
+// mehr als nur einem String besteht -- FormData kann keine Objekte tragen,
+// daher JSON-kodiert. Normalerweise leer (kein Schnelleinfuegen benutzt).
+function leseGeparsteFeatures(formData: FormData): { label: string | null; text: string; hervorgehoben: boolean }[] {
+  const roh = String(formData.get("features_text") || "").trim();
+  if (!roh) return [];
+  let geparst: any[];
+  try {
+    geparst = JSON.parse(roh);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(geparst)) return [];
+  return geparst
+    .map((f) => ({
+      label: typeof f?.label === "string" && f.label.trim() ? f.label.trim() : null,
+      text: typeof f?.detail === "string" ? f.detail.trim() : "",
+      hervorgehoben: !!f?.isHighlighted,
+    }))
+    .filter((f) => f.text);
+}
+
 export async function createSeminarOption(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -665,19 +694,17 @@ export async function createSeminarOption(formData: FormData) {
       beschreibung: formData.get("beschreibung") || null,
       badge: formData.get("badge") || null,
       sortierung: Number(formData.get("sortierung") || 0),
+      vorspann_text: formData.get("vorspann_text") || null,
+      vorspann_anzeigen: formData.get("vorspann_anzeigen") === "on",
     })
     .select()
     .single();
   if (error) throw new Error(error.message);
 
-  // "Schnelleinfuegen" (siehe NeueOptionSchnelleinfuegen.tsx) fuellt dieses
-  // versteckte Feld mit den geparsten Feature-Zeilen (eine pro Zeile), bevor
-  // das Formular abgeschickt wird -- normalerweise leer.
-  const featuresRoh = String(formData.get("features_text") || "");
-  const features = featuresRoh.split("\n").map((z) => z.trim()).filter(Boolean);
+  const features = leseGeparsteFeatures(formData);
   if (features.length) {
     const { error: featuresError } = await supabase.from("seminartermin_options_features").insert(
-      features.map((text, i) => ({ seminartermin_option_id: neueOption.id, text, sortierung: i }))
+      features.map((f, i) => ({ seminartermin_option_id: neueOption.id, text: f.text, label: f.label, hervorgehoben: f.hervorgehoben, sortierung: i }))
     );
     if (featuresError) throw new Error(featuresError.message);
   }
@@ -700,12 +727,22 @@ export async function uebernehmeOptionSchnelleinfuegen(formData: FormData) {
   const seminarterminId = String(formData.get("seminartermin_id"));
   const titel = String(formData.get("titel") || "").trim();
   const beschreibung = String(formData.get("beschreibung") || "").trim();
-  const featuresRoh = String(formData.get("features_text") || "");
-  const features = featuresRoh.split("\n").map((z) => z.trim()).filter(Boolean);
+  const features = leseGeparsteFeatures(formData);
+  // Vorspann-Zeile ist optional im Paste-Text -- fehlt sie, bleibt ein
+  // bereits hinterlegter Vorspann-Text/Schalter unangetastet (kein
+  // ungewolltes Loeschen nur weil der naechste Paste keine Vorspann-Zeile
+  // enthielt). Nur wenn eine "Vorspann:"-Zeile erkannt wurde, wird sie
+  // uebernommen und automatisch eingeschaltet.
+  const introLabelRoh = formData.get("intro_label");
+  const introLabel = typeof introLabelRoh === "string" && introLabelRoh.trim() ? introLabelRoh.trim() : null;
 
   const { error } = await supabase
     .from("seminartermin_optionen")
-    .update({ titel, beschreibung: beschreibung || null })
+    .update({
+      titel,
+      beschreibung: beschreibung || null,
+      ...(introLabel ? { vorspann_text: introLabel, vorspann_anzeigen: true } : {}),
+    })
     .eq("id", optionId);
   if (error) throw new Error(error.message);
 
@@ -717,7 +754,7 @@ export async function uebernehmeOptionSchnelleinfuegen(formData: FormData) {
 
   if (features.length) {
     const { error: insError } = await supabase.from("seminartermin_options_features").insert(
-      features.map((text, i) => ({ seminartermin_option_id: optionId, text, sortierung: i }))
+      features.map((f, i) => ({ seminartermin_option_id: optionId, text: f.text, label: f.label, hervorgehoben: f.hervorgehoben, sortierung: i }))
     );
     if (insError) throw new Error(insError.message);
   }
@@ -758,6 +795,8 @@ export async function duplicateSeminarOption(formData: FormData) {
       beschreibung: (quelle as any).beschreibung,
       badge: null,
       sortierung: ((quelle as any).sortierung ?? 0) + 1,
+      vorspann_text: (quelle as any).vorspann_text,
+      vorspann_anzeigen: (quelle as any).vorspann_anzeigen || false,
     })
     .select()
     .single();
@@ -769,6 +808,8 @@ export async function duplicateSeminarOption(formData: FormData) {
       features.map((f: any) => ({
         seminartermin_option_id: neueOption.id,
         text: f.text,
+        label: f.label,
+        hervorgehoben: f.hervorgehoben || false,
         sortierung: f.sortierung,
       }))
     );
@@ -830,6 +871,8 @@ export async function importSeminarOptions(formData: FormData) {
         badge: null,
         sortierung: naechsteSortierung,
         zusatz_teilnehmer_hinweis: quelle.zusatz_teilnehmer_hinweis,
+        vorspann_text: quelle.vorspann_text,
+        vorspann_anzeigen: quelle.vorspann_anzeigen || false,
       })
       .select()
       .single();
@@ -842,6 +885,8 @@ export async function importSeminarOptions(formData: FormData) {
         features.map((f: any) => ({
           seminartermin_option_id: neueOption.id,
           text: f.text,
+          label: f.label,
+          hervorgehoben: f.hervorgehoben || false,
           sortierung: f.sortierung,
         }))
       );
@@ -890,9 +935,12 @@ export async function createOptionFeature(formData: FormData) {
     .limit(1);
   const naechsteSortierung = (bestehende?.[0]?.sortierung ?? -1) + 1;
 
+  const label = String(formData.get("label") || "").trim();
   const { error } = await supabase.from("seminartermin_options_features").insert({
     seminartermin_option_id: optionId,
     text: String(formData.get("text")),
+    label: label || null,
+    hervorgehoben: formData.get("hervorgehoben") === "on",
     sortierung: naechsteSortierung,
   });
   if (error) throw new Error(error.message);
@@ -903,9 +951,14 @@ export async function updateOptionFeature(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const featureId = String(formData.get("feature_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
+  const label = String(formData.get("label") || "").trim();
   const { error } = await supabase
     .from("seminartermin_options_features")
-    .update({ text: String(formData.get("text")) })
+    .update({
+      text: String(formData.get("text")),
+      label: label || null,
+      hervorgehoben: formData.get("hervorgehoben") === "on",
+    })
     .eq("id", featureId);
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
@@ -1571,6 +1624,8 @@ export async function updateSeminarOption(formData: FormData) {
       ratenzahlung_anzahl_raten: formData.get("ratenzahlung_anzahl_raten")
         ? Number(formData.get("ratenzahlung_anzahl_raten"))
         : null,
+      vorspann_text: formData.get("vorspann_text") || null,
+      vorspann_anzeigen: formData.get("vorspann_anzeigen") === "on",
     })
     .eq("id", optionId);
   if (error) throw new Error(error.message);

@@ -744,10 +744,17 @@ export default async function TerminDetailPage({
                   ) : (
                     <p className="au-option-preview-price-fehlt">Noch kein Preis hinterlegt</p>
                   )}
+                  {opt.vorspann_anzeigen && opt.vorspann_text && (
+                    <p style={{ fontWeight: 600, fontSize: "0.85rem", margin: "0.4rem 0 0.1rem" }}>{renderFett(opt.vorspann_text)}</p>
+                  )}
                   {featuresSortiert.length > 0 && (
                     <ul className="au-option-preview-features">
                       {featuresSortiert.map((f: any) => (
-                        <li key={f.id}>{renderFett(f.text)}</li>
+                        <li key={f.id} style={f.hervorgehoben ? { color: "var(--color-akzent-rot)" } : undefined}>
+                          {f.hervorgehoben && <span title="Neu/hervorgehoben">★ </span>}
+                          {f.label && <strong>{renderFett(f.label)}: </strong>}
+                          {renderFett(f.text)}
+                        </li>
                       ))}
                     </ul>
                   )}
@@ -799,6 +806,14 @@ export default async function TerminDetailPage({
                 <input className="au-input" name="titel" defaultValue={opt.titel} required />
                 <label className="au-label">Beschreibung</label>
                 <FettTextarea name="beschreibung" defaultValue={opt.beschreibung || ""} placeholder="Kurze Beschreibung dieser Option" />
+                <label className="au-label">Vorspann-Text (nur wenn diese Option auf einer günstigeren Option aufbaut)</label>
+                <input className="au-input" name="vorspann_text" defaultValue={opt.vorspann_text || ""} placeholder='z. B. "Alles aus Move, plus:"' />
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.9rem" }}>
+                  <input type="checkbox" name="vorspann_anzeigen" defaultChecked={opt.vorspann_anzeigen || false} /> Vorspann-Text anzeigen
+                </label>
+                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
+                  Text kann stehen bleiben, auch wenn er gerade nicht angezeigt werden soll – einfach den Schalter ausschalten statt den Text zu löschen.
+                </p>
                 <label className="au-label">Sortierung (0 = zuerst)</label>
                 <input className="au-input" name="sortierung" type="number" defaultValue={opt.sortierung ?? 0} />
                 <label className="au-label">Zusätzliche Nächte für Zimmer-Upgrade (nur bei Verlängerung/Zusatzübernachtung, sonst leer lassen)</label>
@@ -858,7 +873,11 @@ export default async function TerminDetailPage({
                   return featuresGeordnet.map((f: any, idx: number) => (
                     <li key={f.id} style={{ fontSize: "0.9rem", marginBottom: "0.35rem" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                        <span>{renderFett(f.text)}</span>
+                        <span style={f.hervorgehoben ? { color: "var(--color-akzent-rot)" } : undefined}>
+                          {f.hervorgehoben && <span title="Neu/hervorgehoben">★ </span>}
+                          {f.label && <strong>{renderFett(f.label)}: </strong>}
+                          {renderFett(f.text)}
+                        </span>
                         <form action={moveOptionFeature} style={{ display: "inline" }}>
                           <input type="hidden" name="feature_id" value={f.id} />
                           <input type="hidden" name="seminartermin_option_id" value={opt.id} />
@@ -875,10 +894,14 @@ export default async function TerminDetailPage({
                         </form>
                         <details>
                           <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.8rem" }}>bearbeiten</summary>
-                          <form action={updateOptionFeature} style={{ marginTop: "0.35rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                          <form action={updateOptionFeature} style={{ marginTop: "0.35rem", display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
                             <input type="hidden" name="feature_id" value={f.id} />
                             <input type="hidden" name="seminartermin_id" value={id} />
+                            <input className="au-input" name="label" defaultValue={f.label || ""} placeholder="Label (optional)" style={{ maxWidth: 160 }} />
                             <FettInput name="text" defaultValue={f.text} required />
+                            <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                              <input type="checkbox" name="hervorgehoben" defaultChecked={f.hervorgehoben || false} /> hervorheben (+)
+                            </label>
                             <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
                           </form>
                         </details>
@@ -895,10 +918,14 @@ export default async function TerminDetailPage({
                   <li style={{ fontSize: "0.9rem", color: "var(--color-text-faint)", listStyle: "none", marginLeft: "-1.2rem" }}>Noch keine Features.</li>
                 )}
               </ul>
-              <form action={createOptionFeature} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <form action={createOptionFeature} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
                 <input type="hidden" name="seminartermin_option_id" value={opt.id} />
                 <input type="hidden" name="seminartermin_id" value={id} />
+                <input className="au-input" name="label" placeholder="Label (optional)" style={{ maxWidth: 160 }} />
                 <FettInput name="text" placeholder="z. B. Einzelcoaching inklusive" required />
+                <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                  <input type="checkbox" name="hervorgehoben" /> hervorheben (+)
+                </label>
                 <button type="submit" className="au-btn au-btn-secondary">+ Feature</button>
               </form>
             </div>
@@ -1142,6 +1169,11 @@ export default async function TerminDetailPage({
             </select>
             <label className="au-label">Beschreibung</label>
             <FettTextarea name="beschreibung" placeholder="Kurze Beschreibung dieser Option" />
+            <label className="au-label">Vorspann-Text (nur wenn diese Option auf einer günstigeren Option aufbaut)</label>
+            <input className="au-input" name="vorspann_text" placeholder='z. B. "Alles aus Move, plus:"' />
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", fontSize: "0.9rem" }}>
+              <input type="checkbox" name="vorspann_anzeigen" /> Vorspann-Text anzeigen
+            </label>
             <button type="submit" className="au-btn au-btn-primary">Option anlegen</button>
           </form>
         </div>

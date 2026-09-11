@@ -52,7 +52,8 @@ export default function OptionSchnelleinfuegen({
     formData.set("seminartermin_id", seminarterminId);
     formData.set("titel", geparst.titel);
     formData.set("beschreibung", geparst.beschreibung);
-    formData.set("features_text", geparst.features.join("\n"));
+    formData.set("features_text", JSON.stringify(geparst.features));
+    if (geparst.introLabel) formData.set("intro_label", geparst.introLabel);
 
     setLaedt(true);
     try {

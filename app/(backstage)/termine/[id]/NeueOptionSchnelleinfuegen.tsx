@@ -31,6 +31,8 @@ export default function NeueOptionSchnelleinfuegen() {
     const titelInput = form.elements.namedItem("titel") as HTMLInputElement | null;
     const beschreibungInput = form.elements.namedItem("beschreibung") as HTMLTextAreaElement | null;
     const featuresInput = form.elements.namedItem("features_text") as HTMLInputElement | null;
+    const vorspannTextInput = form.elements.namedItem("vorspann_text") as HTMLInputElement | null;
+    const vorspannAnzeigenInput = form.elements.namedItem("vorspann_anzeigen") as HTMLInputElement | null;
 
     const hatBestehendenInhalt = !!(titelInput?.value || beschreibungInput?.value || featuresInput?.value);
     if (hatBestehendenInhalt) {
@@ -40,7 +42,13 @@ export default function NeueOptionSchnelleinfuegen() {
 
     if (titelInput) titelInput.value = geparst.titel;
     if (beschreibungInput) beschreibungInput.value = geparst.beschreibung;
-    if (featuresInput) featuresInput.value = geparst.features.join("\n");
+    if (featuresInput) featuresInput.value = JSON.stringify(geparst.features);
+    // Vorspann-Zeile ist optional -- fehlt sie im eingefuegten Text, bleiben
+    // die (bei einer neuen Option ohnehin noch leeren) Vorspann-Felder unangetastet.
+    if (geparst.introLabel) {
+      if (vorspannTextInput) vorspannTextInput.value = geparst.introLabel;
+      if (vorspannAnzeigenInput) vorspannAnzeigenInput.checked = true;
+    }
     setUebernommeneFeatures(geparst.features.length);
     setText("");
   }
