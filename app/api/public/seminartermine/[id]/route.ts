@@ -61,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, deaktiviert_am, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, deaktiviert_am, ratenzahlung_aktiv, ratenzahlung_anzahl_raten, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
       )
     .eq("id", id)
     .single();
@@ -173,6 +173,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         })),
         aktueller_preis_netto: preisNetto,
         aktueller_preis_brutto: preisNetto !== null ? brutto(preisNetto) : null,
+        // Reine Zahlungsvereinbarung (keine automatische Abbuchung) -- Onepage
+        // berechnet den Ratenbetrag selbst live aus dem aktuellen Preis, siehe
+        // auch buchungspositionen.metadata bei der Buchung selbst.
+        ratenzahlung_aktiv: o.ratenzahlung_aktiv || false,
+        ratenzahlung_anzahl_raten: o.ratenzahlung_anzahl_raten ?? null,
         zimmerupgrade: termin.zimmerupgrade_preis_pro_nacht_netto
           ? {
               beschreibung: termin.zimmerupgrade_beschreibung || "Zimmer-Upgrade",

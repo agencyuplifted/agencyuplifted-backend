@@ -1436,6 +1436,10 @@ export async function updateSeminarOption(formData: FormData) {
       zimmerupgrade_zusatznaechte: formData.get("zimmerupgrade_zusatznaechte")
         ? Number(formData.get("zimmerupgrade_zusatznaechte"))
         : null,
+      ratenzahlung_aktiv: formData.get("ratenzahlung_aktiv") === "on",
+      ratenzahlung_anzahl_raten: formData.get("ratenzahlung_anzahl_raten")
+        ? Number(formData.get("ratenzahlung_anzahl_raten"))
+        : null,
     })
     .eq("id", optionId);
   if (error) throw new Error(error.message);

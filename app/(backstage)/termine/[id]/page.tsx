@@ -786,6 +786,14 @@ export default async function TerminDetailPage({
                 <input className="au-input" name="sortierung" type="number" defaultValue={opt.sortierung ?? 0} />
                 <label className="au-label">Zusätzliche Nächte für Zimmer-Upgrade (nur bei Verlängerung/Zusatzübernachtung, sonst leer lassen)</label>
                 <input className="au-input" name="zimmerupgrade_zusatznaechte" type="number" min={0} defaultValue={opt.zimmerupgrade_zusatznaechte || ""} placeholder="z. B. 1" />
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.9rem" }}>
+                  <input type="checkbox" name="ratenzahlung_aktiv" defaultChecked={opt.ratenzahlung_aktiv || false} /> Ratenzahlung anbieten
+                </label>
+                <label className="au-label">Anzahl Raten (nur bei aktiver Ratenzahlung relevant)</label>
+                <input className="au-input" name="ratenzahlung_anzahl_raten" type="number" min={2} defaultValue={opt.ratenzahlung_anzahl_raten || ""} placeholder="z. B. 3" />
+                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
+                  Reine Zahlungsvereinbarung, keine automatische Abbuchung — 1. Rate sofort fällig, restliche Raten gleich hoch auf die Folgemonate verteilt (Rundungsdifferenz bei der letzten Rate). Zahlungseingänge weiterhin manuell auf der Buchung markieren.
+                </p>
                 <label className="au-label">Hinweis: zusätzlicher Teilnehmer (erscheint unter der Preistabelle auf Onepage)</label>
                 <FettTextarea
                   name="zusatz_teilnehmer_hinweis"

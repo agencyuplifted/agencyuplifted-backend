@@ -8,6 +8,7 @@ import { renderPlatzhalter } from "@/lib/funnel";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "@/lib/organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "@/lib/geschlecht";
 import { aktuellerPreisNetto } from "@/lib/preisstaffeln";
+import { berechneRatenbetrag } from "@/lib/ratenzahlung";
 
 // Oeffentliche, schreibende Schnittstelle fuer das Onepage-Buchungsformular.
 // Ersetzt den fruehreren Umweg ueber Pipedrive bzw. das Onepage-eigene CRM:
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
     return withCors(NextResponse.json({ error: "invalid_json" }, { status: 400 }));
   }
 
-  const { seminarterminId, tierId, mainContact, additionalParticipants, comment } = body || {};
+  const { seminarterminId, tierId, mainContact, additionalParticipants, comment, paymentPlan } = body || {};
 
   if (!seminarterminId || !tierId || !mainContact?.firstName || !mainContact?.lastName || !mainContact?.email || !mainContact?.street || !mainContact?.postalCode || !mainContact?.city) {
     return withCors(NextResponse.json({ error: "missing_fields" }, { status: 400 }));
@@ -103,7 +104,9 @@ export async function POST(request: NextRequest) {
 
   const { data: option } = await supabase
     .from("seminartermin_optionen")
-    .select("id, titel, zimmerupgrade_zusatznaechte, deaktiviert_am, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis)")
+    .select(
+      "id, titel, zimmerupgrade_zusatznaechte, deaktiviert_am, ratenzahlung_aktiv, ratenzahlung_anzahl_raten, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis)"
+    )
     .eq("id", tierId)
     .single();
 
@@ -123,6 +126,13 @@ export async function POST(request: NextRequest) {
       })),
       termin.datum_start
     ) ?? 0;
+
+  // Ratenzahlung ist reine Zahlungsvereinbarung (keine automatische
+  // Abbuchung) und nur moeglich, wenn diese Option sie aktiv anbietet -- die
+  // Anzahl der Raten kommt ausschliesslich aus der Options-Konfiguration,
+  // nie vom Client, genau wie der Preis selbst.
+  const ratenzahlungGewaehlt =
+    paymentPlan === "raten" && option.ratenzahlung_aktiv && (option.ratenzahlung_anzahl_raten || 0) > 1;
 
   const personen: Teilnehmerangabe[] = [
     {
@@ -285,6 +295,17 @@ export async function POST(request: NextRequest) {
       listenpreis: listenpreisTeilnehmer,
       startdatum: termin.datum_start,
       enddatum: termin.datum_ende,
+      // Reine Zahlungsvereinbarung (kein Zahlungsanbieter, keine automatische
+      // Abbuchung) -- Zahlungseingaenge weiterhin manuell auf der Buchung
+      // markieren. rate_betrag je Person aus deren eigenem (ggf. per
+      // Zusatzteilnehmer-Rabatt reduzierten) Preis berechnet.
+      metadata: ratenzahlungGewaehlt
+        ? {
+            zahlweise: "raten",
+            anzahl_raten: option.ratenzahlung_anzahl_raten,
+            rate_betrag: berechneRatenbetrag(listenpreisTeilnehmer, option.ratenzahlung_anzahl_raten),
+          }
+        : { zahlweise: "einmalig" },
     });
     if (t.roomOption === "komfort" && termin.zimmerupgrade_preis_pro_nacht_netto) {
       // Termin-Basisnaechte (bereits um eine Nacht reduziert, falls keine

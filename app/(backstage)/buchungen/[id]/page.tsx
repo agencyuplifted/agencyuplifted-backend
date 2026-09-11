@@ -61,6 +61,7 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
               <th>Leistung</th>
               <th>Preis (netto)</th>
               <th>Preis (brutto)</th>
+              <th>Zahlweise</th>
             </tr>
           </thead>
           <tbody>
@@ -74,6 +75,13 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
                 </td>
                 <td>{formatEUR(Number(p.preis || 0))}</td>
                 <td>{formatEURBrutto(Number(p.preis || 0))}</td>
+                <td>
+                  {p.metadata?.zahlweise === "raten"
+                    ? `Ratenzahlung (${p.metadata.anzahl_raten} × ${formatEUR(Number(p.metadata.rate_betrag))})`
+                    : p.metadata?.zahlweise === "einmalig"
+                    ? "Einmalzahlung"
+                    : "—"}
+                </td>
               </tr>
             ))}
           </tbody>
