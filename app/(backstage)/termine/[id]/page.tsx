@@ -23,6 +23,7 @@ import {
   deletePreisstaffel,
   updatePreisstaffel,
   copyPreisstaffelnFromOption,
+  wendePreisstaffelVorlageAn,
   addMitarbeiterZuTermin,
   removeMitarbeiterVonTermin,
   setzeZimmerpartner,
@@ -37,7 +38,7 @@ import KopierePreisstaffelnButton from "./KopierePreisstaffelnButton";
 import DeaktivierenOptionButton from "./DeaktivierenOptionButton";
 import NeueOptionSchnelleinfuegen from "./NeueOptionSchnelleinfuegen";
 import OptionSchnelleinfuegen from "./OptionSchnelleinfuegen";
-import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag } from "@/lib/preisstaffeln";
+import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag, berechneMonatlicheStichtageRueckwaerts } from "@/lib/preisstaffeln";
 import Link from "next/link";
 
 const badgeLabel: Record<string, string> = {
@@ -275,6 +276,11 @@ export default async function TerminDetailPage({
   // auf Onepage aussieht, und dort werden deaktivierte Optionen ja gefiltert
   // (siehe app/api/public/seminartermine/*).
   const aktiveOptionen = (optionen || []).filter((o: any) => !o.deaktiviert_am);
+
+  // Vorschau-Stichtage fuer die Preisstaffel-Vorlage "Monatlicher Stichtag
+  // rueckwaerts" (gleich fuer alle Optionen dieses Termins, da nur von
+  // termin.datum_start abhaengig) -- siehe wendePreisstaffelVorlageAn.
+  const vorlagenStichtage = berechneMonatlicheStichtageRueckwaerts(termin.datum_start);
 
   return (
     <main>
@@ -976,6 +982,43 @@ export default async function TerminDetailPage({
                   <button type="submit" className="au-btn au-btn-secondary">+ Staffel</button>
                 </div>
               </form>
+
+              <details style={{ marginTop: "0.5rem" }}>
+                <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.85rem" }}>
+                  Preisstaffel-Vorlage anwenden (monatlicher Stichtag rückwärts)
+                </summary>
+                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "0.5rem 0" }}>
+                  Legt 5 Preisstufen mit 4 Stichtagen an (jeweils der erste Donnerstag eines Monats, monatlich rückwärts ab dem Monat vor Terminstart) — rein additiv, bestehende Preisstaffeln bleiben unverändert. Bereits verstrichene Stichtage werden beim Anlegen einfach übersprungen.
+                </p>
+                <form action={wendePreisstaffelVorlageAn} style={{ marginTop: "0.5rem", maxWidth: 520 }}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <label className="au-label">Stufe 1 – Basispreis (€, netto, gültig bis {formatDatum(vorlagenStichtage[0])})</label>
+                  <input className="au-input" name="basispreis" type="number" step="0.01" required />
+                  {vorlagenStichtage.map((datum, idx) => (
+                    <div key={idx} className="au-row-2" style={{ alignItems: "flex-end" }}>
+                      <div>
+                        <label className="au-label">
+                          Übergang {idx + 1} (ab {formatDatum(datum)}
+                          {idx === 3 ? ", ~4 Wochen vor Termin" : ""})
+                        </label>
+                        <select className="au-select" name={`uebergang_${idx + 1}_modus`} defaultValue="betrag">
+                          <option value="betrag">Plus Betrag (€)</option>
+                          <option value="prozent">Plus Prozent (%)</option>
+                          <option value="manuell">Manueller Preis (€)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="au-label">Wert</label>
+                        <input className="au-input" name={`uebergang_${idx + 1}_wert`} type="number" step="0.01" required />
+                      </div>
+                    </div>
+                  ))}
+                  <button type="submit" className="au-btn au-btn-secondary" style={{ marginTop: "0.5rem" }}>
+                    Vorlage anwenden
+                  </button>
+                </form>
+              </details>
 
               <details style={{ marginTop: "0.5rem" }}>
                 <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.85rem" }}>

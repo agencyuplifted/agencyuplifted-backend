@@ -95,6 +95,35 @@ export function berlinKalendertag(zeitpunktISO: string): string {
   return `${wert("year")}-${wert("month")}-${wert("day")}`;
 }
 
+function ersterDonnerstagUTC(jahr: number, monatIndex0: number): Date {
+  const erster = new Date(Date.UTC(jahr, monatIndex0, 1));
+  const diffZuDonnerstag = (4 - erster.getUTCDay() + 7) % 7; // Donnerstag = Wochentag 4
+  return new Date(Date.UTC(jahr, monatIndex0, 1 + diffZuDonnerstag));
+}
+
+function monatVerschieben(jahr: number, monatIndex0: number, versatz: number): { jahr: number; monatIndex0: number } {
+  const gesamt = jahr * 12 + monatIndex0 + versatz;
+  return { jahr: Math.floor(gesamt / 12), monatIndex0: ((gesamt % 12) + 12) % 12 };
+}
+
+// Preisstaffel-Vorlage "Monatlicher Stichtag rueckwaerts" (siehe
+// wendePreisstaffelVorlageAn in lib/actions.ts): 4 Stichtage, jeweils der
+// erste Donnerstag eines Monats, monatlich rueckwaerts gezaehlt ab dem Monat
+// vor Terminstart -- der letzte (spaeteste) Stichtag faellt so auf den
+// ersten Donnerstag des Vormonats (ca. 4 Wochen vor Termin), die drei davor
+// je einen Monat frueher. Rueckgabe als YYYY-MM-DD (Kalendertag, UTC),
+// Index 0 = fruehester Stichtag (Uebergang 1) bis Index 3 = spaetester
+// (Uebergang 4).
+export function berechneMonatlicheStichtageRueckwaerts(terminDatumStart: string): string[] {
+  const terminDatum = new Date(`${terminDatumStart}T00:00:00Z`);
+  const monatVorTermin = monatVerschieben(terminDatum.getUTCFullYear(), terminDatum.getUTCMonth(), -1);
+  return [1, 2, 3, 4].map((uebergangsNummer) => {
+    const versatz = -(4 - uebergangsNummer);
+    const m = monatVerschieben(monatVorTermin.jahr, monatVorTermin.monatIndex0, versatz);
+    return ersterDonnerstagUTC(m.jahr, m.monatIndex0).toISOString().slice(0, 10);
+  });
+}
+
 // Menschenlesbarer Stichtag fuer die oeffentliche Preisanzeige, z.B.
 // "10. September" -- Tag ohne fuehrende Null + deutscher Monatsname, in
 // Berliner Zeit (relevant nahe der Tagesgrenze/DST-Wechsel).

@@ -15,7 +15,7 @@ import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
 import { erzeugeSlug, eindeutigerSlug, erzeugeTagSlug } from "./insights";
 import { holeAutocompleteVorschlaege } from "./themen-radar";
-import { stichtagsDatumEndeDesTages } from "./preisstaffeln";
+import { stichtagsDatumEndeDesTages, berechneMonatlicheStichtageRueckwaerts } from "./preisstaffeln";
 
 // Ermittelt Anrede + Quelle fuer ein Formularfeld: explizite Angabe (Herr/Frau/
 // Divers) gilt als 'manuell' und wird nie durch die Namens-Heuristik ersetzt.
@@ -1298,6 +1298,80 @@ export async function copyPreisstaffelnFromOption(formData: FormData) {
     }))
   );
   if (insError) throw new Error(insError.message);
+
+  revalidatePath(`/termine/${seminarterminId}`);
+}
+
+// Preisstaffel-Vorlage "Monatlicher Stichtag rueckwaerts": erzeugt 5
+// Preisstufen mit 4 Stichtagen (siehe berechneMonatlicheStichtageRueckwaerts
+// in lib/preisstaffeln.ts) -- rein additiv, ersetzt keine bestehenden
+// Preisstaffeln dieser Option. Preise kaskadieren vom eingegebenen
+// Basispreis (Stufe 1) ueber 4 unabhaengig waehlbare Uebergaenge (Betrag/
+// Prozent/manuell) -- kein einheitlicher globaler Aufschlag. Liegt der
+// Anwendungszeitpunkt naeher am Termin als die volle ~5-Monats-Spanne,
+// werden dadurch bereits verstrichene fruehe Stichtage einfach nicht
+// angelegt (keine nachtraeglich guenstigeren Stufen) -- die Stufe 5
+// (Normalpreis, kein eigener Stichtag noetig) wird immer angelegt. Danach
+// sind es normale Preisstaffeln, genau wie manuell angelegte.
+export async function wendePreisstaffelVorlageAn(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+
+  const { data: termin, error: terminError } = await supabase
+    .from("seminartermine")
+    .select("datum_start")
+    .eq("id", seminarterminId)
+    .single();
+  if (terminError || !termin) throw new Error(terminError?.message || "Termin nicht gefunden.");
+
+  const basispreis = Number(formData.get("basispreis") || 0);
+  const uebergaenge = [1, 2, 3, 4].map((i) => ({
+    modus: String(formData.get(`uebergang_${i}_modus`) || "betrag"),
+    wert: Number(formData.get(`uebergang_${i}_wert`) || 0),
+  }));
+
+  const preise: number[] = [Math.round(basispreis * 100) / 100];
+  for (const uebergang of uebergaenge) {
+    const vorheriger = preise[preise.length - 1];
+    let neu: number;
+    if (uebergang.modus === "prozent") neu = vorheriger * (1 + uebergang.wert / 100);
+    else if (uebergang.modus === "manuell") neu = uebergang.wert;
+    else neu = vorheriger + uebergang.wert;
+    preise.push(Math.round(neu * 100) / 100);
+  }
+
+  const stichtage = berechneMonatlicheStichtageRueckwaerts(termin.datum_start);
+  const jetzt = Date.now();
+  const namen = ["Frühbucher Stufe 1", "Frühbucher Stufe 2", "Frühbucher Stufe 3", "Frühbucher Stufe 4"];
+  const neueStaffeln: any[] = [];
+
+  for (let i = 0; i < 4; i++) {
+    const stichtagDatum = stichtagsDatumEndeDesTages(stichtage[i]);
+    if (new Date(stichtagDatum).getTime() <= jetzt) continue; // bereits verstrichen -- nicht anlegen
+    neueStaffeln.push({
+      seminartermin_option_id: optionId,
+      name: namen[i],
+      stichtag_tage_vor_start: null,
+      stichtag_datum: stichtagDatum,
+      preis: preise[i],
+      sortierung: 0,
+    });
+  }
+
+  // Stufe 5 (Normalpreis) -- immer anlegen, gilt bis zum Termin selbst
+  // (stichtag_tage_vor_start: 0, wie eine manuell angelegte Normalpreis-Stufe).
+  neueStaffeln.push({
+    seminartermin_option_id: optionId,
+    name: "Normalpreis",
+    stichtag_tage_vor_start: 0,
+    stichtag_datum: null,
+    preis: preise[4],
+    sortierung: 0,
+  });
+
+  const { error } = await supabase.from("preisstaffeln").insert(neueStaffeln);
+  if (error) throw new Error(error.message);
 
   revalidatePath(`/termine/${seminarterminId}`);
 }
