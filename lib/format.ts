@@ -38,6 +38,22 @@ export function naechteAnzahl(datumStart: string, datumEnde: string | null | und
   return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
 }
 
+// Effektive Naechte eines Termins fuer den Zimmerupgrade-Aufpreis: die aus
+// datum_start/datum_ende berechnete Basis, minus einer Nacht, wenn KEINE
+// Vorabendanreise inklusive ist (vorabendanreise_inklusive = false) -- ohne
+// Vorabendanreise ist die erste Nacht der Basis-Spanne nicht Teil des
+// gebuchten Aufenthalts. Nie negativ (ein reiner 1-Nacht-Vorabendtermin ohne
+// Vorabendanreise hat 0 effektive Naechte, siehe seminartermin_optionen.
+// zimmerupgrade_zusatznaechte fuer optionsspezifische Zusatznaechte oben drauf).
+export function effektiveTerminNaechte(
+  datumStart: string,
+  datumEnde: string | null | undefined,
+  vorabendanreiseInklusive: boolean
+): number {
+  const basis = naechteAnzahl(datumStart, datumEnde);
+  return Math.max(0, basis - (vorabendanreiseInklusive ? 0 : 1));
+}
+
 // Fuer Zeitstempel (z.B. Resend-Tracking: zugestellt/geoeffnet/geklickt am),
 // bei denen zusaetzlich zum Datum auch die Uhrzeit relevant ist.
 export function formatDatumZeit(d: string) {
@@ -87,6 +103,7 @@ export const TERMIN_FELD_LABELS: Record<string, string> = {
   zeit_ende: "Enduhrzeit",
   vorabend_anreise_datum: "Vorabendanreise-Tag",
   vorabend_anreise_uhrzeit: "Vorabendanreise-Uhrzeit",
+  vorabendanreise_inklusive: "Inkl. Vorabendanreise (Zimmer-Upgrade-Nächte)",
   format: "Format",
   veranstaltungsort_id: "Ort",
   trainer_id: "Trainer",

@@ -481,6 +481,7 @@ export async function updateSeminartermin(formData: FormData) {
       ? Number(formData.get("angezeigte_restplaetze"))
       : null,
     verfuegbarkeit_anzeige_modus: String(formData.get("verfuegbarkeit_anzeige_modus") || "zahlen"),
+    vorabendanreise_inklusive: formData.get("vorabendanreise_inklusive") === "on",
     zusatzteilnehmer_preis: formData.get("zusatzteilnehmer_preis")
       ? Number(formData.get("zusatzteilnehmer_preis"))
       : null,

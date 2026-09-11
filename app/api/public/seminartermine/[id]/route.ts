@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { MWST_SATZ, MONATSNAMEN, naechteAnzahl, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
+import { MWST_SATZ, MONATSNAMEN, effektiveTerminNaechte, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
 import { aktuellerPreisNetto, sortierteStaffeln, gueltigBisText } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Schnittstelle fuer die Onepage-Website.
@@ -61,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, seminartermin_options_features(text, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
       )
     .eq("id", id)
     .single();
@@ -71,13 +71,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 
   // Der Zimmerupgrade-Aufpreis gilt pro Nacht. Basis-Naechte kommen aus
-  // datum_start/datum_ende des Termins (Vorabendanreise inklusive) -- das ist
-  // fuer alle Optionen dieses Termins gleich, da seminartermin_optionen keine
-  // eigenen Datumsfelder hat. Einzelne Optionen koennen aber eine
-  // Zusatzuebernachtung drauflegen (zimmerupgrade_zusatznaechte, z.B. eine
-  // Verlaengerungsoption) -- deshalb wandert das Zimmerupgrade unten in die
+  // datum_start/datum_ende des Termins, minus einer Nacht, wenn KEINE
+  // Vorabendanreise inklusive ist (vorabendanreise_inklusive = false) -- das
+  // ist fuer alle Optionen dieses Termins gleich, da seminartermin_optionen
+  // keine eigenen Datumsfelder hat. Einzelne Optionen koennen aber zusaetzlich
+  // eine eigene Zusatzuebernachtung drauflegen (zimmerupgrade_zusatznaechte,
+  // z.B. eine Verlaengerungsoption), oben drauf auf diesen bereits reduzierten
+  // Termin-Wert -- deshalb wandert das Zimmerupgrade unten in die
   // Options-Ausgabe statt einmal fuer den ganzen Termin.
-  const terminBasisNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende);
+  const terminBasisNaechte = effektiveTerminNaechte(termin.datum_start, termin.datum_ende, termin.vorabendanreise_inklusive);
 
   // Belegung = Anzahl unterschiedlicher Teilnehmer (aktuelle Buchungen + Alt-Daten
   // aus legacy_buchungen zusammengefuehrt, doppelt gezaehlte Personen vermieden).

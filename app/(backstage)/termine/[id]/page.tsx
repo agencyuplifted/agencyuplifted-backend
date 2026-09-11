@@ -27,7 +27,7 @@ import {
   entferneZimmerpartner,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatDatum, formatEUR, formatEURBrutto, naechteAnzahl } from "@/lib/format";
+import { formatDatum, formatEUR, formatEURBrutto, effektiveTerminNaechte } from "@/lib/format";
 import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
@@ -263,7 +263,7 @@ export default async function TerminDetailPage({
   // datum_start/datum_ende dieses Termins abgeleitet (Optionen haben keine
   // eigenen Datumsfelder, die Aufenthaltsdauer ist also fuer alle Optionen
   // eines Termins gleich).
-  const terminNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende);
+  const terminNaechte = effektiveTerminNaechte(termin.datum_start, termin.datum_ende, termin.vorabendanreise_inklusive);
 
   return (
     <main>
@@ -580,17 +580,24 @@ export default async function TerminDetailPage({
             <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0.4rem 0 0.75rem" }}>
               Nur wenn hier ein Aufpreis hinterlegt ist, erscheint im Onepage-Buchungsformular pro Teilnehmer:in eine Zimmerkategorie-Auswahl (Standard/Upgrade) — separat von den Adressfeldern. Ohne Aufpreis bleibt die Auswahl im Formular verborgen.
             </p>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", fontSize: "0.9rem" }}>
+              <input type="checkbox" name="vorabendanreise_inklusive" defaultChecked={termin.vorabendanreise_inklusive ?? true} /> Inkl. Vorabendanreise
+            </label>
+            <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
+              Aus: zieht eine Nacht von den unten berechneten Zimmer-Upgrade-Nächten ab (z. B. bei einem reinen Vorabend-Termin ohne eigentliche Übernachtung).
+            </p>
             <div className="au-row-2">
               <div>
-                <label className="au-label">Beschreibung (z. B. "Komfortzimmer statt Standardzimmer")</label>                
+                <label className="au-label">Beschreibung (z. B. "Komfortzimmer statt Standardzimmer")</label>
         <input className="au-input" name="zimmerupgrade_beschreibung" defaultValue={termin.zimmerupgrade_beschreibung || ""} placeholder="z. B. Komfortzimmer statt Standardzimmer" />
               </div>
               <div>
                 <label className="au-label">Aufpreis pro Nacht (€, netto)</label>
                 <input className="au-input" name="zimmerupgrade_preis_pro_nacht_netto" type="number" step="0.01" defaultValue={termin.zimmerupgrade_preis_pro_nacht_netto ?? ""} placeholder="z. B. 89" />
                 <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
-                  Dieser Termin hat {terminNaechte} {terminNaechte === 1 ? "Nacht" : "Nächte"} ({formatDatum(termin.datum_start)}
-                  {termin.datum_ende && termin.datum_ende !== termin.datum_start ? ` – ${formatDatum(termin.datum_ende)}` : ""}) — der Gesamtaufpreis ergibt sich automatisch aus Aufpreis × Nächte.
+                  Dieser Termin hat {terminNaechte} effektive {terminNaechte === 1 ? "Nacht" : "Nächte"} für das Zimmer-Upgrade ({formatDatum(termin.datum_start)}
+                  {termin.datum_ende && termin.datum_ende !== termin.datum_start ? ` – ${formatDatum(termin.datum_ende)}` : ""}
+                  {!termin.vorabendanreise_inklusive ? ", −1 Nacht ohne Vorabendanreise" : ""}) — der Gesamtaufpreis ergibt sich automatisch aus Aufpreis × Nächte (zzgl. eventueller Zusatznächte pro Option).
                 </p>
               </div>
             </div>

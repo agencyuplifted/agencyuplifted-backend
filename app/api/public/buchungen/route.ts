@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getResend, ABSENDER } from "@/lib/email";
-import { formatDatum, naechteAnzahl } from "@/lib/format";
+import { formatDatum, effektiveTerminNaechte } from "@/lib/format";
 import { renderPlatzhalter } from "@/lib/funnel";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "@/lib/organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "@/lib/geschlecht";
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, datum_start, datum_ende, status, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name)"
+      "id, titel, datum_start, datum_ende, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name)"
     )
     .eq("id", seminarterminId)
     .single();
@@ -284,10 +284,14 @@ export async function POST(request: NextRequest) {
       enddatum: termin.datum_ende,
     });
     if (t.roomOption === "komfort" && termin.zimmerupgrade_preis_pro_nacht_netto) {
-      // Termin-Basisnaechte + ggf. Zusatzuebernachtung dieser konkreten
-      // Option (z.B. Verlaengerungsoption) -- siehe app/api/public/seminartermine/[id]/route.ts
-      // fuer dieselbe Logik in der Vorschau-API.
-      const zimmerupgradeNaechte = naechteAnzahl(termin.datum_start, termin.datum_ende) + (option.zimmerupgrade_zusatznaechte || 0);
+      // Termin-Basisnaechte (bereits um eine Nacht reduziert, falls keine
+      // Vorabendanreise inklusive ist) + ggf. Zusatzuebernachtung dieser
+      // konkreten Option (z.B. Verlaengerungsoption) -- siehe
+      // app/api/public/seminartermine/[id]/route.ts fuer dieselbe Logik in
+      // der Vorschau-API.
+      const zimmerupgradeNaechte =
+        effektiveTerminNaechte(termin.datum_start, termin.datum_ende, termin.vorabendanreise_inklusive) +
+        (option.zimmerupgrade_zusatznaechte || 0);
       positionen.push({
         buchung_id: buchung.id,
         teilnehmer_id: t.id,
