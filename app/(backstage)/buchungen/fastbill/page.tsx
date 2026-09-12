@@ -13,9 +13,9 @@ import FastbillZuordnenForm from "./FastbillZuordnenForm";
 export default async function FastbillAbgleichPage({
   searchParams,
 }: {
-  searchParams: Promise<{ importiert?: string; gefunden?: string; jahr?: string }>;
+  searchParams: Promise<{ importiert?: string; gefunden?: string; jahr?: string; debug?: string; fehler?: string }>;
 }) {
-  const { importiert, gefunden, jahr } = await searchParams;
+  const { importiert, gefunden, jahr, debug, fehler } = await searchParams;
   const supabase = getSupabaseAdmin();
 
   const { data: rechnungen } = await supabase
@@ -61,6 +61,21 @@ export default async function FastbillAbgleichPage({
           Import für {jahr}: {gefunden} Rechnungen von FastBill geladen, {importiert} davon neu
           gespeichert (Rest war schon vorhanden).
         </div>
+      )}
+
+      {fehler && (
+        <div className="au-card" style={{ marginBottom: "1rem", borderColor: "var(--color-danger, #c0392b)" }}>
+          <strong>FastBill-Fehler:</strong> {decodeURIComponent(fehler)}
+        </div>
+      )}
+
+      {debug && (
+        <details className="au-card" style={{ marginBottom: "1rem" }}>
+          <summary style={{ cursor: "pointer" }}>Diagnose (Rohantworten der ersten Aufrufe)</summary>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: "0.75rem", marginTop: "0.5rem" }}>
+            {decodeURIComponent(debug).split(" ||| ").join("\n\n")}
+          </pre>
+        </details>
       )}
 
       <div className="au-card" style={{ display: "flex", gap: "2rem", alignItems: "center", flexWrap: "wrap" }}>

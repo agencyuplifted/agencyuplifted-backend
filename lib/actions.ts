@@ -3194,10 +3194,18 @@ export async function importFastbillRechnungen(formData: FormData) {
   const jahr = Number(formData.get("jahr")) || new Date().getFullYear();
   const supabase = getSupabaseAdmin();
 
-  const invoices = await fetchFastbillInvoices({
-    startDate: `${jahr}-01-01`,
-    endDate: `${jahr}-12-31`,
-  });
+  const debugLog: string[] = [];
+  let invoices: Awaited<ReturnType<typeof fetchFastbillInvoices>> = [];
+  let fehlermeldung: string | null = null;
+  try {
+    invoices = await fetchFastbillInvoices({
+      startDate: `${jahr}-01-01`,
+      endDate: `${jahr}-12-31`,
+      debugLog,
+    });
+  } catch (err) {
+    fehlermeldung = err instanceof Error ? err.message : String(err);
+  }
 
   const { data: bestehende } = await supabase.from("fastbill_rechnungen").select("fastbill_invoice_id");
   const bekannteIds = new Set((bestehende || []).map((r: any) => r.fastbill_invoice_id));
@@ -3239,7 +3247,11 @@ export async function importFastbillRechnungen(formData: FormData) {
   }
 
   revalidatePath("/buchungen/fastbill");
-  redirect(`/buchungen/fastbill?importiert=${eingefuegt}&gefunden=${invoices.length}&jahr=${jahr}`);
+  const debugParam = encodeURIComponent(debugLog.slice(0, 2).join(" ||| ").slice(0, 1500));
+  const fehlerParam = fehlermeldung ? `&fehler=${encodeURIComponent(fehlermeldung)}` : "";
+  redirect(
+    `/buchungen/fastbill?importiert=${eingefuegt}&gefunden=${invoices.length}&jahr=${jahr}&debug=${debugParam}${fehlerParam}`
+  );
 }
 
 export async function setzeFastbillKategorie(formData: FormData) {

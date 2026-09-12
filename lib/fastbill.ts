@@ -27,7 +27,11 @@ function asArray<T>(value: T | T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
-async function callFastbill(service: string, body: Record<string, unknown>): Promise<any> {
+async function callFastbill(
+  service: string,
+  body: Record<string, unknown>,
+  debugLog?: string[]
+): Promise<any> {
   const { email, apiKey } = getAuth();
   const auth = Buffer.from(`${email}:${apiKey}`).toString("base64");
   const res = await fetch(FASTBILL_URL, {
@@ -43,17 +47,30 @@ async function callFastbill(service: string, body: Record<string, unknown>): Pro
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error(
-      `FastBill-Antwort (${service}) war kein gueltiges JSON (Status ${res.status}): ${text.slice(0, 500)}`
-    );
+    const msg = `FastBill-Antwort (${service}) war kein gueltiges JSON (Status ${res.status}): ${text.slice(0, 500)}`;
+    debugLog?.push(msg);
+    throw new Error(msg);
   }
   if (!res.ok) {
-    throw new Error(`FastBill-API-Fehler (${service}, Status ${res.status}): ${text.slice(0, 500)}`);
+    const msg = `FastBill-API-Fehler (${service}, Status ${res.status}): ${text.slice(0, 500)}`;
+    debugLog?.push(msg);
+    throw new Error(msg);
   }
   const errors = json?.RESPONSE?.ERRORS;
   if (errors) {
-    throw new Error(`FastBill-API meldet Fehler bei ${service}: ${JSON.stringify(errors)}`);
+    const msg = `FastBill-API meldet Fehler bei ${service}: ${JSON.stringify(errors)}`;
+    debugLog?.push(msg);
+    throw new Error(msg);
   }
+  // Diagnose-Log der obersten Schluessel + Rohantwort (gekuerzt) -- wird bei
+  // Bedarf im Import-Report angezeigt, um bei einer FastBill-API-Antwort mit
+  // unerwarteter Struktur (z.B. andere Gross-/Kleinschreibung als in der
+  // offiziellen Doku) sofort sichtbar zu machen, statt still 0 Treffer zu
+  // liefern. Nur die ersten paar Aufrufe pro Import loggen (Aufrufer steuert
+  // das ueber debugLog?.length < N), sonst wird der Report zu lang.
+  debugLog?.push(
+    `${service} ${JSON.stringify(body.FILTER || {})}: RESPONSE-Schluessel=[${Object.keys(json?.RESPONSE || {}).join(", ")}] Rohantwort=${text.slice(0, 400)}`
+  );
   return json?.RESPONSE ?? {};
 }
 
@@ -87,6 +104,7 @@ export type FastbillInvoice = {
 export async function fetchFastbillInvoices(params: {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
+  debugLog?: string[];
 }): Promise<FastbillInvoice[]> {
   const alle: FastbillInvoice[] = [];
 
@@ -94,15 +112,19 @@ export async function fetchFastbillInvoices(params: {
     let offset = 0;
     const limit = 100;
     for (;;) {
-      const response = await callFastbill("invoice.get", {
-        LIMIT: limit,
-        OFFSET: offset,
-        FILTER: {
-          START_DATE: params.startDate,
-          END_DATE: params.endDate,
-          TYPE: type,
+      const response = await callFastbill(
+        "invoice.get",
+        {
+          LIMIT: limit,
+          OFFSET: offset,
+          FILTER: {
+            START_DATE: params.startDate,
+            END_DATE: params.endDate,
+            TYPE: type,
+          },
         },
-      });
+        params.debugLog
+      );
       const invoices = asArray<any>(response?.INVOICES?.INVOICE ?? response?.INVOICES);
       if (invoices.length === 0) break;
 
