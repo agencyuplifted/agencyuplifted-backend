@@ -13,8 +13,9 @@ import FastbillZuordnenForm from "./FastbillZuordnenForm";
 export default async function FastbillAbgleichPage({
   searchParams,
 }: {
-  searchParams: { importiert?: string; gefunden?: string; jahr?: string };
+  searchParams: Promise<{ importiert?: string; gefunden?: string; jahr?: string }>;
 }) {
+  const { importiert, gefunden, jahr } = await searchParams;
   const supabase = getSupabaseAdmin();
 
   const { data: rechnungen } = await supabase
@@ -41,8 +42,6 @@ export default async function FastbillAbgleichPage({
   const zugeordnet = rows.filter((r: any) => r.status === "zugeordnet").length;
   const ignoriert = rows.filter((r: any) => r.status === "ignoriert").length;
 
-  const importiert = searchParams.importiert;
-  const gefunden = searchParams.gefunden;
 
   const statusReihenfolge: Record<string, number> = { offen: 0, zugeordnet: 1, ignoriert: 2 };
   const sortiert = [...rows].sort((a: any, b: any) => statusReihenfolge[a.status] - statusReihenfolge[b.status]);
@@ -59,7 +58,7 @@ export default async function FastbillAbgleichPage({
 
       {importiert !== undefined && (
         <div className="au-card au-card-tint" style={{ marginBottom: "1rem" }}>
-          Import für {searchParams.jahr}: {gefunden} Rechnungen von FastBill geladen, {importiert} davon neu
+          Import für {jahr}: {gefunden} Rechnungen von FastBill geladen, {importiert} davon neu
           gespeichert (Rest war schon vorhanden).
         </div>
       )}
