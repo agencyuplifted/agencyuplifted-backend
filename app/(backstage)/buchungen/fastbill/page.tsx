@@ -134,7 +134,20 @@ export default async function FastbillAbgleichPage({
               <td colSpan={6}>Noch keine Rechnungen importiert.</td>
             </tr>
           )}
-          {sortiert.map((r: any) => (
+          {sortiert.map((r: any, idx: number) => {
+            const vorherige = sortiert[idx - 1];
+            const istErsteIgnorierte = r.status === "ignoriert" && vorherige?.status !== "ignoriert";
+            return (
+            <>
+            {istErsteIgnorierte && (
+              <tr>
+                <td colSpan={6} style={{ paddingTop: "1.25rem", borderTop: "2px solid var(--color-border)" }}>
+                  <strong style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
+                    Ignoriert ({ignoriert}) — zum späteren Nachschauen, jederzeit über "Zurück auf offen" reaktivierbar
+                  </strong>
+                </td>
+              </tr>
+            )}
             <tr key={r.id}>
               <td>
                 {r.fastbill_invoice_number}
@@ -226,6 +239,9 @@ export default async function FastbillAbgleichPage({
                         defaultPositionen={(positionenByBuchung.get(r.buchung_id) || []).map((p: any) => ({
                           teilnehmerId: p.teilnehmer_id,
                           optionId: p.seminartermin_option_id,
+                          vorname: p.teilnehmer?.vorname,
+                          nachname: p.teilnehmer?.nachname,
+                          email: p.teilnehmer?.email,
                         }))}
                       />
                     </div>
@@ -250,7 +266,8 @@ export default async function FastbillAbgleichPage({
                 </div>
               </td>
             </tr>
-          ))}
+            </>
+          );})}
         </tbody>
       </table>
     </main>
