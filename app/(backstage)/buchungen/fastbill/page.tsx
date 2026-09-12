@@ -51,9 +51,9 @@ export default async function FastbillAbgleichPage({
       <h1>FastBill-Rechnungsabgleich</h1>
       <p style={{ color: "var(--color-text-muted)" }}>
         Importiert Ausgangs-/Stornorechnungen eines Jahres aus FastBill und gleicht sie manuell gegen Teilnehmer
-        und Seminartermine ab. Erzeugt keine Buchung, nur die Verknüpfung für Teilnehmerpflege und spätere
-        Umsatzauswertung. Ein erneuter Import ergänzt nur neue Rechnungen — bereits bearbeitete Zeilen bleiben
-        unverändert.
+        und Seminartermine ab. Bei "Zuordnen" wird eine echte Buchung angelegt, damit der Teilnehmer auch in der
+        Teilnehmerliste des Termins auftaucht. Ein erneuter Import ergänzt nur neue Rechnungen — bereits bearbeitete
+        Zeilen bleiben unverändert.
       </p>
 
       {importiert !== undefined && (
