@@ -3359,7 +3359,7 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
           anrede_quelle,
           vorname: neuVorname,
           nachname: neuNachname,
-          email: neuEmail || null,
+          email: neuEmail || "",
         })
         .select("id")
         .single();
