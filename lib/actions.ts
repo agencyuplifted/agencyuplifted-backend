@@ -16,6 +16,7 @@ import { randomUUID } from "crypto";
 import { erzeugeSlug, eindeutigerSlug, erzeugeTagSlug } from "./insights";
 import { holeAutocompleteVorschlaege } from "./themen-radar";
 import { stichtagsDatumEndeDesTages, berechneMonatlicheStichtageRueckwaerts } from "./preisstaffeln";
+import { fetchFastbillInvoices, findePreisMatch } from "./fastbill";
 
 // Ermittelt Anrede + Quelle fuer ein Formularfeld: explizite Angabe (Herr/Frau/
 // Divers) gilt als 'manuell' und wird nie durch die Namens-Heuristik ersetzt.
@@ -3176,4 +3177,159 @@ export async function loescheOffsitePlatzierung(formData: FormData) {
   const { error } = await supabase.from("content_offsite_platzierungen").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/content-creation");
+}
+
+// ---- FastBill-Rechnungsabgleich (siehe app/(backstage)/buchungen/fastbill) ----
+// Umfang bewusst schmal: nur 2026er Ausgangs-/Stornorechnungen, keine
+// automatische Buchungserstellung -- nur Rohimport + Matching-Vorschlag +
+// manuelle Bestaetigung, analog zur bestehenden Zuordnungsmaske fuer
+// legacy_buchungen (siehe ordneLegacyBuchungZu oben).
+
+// Importiert alle Ausgangs-/Stornorechnungen eines Kalenderjahrs aus FastBill
+// und speichert sie roh in fastbill_rechnungen. Bereits vorhandene Rechnungen
+// (gleiche fastbill_invoice_id) werden NICHT ueberschrieben -- so gehen
+// manuelle Zuordnungen/Notizen bei einem erneuten Import nie verloren; ein
+// erneuter Lauf ergaenzt nur wirklich neue Rechnungen.
+export async function importFastbillRechnungen(formData: FormData) {
+  const jahr = Number(formData.get("jahr")) || new Date().getFullYear();
+  const supabase = getSupabaseAdmin();
+
+  const invoices = await fetchFastbillInvoices({
+    startDate: `${jahr}-01-01`,
+    endDate: `${jahr}-12-31`,
+  });
+
+  const { data: bestehende } = await supabase.from("fastbill_rechnungen").select("fastbill_invoice_id");
+  const bekannteIds = new Set((bestehende || []).map((r: any) => r.fastbill_invoice_id));
+  const neueInvoices = invoices.filter((inv) => !bekannteIds.has(inv.invoiceId));
+
+  // Preiskandidaten fuer die Matching-Heuristik: JEDE Preisstaffel JEDER
+  // Option ueber ALLE Termine (nicht nach Jahr gefiltert, siehe fastbill.ts).
+  const { data: staffeln } = await supabase
+    .from("preisstaffeln")
+    .select("preis, seminartermin_optionen(id, seminartermin_id)");
+  const preisKandidaten = (staffeln || [])
+    .filter((s: any) => s.seminartermin_optionen)
+    .map((s: any) => ({
+      seminartermin_id: s.seminartermin_optionen.seminartermin_id as string,
+      option_id: s.seminartermin_optionen.id as string,
+      preis_netto: Number(s.preis),
+    }));
+
+  let eingefuegt = 0;
+  for (const inv of neueInvoices) {
+    const match = findePreisMatch(inv.subTotal, preisKandidaten);
+    const { error } = await supabase.from("fastbill_rechnungen").insert({
+      fastbill_invoice_id: inv.invoiceId,
+      fastbill_invoice_number: inv.invoiceNumber,
+      rechnungsdatum: inv.invoiceDate,
+      ist_storno: inv.type === "credit",
+      kunde_firma: inv.organization,
+      kunde_vorname: inv.firstName,
+      kunde_nachname: inv.lastName,
+      betrag_netto: inv.subTotal,
+      betrag_brutto: inv.total,
+      positionen: inv.items,
+      rohdaten: inv.raw,
+      kategorie: match ? "seminar" : "unklar",
+      vorgeschlagener_seminartermin_id: match?.seminartermin_id ?? null,
+      vorgeschlagene_option_id: match?.option_id ?? null,
+    });
+    if (!error) eingefuegt++;
+  }
+
+  revalidatePath("/buchungen/fastbill");
+  redirect(`/buchungen/fastbill?importiert=${eingefuegt}&gefunden=${invoices.length}&jahr=${jahr}`);
+}
+
+export async function setzeFastbillKategorie(formData: FormData) {
+  const id = String(formData.get("id"));
+  const kategorie = String(formData.get("kategorie"));
+  if (!["seminar", "projekt", "unklar"].includes(kategorie)) {
+    throw new Error("Unbekannte Kategorie.");
+  }
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("fastbill_rechnungen")
+    .update({ kategorie, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/buchungen/fastbill");
+}
+
+export async function ignoriereFastbillRechnung(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("fastbill_rechnungen")
+    .update({ status: "ignoriert", aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/buchungen/fastbill");
+}
+
+export async function setzeFastbillOffen(formData: FormData) {
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("fastbill_rechnungen")
+    .update({ status: "offen", aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/buchungen/fastbill");
+}
+
+// Bestaetigt die Zuordnung einer FastBill-Rechnung zu Termin/Option und
+// Teilnehmer (entweder ein bestehender Teilnehmer per Dropdown, oder per
+// Vorname+Nachname neu angelegt) -- setzt status auf 'zugeordnet'. Erzeugt
+// bewusst KEINE Buchung/Buchungsposition (das bleibt der eigentliche
+// Buchungsprozess vorbehalten); dies ist nur die Verknuepfung fuer
+// Teilnehmerpflege + spaetere Umsatzauswertung.
+export async function bestaetigeFastbillZuordnung(formData: FormData) {
+  const id = String(formData.get("id"));
+  const seminarterminId = String(formData.get("seminartermin_id") || "") || null;
+  const optionId = String(formData.get("seminartermin_option_id") || "") || null;
+  if (!seminarterminId || !optionId) {
+    throw new Error("Bitte Termin und Option auswaehlen.");
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  let teilnehmerId = String(formData.get("teilnehmer_id") || "") || null;
+  const neuVorname = String(formData.get("neu_vorname") || "").trim();
+  const neuNachname = String(formData.get("neu_nachname") || "").trim();
+  const neuEmail = String(formData.get("neu_email") || "").trim();
+
+  if (!teilnehmerId && neuVorname && neuNachname) {
+    const { anrede, anrede_quelle } = ermittleAnredeUndQuelle(null, neuVorname);
+    const { data: neuerTeilnehmer, error: insertError } = await supabase
+      .from("teilnehmer")
+      .insert({
+        anrede,
+        anrede_quelle,
+        vorname: neuVorname,
+        nachname: neuNachname,
+        email: neuEmail || null,
+      })
+      .select("id")
+      .single();
+    if (insertError) throw new Error(insertError.message);
+    teilnehmerId = neuerTeilnehmer.id;
+  }
+
+  const { error } = await supabase
+    .from("fastbill_rechnungen")
+    .update({
+      seminartermin_id: seminarterminId,
+      seminartermin_option_id: optionId,
+      teilnehmer_id: teilnehmerId,
+      kategorie: "seminar",
+      status: "zugeordnet",
+      aktualisiert_am: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/buchungen/fastbill");
+  revalidatePath("/teilnehmer");
 }
