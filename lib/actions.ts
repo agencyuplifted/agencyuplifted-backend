@@ -3311,49 +3311,26 @@ export async function setzeFastbillOffen(formData: FormData) {
   revalidatePath("/termine");
 }
 
-// Bestaetigt die Zuordnung einer FastBill-Rechnung zu Termin/Option und
-// Teilnehmer (entweder ein bestehender Teilnehmer per Dropdown, oder per
-// Vorname+Nachname neu angelegt) -- setzt status auf 'zugeordnet' UND legt
-// dafuer eine echte Buchung/Buchungsposition an (Status "bestaetigt", da die
-// FastBill-Rechnung ja bereits gestellt ist), damit der Teilnehmer wie jede
-// andere Buchung auch in der Teilnehmerliste des Termins auftaucht. Wird
-// eine bereits zugeordnete Zeile erneut bestaetigt (z.B. Termin korrigiert),
-// wird die bestehende Buchungsposition aktualisiert statt eine zweite
-// anzulegen.
+// Bestaetigt die Zuordnung einer FastBill-Rechnung zu einem Termin und bis
+// zu 4 Teilnehmern (Gesamtrechnungen decken haeufig eine Gruppe ab, nicht
+// nur eine Person). Jede Teilnehmer-Zeile ist entweder ein bestehender
+// Teilnehmer per Dropdown oder wird per Vorname+Nachname neu angelegt;
+// leere/unvollstaendige Zeilen werden ignoriert. Legt dafuer eine echte
+// Buchung an (Status "bestaetigt", da die FastBill-Rechnung ja bereits
+// gestellt ist) mit einer Buchungsposition pro Teilnehmer, damit alle wie
+// jede andere Buchung auch in der Teilnehmerliste des Termins auftauchen.
+// Wird eine bereits zugeordnete Zeile erneut bestaetigt (z.B. weiterer
+// Teilnehmer ergaenzt, Termin korrigiert), werden die bestehenden
+// Buchungspositionen komplett durch die neu eingereichten ersetzt (die
+// Buchung selbst bleibt erhalten) -- einfacher und robuster als ein Diff.
 export async function bestaetigeFastbillZuordnung(formData: FormData) {
   const id = String(formData.get("id"));
   const seminarterminId = String(formData.get("seminartermin_id") || "") || null;
-  const optionId = String(formData.get("seminartermin_option_id") || "") || null;
-  if (!seminarterminId || !optionId) {
-    throw new Error("Bitte Termin und Option auswaehlen.");
+  if (!seminarterminId) {
+    throw new Error("Bitte Termin auswaehlen.");
   }
 
   const supabase = getSupabaseAdmin();
-
-  let teilnehmerId = String(formData.get("teilnehmer_id") || "") || null;
-  const neuVorname = String(formData.get("neu_vorname") || "").trim();
-  const neuNachname = String(formData.get("neu_nachname") || "").trim();
-  const neuEmail = String(formData.get("neu_email") || "").trim();
-
-  if (!teilnehmerId && neuVorname && neuNachname) {
-    const { anrede, anrede_quelle } = ermittleAnredeUndQuelle(null, neuVorname);
-    const { data: neuerTeilnehmer, error: insertError } = await supabase
-      .from("teilnehmer")
-      .insert({
-        anrede,
-        anrede_quelle,
-        vorname: neuVorname,
-        nachname: neuNachname,
-        email: neuEmail || null,
-      })
-      .select("id")
-      .single();
-    if (insertError) throw new Error(insertError.message);
-    teilnehmerId = neuerTeilnehmer.id;
-  }
-  if (!teilnehmerId) {
-    throw new Error("Bitte einen Teilnehmer auswaehlen oder neu anlegen.");
-  }
 
   const { data: rechnungRow, error: rechnungError } = await supabase
     .from("fastbill_rechnungen")
@@ -3362,58 +3339,86 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
     .single();
   if (rechnungError) throw new Error(rechnungError.message);
 
-  const listenpreis = Number(rechnungRow?.betrag_netto || 0);
+  const gesamtNetto = Number(rechnungRow?.betrag_netto || 0);
+
+  const teilnehmerIds: string[] = [];
+  const optionIds: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    let teilnehmerId = String(formData.get(`teilnehmer_id_${i}`) || "") || null;
+    const optionId = String(formData.get(`seminartermin_option_id_${i}`) || "") || null;
+    const neuVorname = String(formData.get(`neu_vorname_${i}`) || "").trim();
+    const neuNachname = String(formData.get(`neu_nachname_${i}`) || "").trim();
+    const neuEmail = String(formData.get(`neu_email_${i}`) || "").trim();
+
+    if (!teilnehmerId && neuVorname && neuNachname) {
+      const { anrede, anrede_quelle } = ermittleAnredeUndQuelle(null, neuVorname);
+      const { data: neuerTeilnehmer, error: insertError } = await supabase
+        .from("teilnehmer")
+        .insert({
+          anrede,
+          anrede_quelle,
+          vorname: neuVorname,
+          nachname: neuNachname,
+          email: neuEmail || null,
+        })
+        .select("id")
+        .single();
+      if (insertError) throw new Error(insertError.message);
+      teilnehmerId = neuerTeilnehmer.id;
+    }
+
+    if (!teilnehmerId || !optionId) continue;
+    teilnehmerIds.push(teilnehmerId);
+    optionIds.push(optionId);
+  }
+
+  if (teilnehmerIds.length === 0) {
+    throw new Error("Bitte mindestens einen Teilnehmer (mit Option) angeben.");
+  }
+
   let buchungId = rechnungRow?.buchung_id || null;
 
   if (buchungId) {
-    // Bereits frueher zugeordnet -- bestehende Buchung/Position aktualisieren
-    // statt eine zweite anzulegen (sonst wuerde der Teilnehmer doppelt an
-    // einem oder gar an zwei Terminen auftauchen).
+    const { error: delError } = await supabase.from("buchungspositionen").delete().eq("buchung_id", buchungId);
+    if (delError) throw new Error(delError.message);
     const { error: buchungUpdateError } = await supabase
       .from("buchungen")
-      .update({ rechnungsempfaenger_teilnehmer_id: teilnehmerId })
+      .update({ rechnungsempfaenger_teilnehmer_id: teilnehmerIds[0] })
       .eq("id", buchungId);
     if (buchungUpdateError) throw new Error(buchungUpdateError.message);
-
-    const { error: posUpdateError } = await supabase
-      .from("buchungspositionen")
-      .update({
-        teilnehmer_id: teilnehmerId,
-        seminartermin_id: seminarterminId,
-        seminartermin_option_id: optionId,
-        listenpreis,
-      })
-      .eq("buchung_id", buchungId);
-    if (posUpdateError) throw new Error(posUpdateError.message);
   } else {
     const { data: neueBuchung, error: buchungError } = await supabase
       .from("buchungen")
       .insert({
-        rechnungsempfaenger_teilnehmer_id: teilnehmerId,
+        rechnungsempfaenger_teilnehmer_id: teilnehmerIds[0],
         status: "bestaetigt",
       })
       .select("id")
       .single();
     if (buchungError) throw new Error(buchungError.message);
     buchungId = neueBuchung.id;
-
-    const { error: posError } = await supabase.from("buchungspositionen").insert({
-      buchung_id: buchungId,
-      teilnehmer_id: teilnehmerId,
-      seminartermin_id: seminarterminId,
-      seminartermin_option_id: optionId,
-      listenpreis,
-      rabatt_betrag: 0,
-    });
-    if (posError) throw new Error(posError.message);
   }
+
+  // Rechnungsbetrag (netto) komplett der ersten Position zuordnen -- eine
+  // Aufteilung auf mehrere Teilnehmer kann bei Bedarf manuell in der Buchung
+  // nachgezogen werden; hier geht es primaer um korrekte Teilnehmerpflege.
+  const positionen = teilnehmerIds.map((tId, idx) => ({
+    buchung_id: buchungId,
+    teilnehmer_id: tId,
+    seminartermin_id: seminarterminId,
+    seminartermin_option_id: optionIds[idx],
+    listenpreis: idx === 0 ? gesamtNetto : 0,
+    rabatt_betrag: 0,
+  }));
+  const { error: posError } = await supabase.from("buchungspositionen").insert(positionen);
+  if (posError) throw new Error(posError.message);
 
   const { error } = await supabase
     .from("fastbill_rechnungen")
     .update({
       seminartermin_id: seminarterminId,
-      seminartermin_option_id: optionId,
-      teilnehmer_id: teilnehmerId,
+      seminartermin_option_id: optionIds[0],
+      teilnehmer_id: teilnehmerIds[0],
       buchung_id: buchungId,
       kategorie: "seminar",
       status: "zugeordnet",

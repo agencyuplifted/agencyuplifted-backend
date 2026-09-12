@@ -21,7 +21,7 @@ export default async function FastbillAbgleichPage({
   const { data: rechnungen } = await supabase
     .from("fastbill_rechnungen")
     .select(
-      "id, fastbill_invoice_number, rechnungsdatum, ist_storno, kunde_firma, kunde_vorname, kunde_nachname, betrag_netto, betrag_brutto, kategorie, status, notiz, vorgeschlagener_seminartermin_id, vorgeschlagene_option_id, seminartermin_id, seminartermin_option_id, teilnehmer_id, seminartermine!fastbill_rechnungen_seminartermin_id_fkey(kennung, titel), seminartermin_optionen!fastbill_rechnungen_seminartermin_option_id_fkey(titel), teilnehmer(vorname, nachname, email)"
+      "id, fastbill_invoice_number, rechnungsdatum, ist_storno, kunde_firma, kunde_vorname, kunde_nachname, betrag_netto, betrag_brutto, kategorie, status, notiz, vorgeschlagener_seminartermin_id, vorgeschlagene_option_id, seminartermin_id, seminartermin_option_id, teilnehmer_id, buchung_id, seminartermine!fastbill_rechnungen_seminartermin_id_fkey(kennung, titel), seminartermin_optionen!fastbill_rechnungen_seminartermin_option_id_fkey(titel), teilnehmer(vorname, nachname, email)"
     )
     .order("rechnungsdatum", { ascending: false });
 
@@ -37,6 +37,25 @@ export default async function FastbillAbgleichPage({
   const { data: alleTeilnehmer } = await supabase.from("teilnehmer").select("id, vorname, nachname, email");
 
   const rows = rechnungen || [];
+
+  // Eine FastBill-Rechnung kann mehrere Teilnehmer haben (Gesamtrechnung fuer
+  // eine Gruppe) -- die eigentliche Teilnehmerliste steckt in den
+  // Buchungspositionen der verknuepften Buchung, nicht in der einzelnen
+  // teilnehmer_id-Spalte (die nur den ersten/Rechnungsempfaenger haelt).
+  const buchungIds = Array.from(new Set(rows.map((r: any) => r.buchung_id).filter(Boolean)));
+  const { data: alleBuchungspositionen } = buchungIds.length
+    ? await supabase
+        .from("buchungspositionen")
+        .select("buchung_id, teilnehmer_id, seminartermin_option_id, teilnehmer(vorname, nachname, email)")
+        .in("buchung_id", buchungIds)
+    : { data: [] as any[] };
+
+  const positionenByBuchung = new Map<string, any[]>();
+  (alleBuchungspositionen || []).forEach((p: any) => {
+    const liste = positionenByBuchung.get(p.buchung_id) || [];
+    liste.push(p);
+    positionenByBuchung.set(p.buchung_id, liste);
+  });
   const gesamt = rows.length;
   const offen = rows.filter((r: any) => r.status === "offen").length;
   const zugeordnet = rows.filter((r: any) => r.status === "zugeordnet").length;
@@ -163,7 +182,14 @@ export default async function FastbillAbgleichPage({
                     <br />
                     {r.seminartermin_optionen?.titel}
                     <br />
-                    {r.teilnehmer ? `${r.teilnehmer.vorname} ${r.teilnehmer.nachname}` : "—"}
+                    {(positionenByBuchung.get(r.buchung_id) || []).length > 0
+                      ? (positionenByBuchung.get(r.buchung_id) || [])
+                          .map((p: any) => (p.teilnehmer ? `${p.teilnehmer.vorname} ${p.teilnehmer.nachname}` : null))
+                          .filter(Boolean)
+                          .join(", ")
+                      : r.teilnehmer
+                      ? `${r.teilnehmer.vorname} ${r.teilnehmer.nachname}`
+                      : "—"}
                   </div>
                 ) : r.status === "ignoriert" ? (
                   <span style={{ color: "var(--color-text-muted)" }}>ignoriert</span>
@@ -176,7 +202,7 @@ export default async function FastbillAbgleichPage({
                 )}
               </td>
               <td>
-                {r.status !== "zugeordnet" && r.status !== "ignoriert" && (
+                {r.status !== "ignoriert" && r.status !== "zugeordnet" && (
                   <FastbillZuordnenForm
                     rechnungId={r.id}
                     termine={alleTermine || []}
@@ -185,6 +211,25 @@ export default async function FastbillAbgleichPage({
                     defaultSeminarterminId={r.vorgeschlagener_seminartermin_id}
                     defaultOptionId={r.vorgeschlagene_option_id}
                   />
+                )}
+                {r.status === "zugeordnet" && (
+                  <details>
+                    <summary style={{ cursor: "pointer", fontSize: "0.8rem" }}>Bearbeiten / Teilnehmer ergänzen</summary>
+                    <div style={{ marginTop: "0.5rem" }}>
+                      <FastbillZuordnenForm
+                        rechnungId={r.id}
+                        termine={alleTermine || []}
+                        optionen={alleOptionen || []}
+                        teilnehmer={alleTeilnehmer || []}
+                        defaultSeminarterminId={r.seminartermin_id}
+                        defaultOptionId={r.seminartermin_option_id}
+                        defaultPositionen={(positionenByBuchung.get(r.buchung_id) || []).map((p: any) => ({
+                          teilnehmerId: p.teilnehmer_id,
+                          optionId: p.seminartermin_option_id,
+                        }))}
+                      />
+                    </div>
+                  </details>
                 )}
                 <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
                   {r.status !== "ignoriert" ? (
