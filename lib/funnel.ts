@@ -115,7 +115,7 @@ async function sammleFaelligeEmpfaenger(
 
       const { data: positionen } = await supabase
         .from("buchungspositionen")
-        .select("teilnehmer(vorname, nachname, email, marketing_consent_status), buchungen(status)")
+        .select("teilnehmer(vorname, nachname, email, marketing_consent_status), buchungen(status, metadata)")
         .eq("seminartermin_id", t.id);
       const titel = t.titel || t.seminartypen?.name || "Seminar";
       const seminardatum = formatDatum(t.datum_start);
@@ -126,6 +126,11 @@ async function sammleFaelligeEmpfaenger(
         .filter(
           (p: any) =>
             p.buchungen?.status !== "storniert" &&
+            // Retroaktiv per FastBill zugeordnete Buchungen sollen genauso
+            // wenig automatische "vor Seminarstart"/"nach Seminarende"-Mails
+            // (Erinnerung, Feedback etc.) auslösen wie die buchung_erstellt-
+            // Mail oben -- gleiche Markierung, gleicher Grund.
+            p.buchungen?.metadata?.quelle !== "fastbill" &&
             p.teilnehmer?.email &&
             p.teilnehmer?.marketing_consent_status !== "abgemeldet"
         )
