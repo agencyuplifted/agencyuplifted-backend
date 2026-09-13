@@ -76,9 +76,14 @@ async function sammleFaelligeEmpfaenger(
   if (funnel.trigger_typ === "buchung_erstellt") {
     const { data: buchungen } = await supabase
       .from("buchungen")
-      .select("id, gebucht_am, status, organisationen(name)")
+      .select("id, gebucht_am, status, metadata, organisationen(name)")
       .neq("status", "storniert");
     for (const b of buchungen || []) {
+      // Retroaktiv per FastBill zugeordnete Buchungen sind kein echter
+      // Online-Buchungseingang -- dafuer soll keine automatische
+      // "Buchung erstellt"-Mail (z.B. Reservierungsbestaetigung) rausgehen.
+      // Markierung erfolgt in bestaetigeFastbillZuordnung() (lib/actions.ts).
+      if ((b as any).metadata?.quelle === "fastbill") continue;
       const anchor = tageVerschieben(String(b.gebucht_am).slice(0, 10), funnel.versatz_tage);
       if (anchor > heute) continue;
       const { data: positionen } = await supabase

@@ -3392,6 +3392,11 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
       .insert({
         rechnungsempfaenger_teilnehmer_id: teilnehmerIds[0],
         status: "bestaetigt",
+        // Retroaktiv per FastBill zugeordnete Buchung -- kein regulaerer
+        // Online-Buchungsvorgang. Der Funnel-Versand (buchung_erstellt,
+        // z.B. "Reservierung bestaetigt") soll dafuer NICHT ausgeloest
+        // werden, siehe sammleFaelligeEmpfaenger() in lib/funnel.ts.
+        metadata: { quelle: "fastbill" },
       })
       .select("id")
       .single();
