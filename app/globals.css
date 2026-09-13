@@ -457,6 +457,12 @@ details summary {
   font-weight: 700;
 }
 
+/* Hervorgehobene ("neu") Features zeigen stattdessen den gruenen Plus-Kreis
+   (HervorgehobenMarker in page.tsx) -- kein zusaetzlicher Haken daneben. */
+.au-option-preview-features li.au-feature-hervorgehoben::before {
+  content: none;
+}
+
 .au-option-preview-zusatz {
   margin-top: 0.75rem;
   padding-top: 0.6rem;

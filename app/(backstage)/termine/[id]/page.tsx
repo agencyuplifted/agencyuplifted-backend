@@ -50,6 +50,26 @@ function formatZeit(t: string | null) {
   return t ? t.slice(0, 5) + " Uhr" : "";
 }
 
+// Markiert ein hervorgehobenes ("neu") Feature in den Backstage-Vorschauen --
+// gruener Kreis mit weissem Plus, angelehnt an das spaetere Onepage-Rendering
+// (dort: grauer Haken fuer normale Punkte, gruener Plus-Kreis fuer
+// hervorgehobene). Bewusst kein Stern -- liest sich sonst wie eine
+// Bewertung/Favorit statt "zusaetzlich enthalten".
+function HervorgehobenMarker({ inline = false }: { inline?: boolean } = {}) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      style={inline ? { verticalAlign: "-2px", marginRight: "0.3rem", flexShrink: 0 } : { position: "absolute", left: "0", top: "3px" }}
+    >
+      <title>Neu/hervorgehoben</title>
+      <circle cx="8" cy="8" r="8" fill="#16A34A" />
+      <path d="M8 4v8M4 8h8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default async function TerminDetailPage({
   params,
   searchParams,
@@ -750,8 +770,8 @@ export default async function TerminDetailPage({
                   {featuresSortiert.length > 0 && (
                     <ul className="au-option-preview-features">
                       {featuresSortiert.map((f: any) => (
-                        <li key={f.id} style={f.hervorgehoben ? { color: "var(--color-akzent-rot)" } : undefined}>
-                          {f.hervorgehoben && <span title="Neu/hervorgehoben">★ </span>}
+                        <li key={f.id} className={f.hervorgehoben ? "au-feature-hervorgehoben" : undefined}>
+                          {f.hervorgehoben && <HervorgehobenMarker />}
                           {f.label && <strong>{renderFett(f.label)}: </strong>}
                           {renderFett(f.text)}
                         </li>
@@ -871,10 +891,21 @@ export default async function TerminDetailPage({
                     (a: any, b: any) => a.sortierung - b.sortierung || new Date(a.erstellt_am).getTime() - new Date(b.erstellt_am).getTime()
                   );
                   return featuresGeordnet.map((f: any, idx: number) => (
-                    <li key={f.id} style={{ fontSize: "0.9rem", marginBottom: "0.35rem" }}>
+                    <li
+                      key={f.id}
+                      style={{
+                        fontSize: "0.9rem",
+                        listStyle: "none",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: "var(--radius-sm)",
+                        background: "#fafafa",
+                        padding: "0.5rem 0.65rem",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                        <span style={f.hervorgehoben ? { color: "var(--color-akzent-rot)" } : undefined}>
-                          {f.hervorgehoben && <span title="Neu/hervorgehoben">★ </span>}
+                        <span style={{ display: "inline-flex", alignItems: "center", flex: 1, minWidth: 160 }}>
+                          {f.hervorgehoben && <HervorgehobenMarker inline />}
                           {f.label && <strong>{renderFett(f.label)}: </strong>}
                           {renderFett(f.text)}
                         </span>
@@ -892,25 +923,27 @@ export default async function TerminDetailPage({
                           <input type="hidden" name="richtung" value="runter" />
                           <button type="submit" className="au-btn au-btn-secondary au-btn-sm" disabled={idx === featuresGeordnet.length - 1} title="Nach unten verschieben">↓</button>
                         </form>
-                        <details>
-                          <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.8rem" }}>bearbeiten</summary>
-                          <form action={updateOptionFeature} style={{ marginTop: "0.35rem", display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
-                            <input type="hidden" name="feature_id" value={f.id} />
-                            <input type="hidden" name="seminartermin_id" value={id} />
-                            <input className="au-input" name="label" defaultValue={f.label || ""} placeholder="Label (optional)" style={{ maxWidth: 160 }} />
-                            <FettInput name="text" defaultValue={f.text} required />
-                            <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
-                              <input type="checkbox" name="hervorgehoben" defaultChecked={f.hervorgehoben || false} /> hervorheben (+)
-                            </label>
-                            <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
-                          </form>
-                        </details>
                         <form action={deleteOptionFeature} style={{ display: "inline" }}>
                           <input type="hidden" name="feature_id" value={f.id} />
                           <input type="hidden" name="seminartermin_id" value={id} />
                           <button type="submit" className="au-link-danger">entfernen</button>
                         </form>
                       </div>
+                      <details style={{ marginTop: "0.4rem" }}>
+                        <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.8rem" }}>bearbeiten</summary>
+                        <form action={updateOptionFeature} style={{ marginTop: "0.5rem" }}>
+                          <input type="hidden" name="feature_id" value={f.id} />
+                          <input type="hidden" name="seminartermin_id" value={id} />
+                          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.4rem" }}>
+                            <input className="au-input" name="label" defaultValue={f.label || ""} placeholder="Label (optional)" style={{ maxWidth: 240, flex: "0 1 240px" }} />
+                            <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                              <input type="checkbox" name="hervorgehoben" defaultChecked={f.hervorgehoben || false} /> hervorheben (+)
+                            </label>
+                          </div>
+                          <FettInput name="text" defaultValue={f.text} required />
+                          <button type="submit" className="au-btn au-btn-secondary au-btn-sm" style={{ marginTop: "0.5rem" }}>Speichern</button>
+                        </form>
+                      </details>
                     </li>
                   ));
                 })()}
@@ -918,15 +951,20 @@ export default async function TerminDetailPage({
                   <li style={{ fontSize: "0.9rem", color: "var(--color-text-faint)", listStyle: "none", marginLeft: "-1.2rem" }}>Noch keine Features.</li>
                 )}
               </ul>
-              <form action={createOptionFeature} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+              <form
+                action={createOptionFeature}
+                style={{ border: "1px dashed var(--color-border)", borderRadius: "var(--radius-sm)", padding: "0.6rem 0.65rem" }}
+              >
                 <input type="hidden" name="seminartermin_option_id" value={opt.id} />
                 <input type="hidden" name="seminartermin_id" value={id} />
-                <input className="au-input" name="label" placeholder="Label (optional)" style={{ maxWidth: 160 }} />
+                <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.4rem" }}>
+                  <input className="au-input" name="label" placeholder="Label (optional)" style={{ maxWidth: 240, flex: "0 1 240px" }} />
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                    <input type="checkbox" name="hervorgehoben" /> hervorheben (+)
+                  </label>
+                </div>
                 <FettInput name="text" placeholder="z. B. Einzelcoaching inklusive" required />
-                <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
-                  <input type="checkbox" name="hervorgehoben" /> hervorheben (+)
-                </label>
-                <button type="submit" className="au-btn au-btn-secondary">+ Feature</button>
+                <button type="submit" className="au-btn au-btn-secondary" style={{ marginTop: "0.5rem" }}>+ Feature</button>
               </form>
             </div>
 
