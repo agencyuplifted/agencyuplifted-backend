@@ -46,6 +46,15 @@ const badgeLabel: Record<string, string> = {
   meistgekauft: "Meistgekauft",
 };
 
+// Rein optische Unterscheidungshilfe beim Bearbeiten mehrerer Optionen (kein
+// semantischer Status wie "Fehler"/"Warnung" -- deshalb eigene, ganz zarte
+// Farben statt der bestehenden --color-danger-soft/--color-warning-soft, die
+// echte Bedeutungen tragen). Reihenfolge folgt der Sortierung der Optionen
+// (1. = grün, 2. = gelb, 3. = rot, danach blau/lila/gelb; darüber hinaus
+// wiederholt sich die Liste -- mehr als 6 Optionen sind laut Markus ohnehin
+// nicht zu erwarten).
+const OPTION_FARBEN = ["#eefaf0", "#fefbe8", "#fdeeee", "#eaf3fc", "#f5eefb", "#fefbe8"];
+
 function formatZeit(t: string | null) {
   return t ? t.slice(0, 5) + " Uhr" : "";
 }
@@ -789,8 +798,15 @@ export default async function TerminDetailPage({
           <div className="au-option-preview-empty">Noch keine Optionen angelegt – die Vorschau erscheint hier, sobald mindestens eine Option existiert.</div>
         )}
 
-        {optionen?.map((opt: any) => (
-          <div key={opt.id} className="au-subcard" style={opt.deaktiviert_am ? { opacity: 0.55 } : undefined}>
+        {optionen?.map((opt: any, optIndex: number) => (
+          <div
+            key={opt.id}
+            className="au-subcard"
+            style={{
+              background: OPTION_FARBEN[optIndex % OPTION_FARBEN.length],
+              ...(opt.deaktiviert_am ? { opacity: 0.55 } : {}),
+            }}
+          >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <strong>{opt.titel}</strong>
