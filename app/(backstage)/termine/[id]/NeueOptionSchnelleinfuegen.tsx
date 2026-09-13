@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { parseSchnelleinfuegenText } from "@/lib/schnelleinfuegen";
+import { parseSchnelleinfuegenText, GeparsteOption } from "@/lib/schnelleinfuegen";
 import KopierePromptLink from "./KopierePromptLink";
 
 // "Schnelleinfuegen" beim NEUEN Anlegen einer Option: die Option existiert
@@ -16,8 +16,16 @@ export default function NeueOptionSchnelleinfuegen() {
   const [text, setText] = useState("");
   const [uebernommeneFeatures, setUebernommeneFeatures] = useState<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Ausstehende Ersetzung, die noch bestaetigt werden muss -- statt
+  // window.confirm(), das manche Browser (v.a. Chrome) nach ein paar
+  // Dialogen auf derselben Seite stillschweigend unterdruecken (der Aufruf
+  // gibt dann sofort "false" zurueck, ohne ueberhaupt einen Dialog zu
+  // zeigen -- "Uebernehmen" wirkt dann so, als wuerde es gar nichts tun).
+  // Eine im Seitenlayout sichtbare Bestaetigung kann so nicht unterdrueckt
+  // werden.
+  const [ausstehend, setAusstehend] = useState<GeparsteOption | null>(null);
 
-  function uebernehmen() {
+  function starteUebernahme() {
     const geparst = parseSchnelleinfuegenText(text);
     if (!geparst) {
       window.alert(
@@ -27,18 +35,26 @@ export default function NeueOptionSchnelleinfuegen() {
     }
 
     const form = wrapperRef.current?.closest("form");
+    const titelInput = form?.elements.namedItem("titel") as HTMLInputElement | null;
+    const beschreibungInput = form?.elements.namedItem("beschreibung") as HTMLTextAreaElement | null;
+    const featuresInput = form?.elements.namedItem("features_text") as HTMLInputElement | null;
+
+    const hatBestehendenInhalt = !!(titelInput?.value || beschreibungInput?.value || featuresInput?.value);
+    if (hatBestehendenInhalt) {
+      setAusstehend(geparst);
+      return;
+    }
+    wendeAn(geparst);
+  }
+
+  function wendeAn(geparst: GeparsteOption) {
+    const form = wrapperRef.current?.closest("form");
     if (!form) return;
     const titelInput = form.elements.namedItem("titel") as HTMLInputElement | null;
     const beschreibungInput = form.elements.namedItem("beschreibung") as HTMLTextAreaElement | null;
     const featuresInput = form.elements.namedItem("features_text") as HTMLInputElement | null;
     const vorspannTextInput = form.elements.namedItem("vorspann_text") as HTMLInputElement | null;
     const vorspannAnzeigenInput = form.elements.namedItem("vorspann_anzeigen") as HTMLInputElement | null;
-
-    const hatBestehendenInhalt = !!(titelInput?.value || beschreibungInput?.value || featuresInput?.value);
-    if (hatBestehendenInhalt) {
-      const ok = window.confirm("Bestehender Inhalt wird ersetzt – fortfahren?");
-      if (!ok) return;
-    }
 
     if (titelInput) titelInput.value = geparst.titel;
     if (beschreibungInput) beschreibungInput.value = geparst.beschreibung;
@@ -51,6 +67,7 @@ export default function NeueOptionSchnelleinfuegen() {
     }
     setUebernommeneFeatures(geparst.features.length);
     setText("");
+    setAusstehend(null);
   }
 
   return (
@@ -66,9 +83,25 @@ export default function NeueOptionSchnelleinfuegen() {
         onChange={(e) => setText(e.target.value)}
         placeholder={"Business\nDer gewinnwirksame Weg zu wert- und gewinnorientierter Preisfindung ...\n- Seminar inklusive drei **Übernachtungen** im Einzelzimmer mit Frühstück\n- ..."}
       />
-      <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={uebernehmen}>
-        Übernehmen
-      </button>
+      {ausstehend ? (
+        <div style={{ background: "#fdf3e2", border: "1px solid #f2ddb0", borderRadius: "var(--radius-sm)", padding: "0.5rem 0.65rem" }}>
+          <p style={{ margin: "0 0 0.5rem", fontSize: "0.85rem" }}>
+            Bestehender Inhalt in den Feldern unten wird durch „{ausstehend.titel}“ ({ausstehend.features.length} Feature(s)) ersetzt.
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" className="au-btn au-btn-primary au-btn-sm" onClick={() => wendeAn(ausstehend)}>
+              Ja, ersetzen
+            </button>
+            <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={() => setAusstehend(null)}>
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={starteUebernahme}>
+          Übernehmen
+        </button>
+      )}
       {uebernommeneFeatures !== null && (
         <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "0.4rem 0 0" }}>
           Titel/Beschreibung oben befüllt · {uebernommeneFeatures} Feature(s) werden beim Anlegen dieser Option mit übernommen.

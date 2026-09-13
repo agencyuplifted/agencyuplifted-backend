@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { parseSchnelleinfuegenText } from "@/lib/schnelleinfuegen";
+import { parseSchnelleinfuegenText, GeparsteOption } from "@/lib/schnelleinfuegen";
 import KopierePromptLink from "./KopierePromptLink";
 
 // "Schnelleinfuegen" beim BEARBEITEN einer bestehenden Option. Anders als
@@ -31,8 +31,17 @@ export default function OptionSchnelleinfuegen({
 }) {
   const [text, setText] = useState("");
   const [laedt, setLaedt] = useState(false);
+  // Ausstehende Ersetzung, die noch bestaetigt werden muss (siehe
+  // starteUebernahme) -- statt window.confirm(), das manche Browser (v.a.
+  // Chrome) nach ein paar Dialogen auf derselben Seite stillschweigend
+  // unterdruecken: der Aufruf gibt dann sofort "false" zurueck, OHNE
+  // ueberhaupt einen Dialog zu zeigen. Fuer Markus sah das so aus, als wuerde
+  // "Uebernehmen" bei einer bereits befuellten Option einfach gar nichts tun.
+  // Eine im Seitenlayout sichtbare Bestaetigung kann so nicht unterdrueckt
+  // werden.
+  const [ausstehend, setAusstehend] = useState<GeparsteOption | null>(null);
 
-  async function uebernehmen() {
+  function starteUebernahme() {
     const geparst = parseSchnelleinfuegenText(text);
     if (!geparst) {
       window.alert(
@@ -43,10 +52,13 @@ export default function OptionSchnelleinfuegen({
 
     const hatBestehendenInhalt = !!(titelAktuell.trim() || beschreibungAktuell.trim() || featuresAnzahlAktuell > 0);
     if (hatBestehendenInhalt) {
-      const ok = window.confirm("Bestehender Inhalt wird ersetzt – fortfahren?");
-      if (!ok) return;
+      setAusstehend(geparst);
+      return;
     }
+    fuehreUebernahmeAus(geparst);
+  }
 
+  async function fuehreUebernahmeAus(geparst: GeparsteOption) {
     const formData = new FormData();
     formData.set("seminartermin_option_id", seminarterminOptionId);
     formData.set("seminartermin_id", seminarterminId);
@@ -59,6 +71,7 @@ export default function OptionSchnelleinfuegen({
     try {
       await uebernehmenAction(formData);
       setText("");
+      setAusstehend(null);
     } catch (e: any) {
       window.alert(`Übernehmen fehlgeschlagen: ${e?.message || "unbekannter Fehler"}`);
     } finally {
@@ -79,9 +92,25 @@ export default function OptionSchnelleinfuegen({
         onChange={(e) => setText(e.target.value)}
         placeholder={"Business\nDer gewinnwirksame Weg zu wert- und gewinnorientierter Preisfindung ...\n- Seminar inklusive drei **Übernachtungen** im Einzelzimmer mit Frühstück\n- ..."}
       />
-      <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={uebernehmen} disabled={laedt}>
-        {laedt ? "Wird übernommen …" : "Übernehmen"}
-      </button>
+      {ausstehend ? (
+        <div style={{ background: "#fdf3e2", border: "1px solid #f2ddb0", borderRadius: "var(--radius-sm)", padding: "0.5rem 0.65rem" }}>
+          <p style={{ margin: "0 0 0.5rem", fontSize: "0.85rem" }}>
+            Bestehender Inhalt („{titelAktuell || "ohne Titel"}“{featuresAnzahlAktuell ? `, ${featuresAnzahlAktuell} Feature(s)` : ""}) wird durch „{ausstehend.titel}“ ({ausstehend.features.length} Feature(s)) ersetzt.
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" className="au-btn au-btn-primary au-btn-sm" onClick={() => fuehreUebernahmeAus(ausstehend)} disabled={laedt}>
+              {laedt ? "Wird übernommen …" : "Ja, ersetzen"}
+            </button>
+            <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={() => setAusstehend(null)} disabled={laedt}>
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={starteUebernahme} disabled={laedt}>
+          {laedt ? "Wird übernommen …" : "Übernehmen"}
+        </button>
+      )}
     </div>
   );
 }
