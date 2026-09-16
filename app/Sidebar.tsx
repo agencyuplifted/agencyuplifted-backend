@@ -22,6 +22,7 @@ const GROUPS: NavGroup[] = [
       { href: "/buchungen/fastbill", label: "FastBill-Abgleich" },
       { href: "/referenzen", label: "Referenzen" },
       { href: "/seminartypen", label: "Seminarkategorien & Farben" },
+      { href: "/preisstaffel-vorlagen", label: "Preisstaffel-Vorlagen" },
     ],
   },
   {

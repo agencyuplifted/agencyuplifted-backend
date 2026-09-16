@@ -136,3 +136,73 @@ export function gueltigBisText(zeitpunktISO: string): string {
   const wert = (typ: string) => teile.find((t) => t.type === typ)?.value ?? "";
   return `${Number(wert("day"))}. ${MONATSNAMEN[Number(wert("month")) - 1]}`;
 }
+
+// ---------------------------------------------------------------------------
+// Gespeicherte Preisstaffel-Vorlagen (Tabelle preisstaffel_vorlagen,
+// Verwaltung unter /preisstaffel-vorlagen). Anders als die fest eingebaute
+// Vorlage "Monatlicher Stichtag rueckwaerts" oben kennen sie NUR den relativen
+// Modus (stichtag_tage_vor_start) -- ein festes Kalenderdatum passt nicht
+// automatisch zu jedem Termin, in den die Vorlage spaeter geladen wird.
+// Eine Stufe hat dasselbe Format wie eine Zeile in preisstaffeln (ohne
+// stichtag_datum/waehrung/sortierung), damit Laden/Speichern 1:1 abbildet.
+
+export type PreisstaffelVorlageStufe = {
+  name: string;
+  stichtag_tage_vor_start: number;
+  preis: number;
+};
+
+export type PreisstaffelVorlage = {
+  id: string;
+  name: string;
+  beschreibung: string | null;
+  stufen: PreisstaffelVorlageStufe[];
+  erstellt_am: string;
+  aktualisiert_am: string;
+};
+
+// Prueft und normalisiert Stufen (aus dem Editor oder aus der DB) und wirft
+// bei ungueltigen Eingaben einen deutschen, direkt anzeigbaren Fehler.
+// Wird sowohl clientseitig (sofortiges Feedback im Editor) als auch in den
+// Server Actions verwendet -- der Client ist nicht die einzige Absicherung.
+// Rueckgabe sortiert nach Stichtag (groesste Tageszahl = fruehester Stichtag
+// zuerst), dieselbe Reihenfolge wie sortierteStaffeln fuer relative Stufen.
+export function normalisiereVorlageStufen(roh: unknown): PreisstaffelVorlageStufe[] {
+  if (!Array.isArray(roh) || roh.length === 0) {
+    throw new Error("Eine Vorlage braucht mindestens eine Preisstufe.");
+  }
+  const stufen = roh.map((s: any, i) => {
+    const nr = i + 1;
+    const name = String(s?.name ?? "").trim();
+    if (!name) throw new Error(`Stufe ${nr}: Name fehlt.`);
+    const tageRoh = s?.stichtag_tage_vor_start;
+    const tage = tageRoh === "" || tageRoh === null || tageRoh === undefined ? NaN : Number(tageRoh);
+    if (!Number.isInteger(tage) || tage < 0) {
+      throw new Error(`Stufe ${nr} („${name}“): „Tage vor Start“ muss eine ganze Zahl ab 0 sein.`);
+    }
+    const preisRoh = s?.preis;
+    const preis = preisRoh === "" || preisRoh === null || preisRoh === undefined ? NaN : Number(preisRoh);
+    if (!Number.isFinite(preis) || preis < 0) {
+      throw new Error(`Stufe ${nr} („${name}“): Preis fehlt oder ist ungültig.`);
+    }
+    return { name, stichtag_tage_vor_start: tage, preis: Math.round(preis * 100) / 100 };
+  });
+
+  // Zwei Stufen mit identischem Stichtag waeren fuer aktuellePreisstaffel
+  // nicht unterscheidbar -- welche gilt, hinge zufaellig von der Reihenfolge ab.
+  const gesehen = new Set<number>();
+  for (const s of stufen) {
+    if (gesehen.has(s.stichtag_tage_vor_start)) {
+      throw new Error(`Zwei Stufen haben denselben Stichtag (${s.stichtag_tage_vor_start} Tage vor Start).`);
+    }
+    gesehen.add(s.stichtag_tage_vor_start);
+  }
+
+  return stufen.sort((a, b) => b.stichtag_tage_vor_start - a.stichtag_tage_vor_start);
+}
+
+// Eine Options-Preisstaffel laesst sich nur als Vorlage speichern, wenn keine
+// Stufe ein festes Datum nutzt.
+export function stufenMitFestemDatum<T extends Pick<Preisstaffel, "stichtag_datum">>(staffeln: T[]): T[] {
+  return staffeln.filter((s) => !!s.stichtag_datum);
+}

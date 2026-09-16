@@ -15,7 +15,14 @@ import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
 import { erzeugeSlug, eindeutigerSlug, erzeugeTagSlug } from "./insights";
 import { holeAutocompleteVorschlaege } from "./themen-radar";
-import { stichtagsDatumEndeDesTages, berechneMonatlicheStichtageRueckwaerts } from "./preisstaffeln";
+import {
+  stichtagsDatumEndeDesTages,
+  berechneMonatlicheStichtageRueckwaerts,
+  normalisiereVorlageStufen,
+  stufenMitFestemDatum,
+  type PreisstaffelVorlage,
+  type PreisstaffelVorlageStufe,
+} from "./preisstaffeln";
 import { fetchFastbillInvoices, findePreisMatch } from "./fastbill";
 
 // Ermittelt Anrede + Quelle fuer ein Formularfeld: explizite Angabe (Herr/Frau/
@@ -1428,6 +1435,186 @@ export async function wendePreisstaffelVorlageAn(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath(`/termine/${seminarterminId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Gespeicherte Preisstaffel-Vorlagen (Tabelle preisstaffel_vorlagen, siehe
+// normalisiereVorlageStufen in lib/preisstaffeln.ts). Diese Actions werden
+// direkt aus Client-Komponenten aufgerufen und geben Fehler als
+// { fehler } zurueck statt zu werfen: in Production-Builds ersetzt Next.js
+// die Message geworfener Server-Action-Fehler durch einen generischen Text --
+// "Name schon vergeben" oder "Stufe 3: Preis fehlt" kaeme sonst nie beim
+// Nutzer an.
+
+export type VorlagenAktionsErgebnis = { fehler: string | null };
+
+function leseVorlageStufenAusFormData(formData: FormData): PreisstaffelVorlageStufe[] {
+  let roh: unknown;
+  try {
+    roh = JSON.parse(String(formData.get("stufen_json") || "[]"));
+  } catch {
+    throw new Error("Die Preisstufen konnten nicht gelesen werden.");
+  }
+  return normalisiereVorlageStufen(roh);
+}
+
+function vorlagenDbFehler(error: { code?: string; message: string }, name: string): string {
+  // 23505 = unique_violation auf preisstaffel_vorlagen_name_unique
+  // (case-insensitiv, siehe Migration) -- beim spaeteren Laden waeren zwei
+  // gleichnamige Vorlagen in der Auswahl nicht unterscheidbar.
+  if (error.code === "23505") return `Es gibt bereits eine Vorlage mit dem Namen „${name}“.`;
+  return error.message;
+}
+
+export async function listePreisstaffelVorlagen(): Promise<PreisstaffelVorlage[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("preisstaffel_vorlagen").select("*").order("name");
+  if (error) throw new Error(error.message);
+  return (data || []) as PreisstaffelVorlage[];
+}
+
+export async function createPreisstaffelVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const name = String(formData.get("name") || "").trim();
+  const beschreibung = String(formData.get("beschreibung") || "").trim();
+  if (!name) return { fehler: "Bitte einen Namen für die Vorlage angeben." };
+
+  let stufen: PreisstaffelVorlageStufe[];
+  try {
+    stufen = leseVorlageStufenAusFormData(formData);
+  } catch (e: any) {
+    return { fehler: e.message };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("preisstaffel_vorlagen")
+    .insert({ name, beschreibung: beschreibung || null, stufen });
+  if (error) return { fehler: vorlagenDbFehler(error, name) };
+
+  revalidatePath("/preisstaffel-vorlagen");
+  return { fehler: null };
+}
+
+export async function updatePreisstaffelVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("vorlage_id") || "");
+  const name = String(formData.get("name") || "").trim();
+  const beschreibung = String(formData.get("beschreibung") || "").trim();
+  if (!id) return { fehler: "Vorlage nicht gefunden." };
+  if (!name) return { fehler: "Bitte einen Namen für die Vorlage angeben." };
+
+  let stufen: PreisstaffelVorlageStufe[];
+  try {
+    stufen = leseVorlageStufenAusFormData(formData);
+  } catch (e: any) {
+    return { fehler: e.message };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("preisstaffel_vorlagen")
+    .update({ name, beschreibung: beschreibung || null, stufen, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id);
+  if (error) return { fehler: vorlagenDbFehler(error, name) };
+
+  revalidatePath("/preisstaffel-vorlagen");
+  return { fehler: null };
+}
+
+// Loeschen betrifft nur die Vorlage selbst -- bereits in Optionen geladene
+// Stufen sind eigenstaendige Kopien in preisstaffeln und bleiben erhalten.
+export async function deletePreisstaffelVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("vorlage_id") || "");
+  if (!id) return { fehler: "Vorlage nicht gefunden." };
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("preisstaffel_vorlagen").delete().eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidatePath("/preisstaffel-vorlagen");
+  return { fehler: null };
+}
+
+// "Aus Vorlage laden" im Preisstaffel-Editor einer Option: die Stufen kommen
+// NICHT direkt aus der Vorlage, sondern aus der (ggf. im Editor angepassten)
+// Vorschau -- Anpassungen gelten nur fuer diese Option, die Vorlage bleibt
+// unveraendert. Ersetzt wie copyPreisstaffelnFromOption alle bestehenden
+// Staffeln der Option (Rueckfrage dafuer im Frontend). Validierung laeuft vor
+// dem Loeschen, damit ungueltige Eingaben nie eine leere Option hinterlassen.
+export async function ersetzePreisstaffelnDurchVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const optionId = String(formData.get("seminartermin_option_id") || "");
+  const seminarterminId = String(formData.get("seminartermin_id") || "");
+  if (!optionId) return { fehler: "Option nicht gefunden." };
+
+  let stufen: PreisstaffelVorlageStufe[];
+  try {
+    stufen = leseVorlageStufenAusFormData(formData);
+  } catch (e: any) {
+    return { fehler: e.message };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { error: delError } = await supabase
+    .from("preisstaffeln")
+    .delete()
+    .eq("seminartermin_option_id", optionId);
+  if (delError) return { fehler: delError.message };
+
+  const { error: insError } = await supabase.from("preisstaffeln").insert(
+    stufen.map((s) => ({
+      seminartermin_option_id: optionId,
+      name: s.name,
+      stichtag_tage_vor_start: s.stichtag_tage_vor_start,
+      stichtag_datum: null,
+      preis: s.preis,
+      sortierung: s.stichtag_tage_vor_start,
+    }))
+  );
+  if (insError) return { fehler: insError.message };
+
+  revalidatePath(`/termine/${seminarterminId}`);
+  return { fehler: null };
+}
+
+// "Aktuelle Staffel als Vorlage speichern": liest die Stufen serverseitig aus
+// der DB statt sie vom Client zu uebernehmen -- so landet garantiert der
+// gespeicherte Stand in der Vorlage, und die Nur-relativ-Regel wird auch dann
+// durchgesetzt, wenn das Frontend (ausgeblendeter Button) umgangen wird.
+export async function speicherePreisstaffelnAlsVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const optionId = String(formData.get("seminartermin_option_id") || "");
+  const seminarterminId = String(formData.get("seminartermin_id") || "");
+  const name = String(formData.get("name") || "").trim();
+  const beschreibung = String(formData.get("beschreibung") || "").trim();
+  if (!optionId) return { fehler: "Option nicht gefunden." };
+  if (!name) return { fehler: "Bitte einen Namen für die Vorlage angeben." };
+
+  const supabase = getSupabaseAdmin();
+  const { data: staffeln, error: ladeError } = await supabase
+    .from("preisstaffeln")
+    .select("name, stichtag_tage_vor_start, stichtag_datum, preis")
+    .eq("seminartermin_option_id", optionId);
+  if (ladeError) return { fehler: ladeError.message };
+  if (!staffeln?.length) return { fehler: "Diese Option hat noch keine Preisstaffeln." };
+
+  const mitDatum = stufenMitFestemDatum(staffeln);
+  if (mitDatum.length) {
+    return {
+      fehler: `Nicht möglich: ${mitDatum.map((s) => `„${s.name}“`).join(", ")} ${mitDatum.length === 1 ? "nutzt" : "nutzen"} ein festes Datum. Vorlagen funktionieren nur mit „Tage vor Start“.`,
+    };
+  }
+
+  let stufen: PreisstaffelVorlageStufe[];
+  try {
+    stufen = normalisiereVorlageStufen(staffeln);
+  } catch (e: any) {
+    return { fehler: e.message };
+  }
+
+  const { error } = await supabase
+    .from("preisstaffel_vorlagen")
+    .insert({ name, beschreibung: beschreibung || null, stufen });
+  if (error) return { fehler: vorlagenDbFehler(error, name) };
+
+  revalidatePath("/preisstaffel-vorlagen");
+  revalidatePath(`/termine/${seminarterminId}`);
+  return { fehler: null };
 }
 
 export async function createUrgencyStufe(formData: FormData) {

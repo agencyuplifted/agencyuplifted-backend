@@ -24,6 +24,8 @@ import {
   updatePreisstaffel,
   copyPreisstaffelnFromOption,
   wendePreisstaffelVorlageAn,
+  ersetzePreisstaffelnDurchVorlage,
+  speicherePreisstaffelnAlsVorlage,
   addMitarbeiterZuTermin,
   removeMitarbeiterVonTermin,
   setzeZimmerpartner,
@@ -35,10 +37,11 @@ import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
 import KopierePreisstaffelnButton from "./KopierePreisstaffelnButton";
+import PreisstaffelVorlagenAktionen from "./PreisstaffelVorlagenAktionen";
 import DeaktivierenOptionButton from "./DeaktivierenOptionButton";
 import NeueOptionSchnelleinfuegen from "./NeueOptionSchnelleinfuegen";
 import OptionSchnelleinfuegen from "./OptionSchnelleinfuegen";
-import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag, berechneMonatlicheStichtageRueckwaerts } from "@/lib/preisstaffeln";
+import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag, berechneMonatlicheStichtageRueckwaerts, type PreisstaffelVorlage } from "@/lib/preisstaffeln";
 import Link from "next/link";
 
 const badgeLabel: Record<string, string> = {
@@ -115,6 +118,7 @@ export default async function TerminDetailPage({
     { data: zimmerpartner },
     { data: andereTermine },
     { data: alleOptionenFuerKopie },
+    { data: preisstaffelVorlagen },
   ] = await Promise.all([
     supabase
       .from("seminartermine")
@@ -175,6 +179,9 @@ export default async function TerminDetailPage({
     supabase
       .from("seminartermin_optionen")
       .select("id, titel, preisstaffeln(id), seminartermine(kennung, titel, datum_start, seminartypen(name))"),
+    // Gespeicherte Preisstaffel-Vorlagen fuer "Aus gespeicherter Vorlage laden"
+    // (einmal fuer alle Optionen geladen, nicht pro Option).
+    supabase.from("preisstaffel_vorlagen").select("*").order("name"),
   ]);
 
   // Optionen des gewaehlten Quell-Termins fuer den Options-Import (nur geladen,
@@ -1063,6 +1070,15 @@ export default async function TerminDetailPage({
                   <button type="submit" className="au-btn au-btn-secondary">+ Staffel</button>
                 </div>
               </form>
+
+              <PreisstaffelVorlagenAktionen
+                seminarterminOptionId={opt.id}
+                seminarterminId={id}
+                vorlagen={(preisstaffelVorlagen || []) as PreisstaffelVorlage[]}
+                bestehendeStaffeln={opt.preisstaffeln || []}
+                ersetzenAction={ersetzePreisstaffelnDurchVorlage}
+                alsVorlageSpeichernAction={speicherePreisstaffelnAlsVorlage}
+              />
 
               <details style={{ marginTop: "0.5rem" }}>
                 <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.85rem" }}>
