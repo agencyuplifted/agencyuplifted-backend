@@ -94,3 +94,95 @@ export function parseSchnelleinfuegenText(rohtext: string): GeparsteOption | nul
 
   return { titel, beschreibung, features, introLabel };
 }
+
+// ---------------------------------------------------------------------------
+// Export: exaktes Gegenstueck zu parseSchnelleinfuegenText -- erzeugt Text,
+// der per Schnelleinfuegen wieder dieselben Titel/Beschreibung/Vorspann/
+// Features ergibt (Round-Trip, z.B. um Options-Texte zwischen Terminen zu
+// kopieren oder zu archivieren). Bewusst NUR diese Felder, genau wie der
+// Parser -- Badge, Preisstaffeln, Ratenzahlung usw. sind nicht Teil des Formats.
+
+export type ExportOption = {
+  titel: string | null;
+  beschreibung: string | null;
+  vorspann_text: string | null;
+  vorspann_anzeigen: boolean | null;
+  seminartermin_options_features?: { label: string | null; text: string; hervorgehoben: boolean | null; sortierung: number | null }[] | null;
+};
+
+export function exportiereSchnelleinfuegenText(option: ExportOption): string {
+  const zeilen: string[] = [];
+  // Titel muss eine einzelne Zeile sein (Parser nimmt nur die erste Zeile).
+  zeilen.push((option.titel || "").replace(/\s*\r?\n\s*/g, " ").trim());
+
+  const beschreibung = (option.beschreibung || "").trim();
+  if (beschreibung) zeilen.push(beschreibung);
+
+  // Vorspann nur, wenn er auch angezeigt wird: beim Einfuegen schaltet eine
+  // "Vorspann:"-Zeile den Schalter automatisch ein -- ein nur hinterlegter,
+  // aber ausgeschalteter Text wuerde sonst beim Round-Trip sichtbar.
+  const vorspann = (option.vorspann_text || "").replace(/\s*\r?\n\s*/g, " ").trim();
+  if (vorspann && option.vorspann_anzeigen) zeilen.push(`Vorspann: ${vorspann}`);
+
+  const features = [...(option.seminartermin_options_features || [])].sort(
+    (a, b) => (a.sortierung ?? 0) - (b.sortierung ?? 0)
+  );
+  for (const f of features) {
+    const text = (f.text || "").replace(/\s*\r?\n\s*/g, " ").trim();
+    if (!text) continue;
+    const label = (f.label || "").replace(/\s*\r?\n\s*/g, " ").trim();
+    zeilen.push(`${f.hervorgehoben ? "+" : "-"} ${label ? `${label} — ${text}` : text}`);
+  }
+
+  return zeilen.join("\n");
+}
+
+// Mehrere Optionen: Bloecke durch eine Leerzeile getrennt. Schnelleinfuegen
+// uebernimmt immer genau EINE Option -- zum Wiedereinfuegen jeweils einen
+// Block (Titel bis letzte Feature-Zeile) kopieren.
+export function exportiereAlleSchnelleinfuegenText(optionen: ExportOption[]): string {
+  return optionen.map(exportiereSchnelleinfuegenText).join("\n\n");
+}
+
+// Das Format kennt kein Escaping. Einige Inhalte lassen sich darin deshalb
+// nicht verlustfrei ausdruecken (z.B. eine Beschreibungszeile, die mit "-"
+// beginnt, wird beim Einfuegen zum Feature; ein Feature ohne Label mit " - "
+// im Text wird in Label/Detail aufgeteilt). Statt das raten zu wollen, wird
+// der Export einmal durch den echten Parser geschickt und mit dem Original
+// verglichen -- Rueckgabe sind lesbare Hinweise auf die Abweichungen (leer =
+// Round-Trip exakt).
+export function pruefeSchnelleinfuegenRoundTrip(option: ExportOption): string[] {
+  const hinweise: string[] = [];
+  const geparst = parseSchnelleinfuegenText(exportiereSchnelleinfuegenText(option));
+  const features = [...(option.seminartermin_options_features || [])]
+    .sort((a, b) => (a.sortierung ?? 0) - (b.sortierung ?? 0))
+    .filter((f) => (f.text || "").trim());
+
+  if (!geparst) {
+    return [
+      features.length
+        ? "Der Export lässt sich nicht wieder einfügen (Titel fehlt)."
+        : "Option hat keine Features – Schnelleinfügen braucht mindestens eine Feature-Zeile.",
+    ];
+  }
+
+  if (geparst.titel !== (option.titel || "").trim()) hinweise.push("Titel wird beim Einfügen verändert (z. B. Zeilenumbruch im Titel).");
+  if (geparst.beschreibung !== (option.beschreibung || "").trim()) {
+    hinweise.push("Beschreibung wird beim Einfügen verändert – eine Zeile beginnt mit „-“/„+“ oder „Vorspann:“.");
+  }
+  const vorspannErwartet = option.vorspann_anzeigen ? (option.vorspann_text || "").trim() || undefined : undefined;
+  if (geparst.introLabel !== vorspannErwartet) hinweise.push("Vorspann wird beim Einfügen verändert.");
+
+  if (geparst.features.length !== features.length) {
+    hinweise.push(`Beim Einfügen entstehen ${geparst.features.length} statt ${features.length} Features.`);
+  } else {
+    features.forEach((f, i) => {
+      const g = geparst.features[i];
+      const labelGleich = (g.label || "") === (f.label || "").trim();
+      if (!labelGleich || g.detail !== f.text.trim() || g.isHighlighted !== !!f.hervorgehoben) {
+        hinweise.push(`Feature ${i + 1} („${f.text.trim().slice(0, 40)}${f.text.trim().length > 40 ? "…" : ""}“) wird beim Einfügen anders aufgeteilt.`);
+      }
+    });
+  }
+  return hinweise;
+}

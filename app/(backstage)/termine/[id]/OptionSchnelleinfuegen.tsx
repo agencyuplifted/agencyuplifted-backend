@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { parseSchnelleinfuegenText, GeparsteOption } from "@/lib/schnelleinfuegen";
 import KopierePromptLink from "./KopierePromptLink";
+import MarkdownExportBox from "./MarkdownExportBox";
 
 // "Schnelleinfuegen" beim BEARBEITEN einer bestehenden Option. Anders als
 // beim Neuanlegen (siehe NeueOptionSchnelleinfuegen.tsx) existieren Features
@@ -21,6 +22,8 @@ export default function OptionSchnelleinfuegen({
   beschreibungAktuell,
   featuresAnzahlAktuell,
   uebernehmenAction,
+  exportText,
+  exportHinweise,
 }: {
   seminarterminOptionId: string;
   seminarterminId: string;
@@ -28,7 +31,12 @@ export default function OptionSchnelleinfuegen({
   beschreibungAktuell: string;
   featuresAnzahlAktuell: number;
   uebernehmenAction: (formData: FormData) => Promise<void>;
+  // Export als Gegenstueck im selben Kasten (Tab), siehe
+  // exportiereSchnelleinfuegenText in lib/schnelleinfuegen.ts.
+  exportText: string;
+  exportHinweise: string[];
 }) {
+  const [ansicht, setAnsicht] = useState<"einfuegen" | "export">("einfuegen");
   const [text, setText] = useState("");
   const [laedt, setLaedt] = useState(false);
   // Ausstehende Ersetzung, die noch bestaetigt werden muss (siehe
@@ -81,10 +89,40 @@ export default function OptionSchnelleinfuegen({
 
   return (
     <div style={{ background: "#f7f7f7", borderRadius: "var(--radius-sm)", padding: "0.6rem", marginBottom: "0.75rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
-        <label className="au-label" style={{ margin: 0 }}>Schnelleinfügen (ersetzt Titel/Beschreibung/Features)</label>
-        <KopierePromptLink />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+        <div className="au-tabs" style={{ margin: 0, gap: "0.3rem" }} role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={ansicht === "einfuegen"}
+            className={`au-tab ${ansicht === "einfuegen" ? "au-tab-active" : ""}`}
+            style={{ cursor: "pointer", padding: "0.3rem 0.75rem", fontSize: "0.78rem" }}
+            onClick={() => setAnsicht("einfuegen")}
+          >
+            Schnelleinfügen
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={ansicht === "export"}
+            className={`au-tab ${ansicht === "export" ? "au-tab-active" : ""}`}
+            style={{ cursor: "pointer", padding: "0.3rem 0.75rem", fontSize: "0.78rem" }}
+            onClick={() => setAnsicht("export")}
+          >
+            Als Markdown exportieren
+          </button>
+        </div>
+        {ansicht === "einfuegen" && <KopierePromptLink />}
       </div>
+      {ansicht === "export" ? (
+        <MarkdownExportBox
+          text={exportText}
+          hinweise={[{ texte: exportHinweise }]}
+          fusszeile="Titel, Beschreibung, Vorspann und Features – in einer anderen Option per Schnelleinfügen wieder einfügbar."
+        />
+      ) : (
+      <>
+      <label className="au-label" style={{ marginBottom: "0.35rem" }}>Ersetzt Titel/Beschreibung/Features</label>
       <textarea
         className="au-textarea"
         rows={4}
@@ -110,6 +148,8 @@ export default function OptionSchnelleinfuegen({
         <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={starteUebernahme} disabled={laedt}>
           {laedt ? "Wird übernommen …" : "Übernehmen"}
         </button>
+      )}
+      </>
       )}
     </div>
   );

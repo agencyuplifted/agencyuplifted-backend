@@ -41,6 +41,12 @@ import PreisstaffelVorlagenAktionen from "./PreisstaffelVorlagenAktionen";
 import DeaktivierenOptionButton from "./DeaktivierenOptionButton";
 import NeueOptionSchnelleinfuegen from "./NeueOptionSchnelleinfuegen";
 import OptionSchnelleinfuegen from "./OptionSchnelleinfuegen";
+import OptionenImportExportTabs from "./OptionenImportExportTabs";
+import {
+  exportiereSchnelleinfuegenText,
+  exportiereAlleSchnelleinfuegenText,
+  pruefeSchnelleinfuegenRoundTrip,
+} from "@/lib/schnelleinfuegen";
 import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag, berechneMonatlicheStichtageRueckwaerts, type PreisstaffelVorlage } from "@/lib/preisstaffeln";
 import Link from "next/link";
 
@@ -841,6 +847,8 @@ export default async function TerminDetailPage({
                 beschreibungAktuell={opt.beschreibung || ""}
                 featuresAnzahlAktuell={(opt.seminartermin_options_features || []).length}
                 uebernehmenAction={uebernehmeOptionSchnelleinfuegen}
+                exportText={exportiereSchnelleinfuegenText(opt)}
+                exportHinweise={pruefeSchnelleinfuegenRoundTrip(opt)}
               />
               <form action={updateSeminarOption} style={{ marginTop: "0.6rem", maxWidth: 480 }}>
                 <input type="hidden" name="seminartermin_option_id" value={opt.id} />
@@ -1162,9 +1170,13 @@ export default async function TerminDetailPage({
           <p style={{ color: "var(--color-text-faint)" }}>Noch keine Optionen angelegt.</p>
         )}
 
-        <div className="au-card">
-          <strong>Optionen aus anderem Termin importieren</strong>
-          <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0.35rem 0 0.75rem" }}>
+        <OptionenImportExportTabs
+          exportText={exportiereAlleSchnelleinfuegenText(optionen || [])}
+          exportHinweise={(optionen || []).map((o: any) => ({ titel: o.titel, texte: pruefeSchnelleinfuegenRoundTrip(o) }))}
+          anzahlOptionen={optionen?.length || 0}
+          anzahlDeaktiviert={(optionen || []).filter((o: any) => o.deaktiviert_am).length}
+        >
+          <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0 0 0.75rem" }}>
             Praktisch, wenn dieser Termin die gleichen (oder fast gleichen) Optionen wie ein bestehender Termin braucht – z. B. aus einem anderen Seminartyp. Quell-Termin waehlen, gewuenschte Option(en) ankreuzen, importieren. Importierte Optionen sind eigenstaendige Kopien (inkl. Features und Preisstaffeln) und koennen danach hier ganz normal bearbeitet werden, ohne den Quell-Termin zu beeinflussen.
           </p>
           <form method="GET" style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -1213,7 +1225,7 @@ export default async function TerminDetailPage({
               )}
             </div>
           )}
-        </div>
+        </OptionenImportExportTabs>
 
         <div className="au-card">
           <strong>Neue Option hinzufügen</strong>
