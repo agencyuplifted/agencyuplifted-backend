@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import {
   createPreisstaffel,
   createUrgencyStufe,
+  updateUrgencyStufe,
+  deleteUrgencyStufe,
   previewSeminarterminUpdate,
   createSeminarOption,
   createOptionFeature,
@@ -38,6 +40,9 @@ import { formatDatum, formatEUR, formatEURBrutto, effektiveTerminNaechte } from 
 import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
+import UrgencyStufeZeile, { UrgencySchwellenwertFelder } from "./UrgencyStufeZeile";
+import WebsiteAnzeigeHinweis from "../WebsiteAnzeigeHinweis";
+import { ladeWebsiteVerfuegbarkeit, beschreibeUrgencyStufe, setzeUrgencyPlatzhalter, urgencyBelegteSchwelle } from "@/lib/verfuegbarkeit";
 import PreisstaffelZeile, { type PreisstaffelZeileDaten } from "./PreisstaffelZeile";
 import KopierePreisstaffelnButton from "./KopierePreisstaffelnButton";
 import PreisstaffelVorlagenAktionen from "./PreisstaffelVorlagenAktionen";
@@ -189,7 +194,7 @@ export default async function TerminDetailPage({
       .from("urgency_stufen")
       .select("*")
       .eq("seminartermin_id", id)
-      .order("schwellenwert_prozent", { ascending: true }),
+      .order("sortierung", { ascending: true }),
     supabase
       .from("mitarbeiter")
       .select("*")
@@ -235,6 +240,19 @@ export default async function TerminDetailPage({
     // (einmal fuer alle Optionen geladen, nicht pro Option).
     supabase.from("preisstaffel_vorlagen").select("*").order("name"),
   ]);
+
+  // Exakt dieselbe Berechnung wie /api/public/seminartermine/[id], die der
+  // Onepage-Hero live abfragt -- damit "Website zeigt" hier nie von der
+  // tatsaechlichen Anzeige abweicht.
+  const websiteAnzeige = termin ? (await ladeWebsiteVerfuegbarkeit(supabase, [termin as any])).get(termin.id)! : null;
+  const urgencyStufenZeilen = [...(urgencyStufen || [])]
+    .sort((a: any, b: any) => urgencyBelegteSchwelle(a, termin?.kapazitaet ?? 0) - urgencyBelegteSchwelle(b, termin?.kapazitaet ?? 0))
+    .map((u: any) => ({
+      ...u,
+      beschreibung: beschreibeUrgencyStufe(u),
+      greiftAktuell: websiteAnzeige?.aktiveStufe?.id === u.id,
+      textVorschau: setzeUrgencyPlatzhalter(u.text_vorlage, websiteAnzeige?.freiePlaetze ?? 0, termin?.kapazitaet ?? 0),
+    }));
 
   // Optionen des gewaehlten Quell-Termins fuer den Options-Import (nur geladen,
   // wenn im Import-Panel bereits ein Quell-Termin ausgewaehlt wurde).
@@ -645,7 +663,7 @@ export default async function TerminDetailPage({
                 <p style={{ margin: "-0.5rem 0 0.75rem" }}>
                   <span className="au-badge au-badge-warning">Manuell überschrieben</span>{" "}
                   <span style={{ color: "var(--color-text-faint)", fontSize: "0.8rem" }}>
-                    — zeigt {termin.angezeigte_restplaetze} statt der echten Restplätze an
+                    — zeigt {termin.angezeigte_restplaetze} statt der echten {websiteAnzeige?.freiRechnerisch ?? "?"} Restplätze an
                   </span>
                 </p>
               )}
@@ -1301,44 +1319,49 @@ export default async function TerminDetailPage({
 
       <div className="au-card">
         <h2>Urgency-Stufen</h2>
+        {websiteAnzeige && <WebsiteAnzeigeHinweis anzeige={websiteAnzeige} termin={termin} ausfuehrlich />}
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
-          Text, der ab dem jeweiligen Belegungs-Prozentsatz angezeigt wird (basierend auf "Angezeigte Restplätze"). Platzhalter <code>{"{remaining}"}</code> / <code>{"{total}"}</code> möglich.
+          Greifen mehrere Stufen, wird die mit der höchsten Belegungsschwelle angezeigt. Greift keine, erscheint der „Urgency-Text Standard“ aus dem Termin-Formular.
+          Grundlage sind die angezeigten (ggf. manuell überschriebenen) Restplätze. Platzhalter <code>{"{remaining}"}</code> / <code>{"{total}"}</code> möglich.
         </p>
         <table className="au-table">
           <thead>
             <tr>
-              <th>Ab % belegt</th>
+              <th>Bedingung</th>
               <th>Text</th>
+              <th></th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {urgencyStufen?.map((u) => (
-              <tr key={u.id}>
-                <td>{u.schwellenwert_prozent}%</td>
-                <td>{u.text_vorlage}</td>
-              </tr>
+            {urgencyStufenZeilen.map((u) => (
+              <UrgencyStufeZeile
+                key={u.id}
+                stufe={u}
+                seminarterminId={id}
+                updateAction={updateUrgencyStufe}
+                deleteAction={deleteUrgencyStufe}
+              />
             ))}
-            {!urgencyStufen?.length && (
-              <tr><td colSpan={2} style={{ color: "var(--color-text-faint)" }}>Noch keine Urgency-Stufen.</td></tr>
+            {!urgencyStufenZeilen.length && (
+              <tr><td colSpan={4} style={{ color: "var(--color-text-faint)" }}>Noch keine Urgency-Stufen.</td></tr>
             )}
           </tbody>
         </table>
-        <form action={createUrgencyStufe} className="au-row-2">
-          <input type="hidden" name="seminartermin_id" value={id} />
-          <div>
-            <label className="au-label">Schwellenwert (% belegt)</label>
-            <input className="au-input" name="schwellenwert_prozent" type="number" min={0} max={100} required />
-          </div>
-          <div>
-            <label className="au-label">Text</label>
-            <input className="au-input" name="text_vorlage" placeholder="Nur noch wenige Plätze" required />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <button type="submit" className="au-btn au-btn-primary">
-              Stufe hinzufügen
-            </button>
-          </div>
-        </form>
+        <details style={{ margin: "0.5rem 0 0" }}>
+          <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>+ Urgency-Stufe hinzufügen</summary>
+          <form action={createUrgencyStufe} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem", alignItems: "start", marginTop: "0.5rem" }}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <UrgencySchwellenwertFelder />
+            <div>
+              <label className="au-label">Text</label>
+              <input className="au-input" name="text_vorlage" placeholder="z. B. Nur noch {remaining} Plätze frei" required />
+            </div>
+            <div style={{ alignSelf: "end" }}>
+              <button type="submit" className="au-btn au-btn-primary au-btn-sm">Stufe hinzufügen</button>
+            </div>
+          </form>
+        </details>
       </div>
 
       <div className="au-card">

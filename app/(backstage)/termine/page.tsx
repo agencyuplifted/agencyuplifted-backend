@@ -4,6 +4,8 @@ import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatDatumsspanne, monatsName } from "@/lib/format";
 import { duplicateSeminartermin } from "@/lib/actions";
+import { ladeWebsiteVerfuegbarkeit, type WebsiteVerfuegbarkeit } from "@/lib/verfuegbarkeit";
+import WebsiteAnzeigeHinweis from "./WebsiteAnzeigeHinweis";
 
 function gruppeProMonat(liste: any[]) {
   const proMonat = new Map<string, any[]>();
@@ -91,11 +93,13 @@ function TerminTabelle({
   termine,
   gebuchtProTermin,
   gesamtProTermin,
+  websiteAnzeigeProTermin,
   heuteISO,
 }: {
   termine: any[];
   gebuchtProTermin: Map<string, number>;
   gesamtProTermin: Map<string, number>;
+  websiteAnzeigeProTermin: Map<string, WebsiteVerfuegbarkeit>;
   heuteISO: string;
 }) {
   const proMonat = gruppeProMonat(termine);
@@ -140,13 +144,8 @@ function TerminTabelle({
                         <span style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
                           Gesamt (TN+MA+Gastreferent): {gesamt}
                         </span>
-                        {t.angezeigte_restplaetze !== null && t.angezeigte_restplaetze !== undefined && (
-                          <>
-                            <br />
-                            <span className="au-badge au-badge-warning" title="Onepage zeigt eine manuell festgelegte Restplatzzahl statt der echten Buchungen">
-                              Anzeige überschrieben: {t.angezeigte_restplaetze} frei
-                            </span>
-                          </>
+                        {websiteAnzeigeProTermin.has(t.id) && (
+                          <WebsiteAnzeigeHinweis anzeige={websiteAnzeigeProTermin.get(t.id)!} termin={t} />
                         )}
                       </td>
                       <td>{t.status}</td>
@@ -256,6 +255,10 @@ export default async function TerminePage({
     .filter((t: any) => t.status === "abgesagt")
     .sort((a: any, b: any) => (a.datum_start < b.datum_start ? 1 : -1));
 
+  // Nur fuer anstehende Termine: vergangene/abgesagte liefert die oeffentliche
+  // API nicht mehr aus, dort gibt es also auch keine Website-Anzeige.
+  const websiteAnzeigeProTermin = await ladeWebsiteVerfuegbarkeit(supabase, anstehend);
+
   return (
     <main>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -297,21 +300,21 @@ export default async function TerminePage({
       {anstehend.length > 0 && (
         <>
           <h2 style={{ marginTop: "1.5rem" }}>Anstehende Seminare</h2>
-          <TerminTabelle termine={anstehend} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} heuteISO={heuteISO} />
+          <TerminTabelle termine={anstehend} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} websiteAnzeigeProTermin={websiteAnzeigeProTermin} heuteISO={heuteISO} />
         </>
       )}
 
       {storniert.length > 0 && (
         <>
           <h2 style={{ marginTop: "1.5rem", color: "var(--color-danger, #c0392b)" }}>Stornierte Seminare</h2>
-          <TerminTabelle termine={storniert} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} heuteISO={heuteISO} />
+          <TerminTabelle termine={storniert} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} websiteAnzeigeProTermin={websiteAnzeigeProTermin} heuteISO={heuteISO} />
         </>
       )}
 
       {alt.length > 0 && (
         <>
           <h2 style={{ marginTop: "1.5rem", color: "var(--color-text-muted)" }}>Alte Seminare</h2>
-          <TerminTabelle termine={alt} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} heuteISO={heuteISO} />
+          <TerminTabelle termine={alt} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} websiteAnzeigeProTermin={websiteAnzeigeProTermin} heuteISO={heuteISO} />
         </>
       )}
     </main>

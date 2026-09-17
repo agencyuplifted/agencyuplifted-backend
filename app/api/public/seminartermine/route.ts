@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { MWST_SATZ, MONATSNAMEN, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
+import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
+import { ladeWebsiteVerfuegbarkeit } from "@/lib/verfuegbarkeit";
 import { aktuellerPreisNetto } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Liste kuenftiger Seminartermine fuer die
@@ -73,79 +74,13 @@ export async function GET(request: NextRequest) {
     return withCors(NextResponse.json({ error: "query_fehler", detail: error.message }, { status: 500 }));
   }
 
-  const terminIds = (termine || []).map((t: any) => t.id);
-
-  // Belegung = Anzahl unterschiedlicher Teilnehmer (aktuelle Buchungen + Alt-
-  // Daten aus legacy_buchungen zusammengefuehrt, doppelt gezaehlte Personen
-  // vermieden). Mitarbeiter/Gastreferenten zaehlen nicht als belegter Platz.
-  // Gleiche Logik wie in /api/public/seminartermine/[id] und der
-  // Backstage-Terminuebersicht.
-  const { data: positionen } = terminIds.length
-    ? await supabase
-        .from("buchungspositionen")
-        .select("seminartermin_id, teilnehmer_id, buchungen!inner(status), teilnehmer(rolle)")
-        .in("seminartermin_id", terminIds)
-        .neq("buchungen.status", "storniert")
-    : { data: [] as any[] };
-
-  const { data: legacyPositionen } = terminIds.length
-    ? await supabase
-        .from("legacy_buchungen")
-        .select("seminartermin_id, teilnehmer_id, teilnehmer(rolle)")
-        .in("seminartermin_id", terminIds)
-    : { data: [] as any[] };
-
-  const teilnehmerProTermin = new Map<string, Set<string>>();
-  const zaehleEin = (seminarterminId: string | null, teilnehmerId: string | null, rolle: string | null | undefined) => {
-    if (!seminarterminId || !teilnehmerId) return;
-    if (rolle && rolle !== "teilnehmer") return;
-    if (!teilnehmerProTermin.has(seminarterminId)) teilnehmerProTermin.set(seminarterminId, new Set());
-    teilnehmerProTermin.get(seminarterminId)!.add(teilnehmerId);
-  };
-  (positionen || []).forEach((p: any) => zaehleEin(p.seminartermin_id, p.teilnehmer_id, p.teilnehmer?.rolle));
-  (legacyPositionen || []).forEach((l: any) => zaehleEin(l.seminartermin_id, l.teilnehmer_id, l.teilnehmer?.rolle));
-
-  const { data: urgencyStufenAlle } = terminIds.length
-    ? await supabase
-        .from("urgency_stufen")
-        .select("seminartermin_id, schwellenwert_prozent, text_vorlage")
-        .in("seminartermin_id", terminIds)
-    : { data: [] as any[] };
-  const urgencyStufenProTermin = new Map<string, { schwellenwert_prozent: number; text_vorlage: string }[]>();
-  (urgencyStufenAlle || []).forEach((u: any) => {
-    if (!urgencyStufenProTermin.has(u.seminartermin_id)) urgencyStufenProTermin.set(u.seminartermin_id, []);
-    urgencyStufenProTermin.get(u.seminartermin_id)!.push(u);
-  });
+  // Belegung, Restplaetze und Dringlichkeitstext kommen aus
+  // lib/verfuegbarkeit.ts -- dieselbe Berechnung zeigt Backstage unter
+  // /termine als "Website zeigt" an.
+  const verfuegbarkeit = await ladeWebsiteVerfuegbarkeit(supabase, (termine || []) as any[]);
 
   const ergebnis = (termine || []).map((t: any) => {
-    const gebucht = teilnehmerProTermin.get(t.id)?.size || 0;
-    const freiRechnerisch = Math.max(0, t.kapazitaet - gebucht);
-    // "Angezeigte Restplaetze" erlaubt eine manuelle Ueberschreibung,
-    // unabhaengig von den tatsaechlichen Buchungen (z.B. um Urgency gezielt
-    // zu steuern). Die Belegungsquote fuer die Urgency-Stufen richtet sich
-    // bewusst nach dieser angezeigten (ggf. ueberschriebenen) Zahl.
-    const freiePlaetze = t.angezeigte_restplaetze ?? freiRechnerisch;
-    const effektivGebucht = Math.max(0, t.kapazitaet - freiePlaetze);
-    const belegtProzent = t.kapazitaet > 0 ? (effektivGebucht / t.kapazitaet) * 100 : 0;
-
-    const stufen = urgencyStufenProTermin.get(t.id) || [];
-    const dringlichkeitstextGestuft = stufen
-      .filter((u) => belegtProzent >= u.schwellenwert_prozent)
-      .sort((a, b) => b.schwellenwert_prozent - a.schwellenwert_prozent)[0]?.text_vorlage
-      ?.replace("{remaining}", String(freiePlaetze))
-      ?.replace("{total}", String(t.kapazitaet));
-
-    // Im neutralen Anzeige-Modus duerfen keine Platzzahlen durchsickern --
-    // deshalb hier NICHT die stufen-/template-basierten Texte verwenden (die
-    // {remaining}/{total} einsetzen), sondern immer der feste neutrale Text.
-    const dringlichkeitstext =
-      t.verfuegbarkeit_anzeige_modus === "neutral"
-        ? VERFUEGBARKEIT_NEUTRAL_TEXT
-        : dringlichkeitstextGestuft ||
-          (t.urgency_label_template
-            ?.replace("{remaining}", String(freiePlaetze))
-            ?.replace("{total}", String(t.kapazitaet))) ||
-          null;
+    const { freiePlaetze, belegtProzent, dringlichkeitstext } = verfuegbarkeit.get(t.id)!;
 
     // Deaktivierte Optionen (deaktiviert_am gesetzt) nie in Preis-/Verfuegbarkeitsberechnung
     // einbeziehen -- sonst koennte z.B. der guenstigste Preis einer laengst

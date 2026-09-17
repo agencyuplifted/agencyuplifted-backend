@@ -644,7 +644,9 @@ export async function duplicateSeminartermin(formData: FormData) {
     await supabase.from("urgency_stufen").insert(
       urgencyStufen.map((u) => ({
         seminartermin_id: neuerTermin.id,
+        schwellenwert_typ: u.schwellenwert_typ,
         schwellenwert_prozent: u.schwellenwert_prozent,
+        schwellenwert_anzahl: u.schwellenwert_anzahl,
         text_vorlage: u.text_vorlage,
         sortierung: u.sortierung,
       }))
@@ -1737,18 +1739,69 @@ export async function speicherePreisstaffelnAlsVorlage(formData: FormData): Prom
   return { fehler: null };
 }
 
+// Urgency-Stufen koennen prozentual ("ab 60 % belegt") oder absolut ("ab 6
+// belegten Plaetzen" / "bei hoechstens 4 freien Plaetzen") definiert werden --
+// bei kleinen Gruppen (8-12 Plaetze) ist eine Prozentzahl schwer in "noch vier
+// Plaetze" zu uebersetzen. Ausgewertet wird in lib/verfuegbarkeit.ts.
+function leseUrgencyStufeAusFormData(formData: FormData) {
+  const typRoh = String(formData.get("schwellenwert_typ") || "prozent");
+  const typ = typRoh === "belegt" || typRoh === "frei" ? typRoh : "prozent";
+  const wertRoh = String(formData.get("schwellenwert") ?? "").trim();
+  const wert = Number(wertRoh);
+  if (wertRoh === "" || !Number.isFinite(wert) || wert < 0) {
+    throw new Error("Bitte einen gültigen Schwellenwert (0 oder größer) angeben.");
+  }
+  if (typ === "prozent" && wert > 100) throw new Error("Prozentwerte dürfen höchstens 100 sein.");
+  if (typ !== "prozent" && !Number.isInteger(wert)) throw new Error("Platzanzahlen müssen ganze Zahlen sein.");
+  const textVorlage = String(formData.get("text_vorlage") || "").trim();
+  if (!textVorlage) throw new Error("Bitte einen Text für die Urgency-Stufe angeben.");
+  return {
+    schwellenwert_typ: typ,
+    schwellenwert_prozent: typ === "prozent" ? wert : null,
+    schwellenwert_anzahl: typ === "prozent" ? null : wert,
+    text_vorlage: textVorlage,
+    sortierung: Math.round(wert),
+  };
+}
+
 export async function createUrgencyStufe(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
-  const schwellenwert = Number(formData.get("schwellenwert_prozent"));
   const { error } = await supabase.from("urgency_stufen").insert({
     seminartermin_id: seminarterminId,
-    schwellenwert_prozent: schwellenwert,
-    text_vorlage: String(formData.get("text_vorlage")),
-    sortierung: schwellenwert,
+    ...leseUrgencyStufeAusFormData(formData),
   });
   if (error) throw new Error(error.message);
   revalidatePath(`/termine/${seminarterminId}`);
+  revalidatePath("/termine");
+}
+
+export async function updateUrgencyStufe(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const stufeId = String(formData.get("urgency_stufe_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase
+    .from("urgency_stufen")
+    .update(leseUrgencyStufeAusFormData(formData))
+    .eq("id", stufeId)
+    .eq("seminartermin_id", seminarterminId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  revalidatePath("/termine");
+}
+
+export async function deleteUrgencyStufe(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const stufeId = String(formData.get("urgency_stufe_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase
+    .from("urgency_stufen")
+    .delete()
+    .eq("id", stufeId)
+    .eq("seminartermin_id", seminarterminId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  revalidatePath("/termine");
 }
 
 export async function createLead(formData: FormData) {
