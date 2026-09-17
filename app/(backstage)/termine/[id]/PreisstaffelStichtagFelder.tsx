@@ -12,6 +12,12 @@ import { letzterGueltigerTag } from "@/lib/preisstaffeln";
 // Je nach Modus wird nur das passende Input gerendert -- das andere fehlt in
 // der FormData, create-/updatePreisstaffel (lib/actions.ts) lesen zusaetzlich
 // stichtag_modus, um eindeutig zu wissen, welches Feld gemeint ist.
+//
+// "Normalpreis" ist kein eigener Datenbank-Zustand, sondern "0 Tage vor
+// Start" (gilt bis einschl. Vortag): ein festes Enddatum fuer den Normalpreis
+// hat nur Schaden angerichtet -- der Preis galt per Fallback ohnehin weiter,
+// aber Onepage zeigte "gilt bis <vergangenes Datum>" und die Backstage
+// "abgelaufen" (Vorlagen SPS-Option-A/B/C hatten 20 Tage hinterlegt).
 export function formatTagMitWochentag(isoTag: string): string {
   const [j, m, t] = isoTag.split("-").map(Number);
   return new Intl.DateTimeFormat("de-DE", {
@@ -30,16 +36,20 @@ export default function PreisstaffelStichtagFelder({
   initialDatum,
 }: {
   terminStart: string;
-  initialModus?: "tage" | "datum";
+  initialModus?: "tage" | "datum" | "normal";
   initialTageVorStart?: number | null;
   initialDatum?: string | null;
 }) {
-  const [modus, setModus] = useState<"tage" | "datum">(initialModus);
+  const [modus, setModus] = useState<"tage" | "datum" | "normal">(
+    initialModus === "tage" && initialTageVorStart === 0 ? "normal" : initialModus
+  );
   const [tage, setTage] = useState<string>(initialTageVorStart != null ? String(initialTageVorStart) : "");
   const [datum, setDatum] = useState<string>(initialDatum ?? "");
 
   let vorschau: string | null = null;
-  if (modus === "tage" && tage !== "" && !Number.isNaN(Number(tage))) {
+  if (modus === "normal") {
+    vorschau = letzterGueltigerTag({ stichtag_tage_vor_start: 0, stichtag_datum: null }, terminStart);
+  } else if (modus === "tage" && tage !== "" && !Number.isNaN(Number(tage))) {
     vorschau = letzterGueltigerTag({ stichtag_tage_vor_start: Number(tage), stichtag_datum: null }, terminStart);
   } else if (modus === "datum" && datum) {
     vorschau = datum;
@@ -50,15 +60,22 @@ export default function PreisstaffelStichtagFelder({
       <label className="au-label">Dieser Preis gilt bis einschließlich …</label>
       <div style={{ display: "flex", gap: "1rem", marginBottom: "0.35rem", flexWrap: "wrap" }}>
         <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontWeight: 400, fontSize: "0.85rem" }}>
-          <input type="radio" name="stichtag_modus" value="datum" checked={modus === "datum"} onChange={() => setModus("datum")} />
+          <input type="radio" checked={modus === "normal"} onChange={() => setModus("normal")} />
+          dem Tag vor Seminarstart (Normalpreis)
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontWeight: 400, fontSize: "0.85rem" }}>
+          <input type="radio" checked={modus === "datum"} onChange={() => setModus("datum")} />
           einem festen Datum
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontWeight: 400, fontSize: "0.85rem" }}>
-          <input type="radio" name="stichtag_modus" value="tage" checked={modus === "tage"} onChange={() => setModus("tage")} />
+          <input type="radio" checked={modus === "tage"} onChange={() => setModus("tage")} />
           X Tage vor Seminarstart
         </label>
       </div>
-      {modus === "datum" ? (
+      <input type="hidden" name="stichtag_modus" value={modus === "datum" ? "datum" : "tage"} />
+      {modus === "normal" ? (
+        <input type="hidden" name="stichtag_tage_vor_start" value="0" />
+      ) : modus === "datum" ? (
         <input
           className="au-input"
           name="stichtag_datum"

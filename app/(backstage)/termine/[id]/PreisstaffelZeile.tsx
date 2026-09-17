@@ -56,7 +56,7 @@ export default function PreisstaffelZeile({
           {formatTagMitWochentag(staffel.gilt_bis)}
           {staffel.stichtag_tage_vor_start != null && (
             <div style={{ fontSize: "0.75rem", color: "var(--color-text-faint)" }}>
-              {staffel.stichtag_tage_vor_start === 0 ? "bis Seminarstart" : `${staffel.stichtag_tage_vor_start} Tage vor Start`}
+              {staffel.stichtag_tage_vor_start === 0 ? "Normalpreis, bis Seminarstart" : `${staffel.stichtag_tage_vor_start} Tage vor Start`}
             </div>
           )}
         </td>

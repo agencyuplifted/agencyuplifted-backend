@@ -96,6 +96,16 @@ function HervorgehobenMarker({ inline = false }: { inline?: boolean } = {}) {
 // nach dem Ende der vorherigen Stufe (erste Stufe: offen), "gilt aktuell"
 // dieselbe Stufe, die auch die oeffentliche API als Preis ausliefert
 // (aktuellePreisstaffel, inkl. Fallback auf die letzte Stufe).
+// Warnung, wenn die spaeteste Stufe vor dem Vortag des Seminars endet (siehe
+// Kommentar in PreisstaffelStichtagFelder zum Normalpreis).
+function normalpreisLuecke(staffeln: any[], datumStart: string): { name: string; bis: string } | null {
+  if (!staffeln.length) return null;
+  const letzte = sortierteStaffeln(staffeln, datumStart)[staffeln.length - 1];
+  const bis = letzterGueltigerTag(letzte, datumStart);
+  const vortag = letzterGueltigerTag({ stichtag_tage_vor_start: 0, stichtag_datum: null }, datumStart);
+  return bis < vortag ? { name: letzte.name, bis } : null;
+}
+
 function preisstaffelZeilen(staffeln: any[], datumStart: string): PreisstaffelZeileDaten[] {
   const sortiert = sortierteStaffeln(staffeln, datumStart);
   const aktuell = aktuellePreisstaffel(sortiert, datumStart);
@@ -1050,6 +1060,15 @@ export default async function TerminDetailPage({
 
             <div style={{ marginTop: "1rem" }}>
               <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-muted)" }}>Preisstaffeln (Nettopreise, zzgl. gesetzlicher USt.)</span>
+              {(() => {
+                const luecke = normalpreisLuecke(opt.preisstaffeln || [], termin.datum_start);
+                return luecke ? (
+                  <div className="au-banner au-banner-warning" style={{ margin: "0.35rem 0", padding: "0.45rem 0.75rem", fontSize: "0.82rem" }}>
+                    Die letzte Stufe „{luecke.name}“ endet schon am {formatDatum(luecke.bis)}. Danach gilt ihr Preis zwar automatisch weiter,
+                    aber Onepage zeigt ein abgelaufenes „gilt bis“-Datum. Bei „{luecke.name}“ auf „bearbeiten“ → „dem Tag vor Seminarstart (Normalpreis)“ stellen.
+                  </div>
+                ) : null;
+              })()}
               <table className="au-table" style={{ margin: "0.35rem 0 0.5rem" }}>
                 <thead>
                   <tr>

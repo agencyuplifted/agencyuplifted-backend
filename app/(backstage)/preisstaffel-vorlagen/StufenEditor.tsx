@@ -62,7 +62,7 @@ function heuteISO(): string {
 function StichtagZelle({ tage, vorschau }: { tage: string; vorschau: StichtagVorschau }) {
   const n = tage === "" ? NaN : Number(tage);
   if (!Number.isInteger(n) || n < 0) return <span style={{ color: "var(--color-text-faint)" }}>—</span>;
-  if (n === 0) return <span style={{ color: "var(--color-text-muted)" }}>bis Seminarstart</span>;
+  if (n === 0) return <span style={{ color: "var(--color-text-muted)" }}>bis Vortag Seminarstart (Normalpreis)</span>;
 
   const klein = { display: "block", fontSize: "0.72rem", lineHeight: 1.3 } as const;
   const verstrichen = (tag: string) =>
@@ -146,7 +146,7 @@ export default function StufenEditor({
           <thead>
             <tr>
               <th>Name</th>
-              <th style={{ width: 130 }}>Tage vor Start</th>
+              <th style={{ width: 150 }}>gilt bis … Tage vor Start</th>
               <th style={{ width: 140 }}>Preis (€, netto)</th>
               {stichtagVorschau && <th style={{ width: 190 }}>Stichtag</th>}
               <th style={{ width: 120 }}>Brutto (19% USt.)</th>
@@ -220,6 +220,17 @@ export default function StufenEditor({
           </tbody>
         </table>
       </div>
+      {(() => {
+        // Gleicher Hinweis wie im Termin (normalpreisLuecke): ohne 0-Tage-Stufe
+        // endet auch der Normalpreis mit festem Datum vor dem Seminar.
+        const zahlen = entwurf.map((e) => (e.tage === "" ? NaN : Number(e.tage))).filter((n) => Number.isInteger(n) && n >= 0);
+        if (!zahlen.length || zahlen.length !== entwurf.length || Math.min(...zahlen) === 0) return null;
+        return (
+          <div className="au-banner au-banner-warning" style={{ margin: "0 0 0.5rem", padding: "0.45rem 0.75rem", fontSize: "0.82rem" }}>
+            Die letzte Stufe endet {Math.min(...zahlen)} Tage vor Start. Für den Normalpreis „0“ eintragen – er gilt dann bis zum Tag vor Seminarstart.
+          </div>
+        );
+      })()}
       {kollision && (
         <div className="au-banner au-banner-error" style={{ margin: "0 0 0.5rem", padding: "0.45rem 0.75rem", fontSize: "0.82rem" }}>
           {kollision}
@@ -233,7 +244,7 @@ export default function StufenEditor({
           Nach Stichtag sortieren
         </button>
         <span style={{ fontSize: "0.75rem", color: "var(--color-text-faint)" }}>
-          Stufe gilt bis X Tage vor Seminarstart · 0 Tage = Normalpreis bis zum Start
+          Stufe gilt bis X Tage vor Seminarstart · 0 = Normalpreis, gilt bis zum Tag vor Seminarstart
         </span>
       </div>
     </div>
