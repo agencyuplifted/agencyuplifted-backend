@@ -38,6 +38,7 @@ import { formatDatum, formatEUR, formatEURBrutto, effektiveTerminNaechte } from 
 import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
+import PreisstaffelZeile, { type PreisstaffelZeileDaten } from "./PreisstaffelZeile";
 import KopierePreisstaffelnButton from "./KopierePreisstaffelnButton";
 import PreisstaffelVorlagenAktionen from "./PreisstaffelVorlagenAktionen";
 import DeaktivierenOptionButton from "./DeaktivierenOptionButton";
@@ -50,7 +51,7 @@ import {
   exportiereAlleSchnelleinfuegenText,
   pruefeSchnelleinfuegenRoundTrip,
 } from "@/lib/schnelleinfuegen";
-import { aktuellerPreisNetto, sortierteStaffeln, berlinKalendertag, berechneMonatlicheStichtageRueckwaerts, type PreisstaffelVorlage } from "@/lib/preisstaffeln";
+import { aktuellerPreisNetto, aktuellePreisstaffel, istPreisstaffelAktiv, letzterGueltigerTag, sortierteStaffeln, berlinKalendertag, berechneMonatlicheStichtageRueckwaerts, type PreisstaffelVorlage } from "@/lib/preisstaffeln";
 import Link from "next/link";
 
 const badgeLabel: Record<string, string> = {
@@ -89,6 +90,37 @@ function HervorgehobenMarker({ inline = false }: { inline?: boolean } = {}) {
       <path d="M8 4v8M4 8h8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
+}
+
+// Tabellenzeilen fuer die Preisstaffeln einer Option: "gilt ab" ist der Tag
+// nach dem Ende der vorherigen Stufe (erste Stufe: offen), "gilt aktuell"
+// dieselbe Stufe, die auch die oeffentliche API als Preis ausliefert
+// (aktuellePreisstaffel, inkl. Fallback auf die letzte Stufe).
+function preisstaffelZeilen(staffeln: any[], datumStart: string): PreisstaffelZeileDaten[] {
+  const sortiert = sortierteStaffeln(staffeln, datumStart);
+  const aktuell = aktuellePreisstaffel(sortiert, datumStart);
+  let vorherBis: string | null = null;
+  return sortiert.map((p) => {
+    const bis = letzterGueltigerTag(p, datumStart);
+    let ab: string | null = null;
+    if (vorherBis) {
+      const [j, m, t] = vorherBis.split("-").map(Number);
+      ab = new Date(Date.UTC(j, m - 1, t + 1)).toISOString().slice(0, 10);
+    }
+    vorherBis = bis;
+    return {
+      id: p.id,
+      name: p.name,
+      preis: p.preis,
+      waehrung: p.waehrung,
+      sortierung: p.sortierung,
+      stichtag_tage_vor_start: p.stichtag_datum ? null : p.stichtag_tage_vor_start,
+      stichtag_kalendertag: p.stichtag_datum ? berlinKalendertag(p.stichtag_datum) : null,
+      gilt_ab: ab,
+      gilt_bis: bis,
+      status: p === aktuell ? "aktuell" : istPreisstaffelAktiv(p, datumStart) ? "kommend" : "abgelaufen",
+    };
+  });
 }
 
 export default async function TerminDetailPage({
@@ -1021,80 +1053,49 @@ export default async function TerminDetailPage({
               <table className="au-table" style={{ margin: "0.35rem 0 0.5rem" }}>
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Stichtag</th>
+                    <th>Preisstufe</th>
+                    <th>gilt ab</th>
+                    <th>gilt bis einschl.</th>
                     <th>Preis (netto)</th>
                     <th>Preis (brutto, 19% USt.)</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortierteStaffeln(opt.preisstaffeln || [], termin.datum_start)
-                    .map((p: any) => (
-                      <tr key={p.id}>
-                        <td>{p.name}</td>
-                        <td>{p.stichtag_datum ? formatDatum(p.stichtag_datum) : `${p.stichtag_tage_vor_start} Tage vorher`}</td>
-                        <td>{formatEUR(Number(p.preis))}</td>
-                        <td style={{ color: "var(--color-text-muted)" }}>{formatEURBrutto(Number(p.preis))}</td>
-                        <td>
-                          <details>
-                            <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600 }}>bearbeiten</summary>
-                            <form action={updatePreisstaffel} style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.4rem", minWidth: 220 }}>
-                              <input type="hidden" name="preisstaffel_id" value={p.id} />
-                              <input type="hidden" name="seminartermin_id" value={id} />
-                              <div>
-                                <label className="au-label">Name</label>
-                                <input className="au-input" name="name" defaultValue={p.name} required />
-                              </div>
-                              <PreisstaffelStichtagFelder
-                                initialModus={p.stichtag_datum ? "datum" : "tage"}
-                                initialTageVorStart={p.stichtag_tage_vor_start}
-                                initialDatum={p.stichtag_datum ? berlinKalendertag(p.stichtag_datum) : undefined}
-                              />
-                              <div>
-                                <label className="au-label">Preis (€, netto)</label>
-                                <input className="au-input" name="preis" type="number" step="0.01" defaultValue={p.preis} required />
-                              </div>
-                              <div>
-                                <label className="au-label">Währung</label>
-                                <input className="au-input" name="waehrung" defaultValue={p.waehrung || "EUR"} />
-                              </div>
-                              <div>
-                                <label className="au-label">Sortierung</label>
-                                <input className="au-input" name="sortierung" type="number" defaultValue={p.sortierung ?? 0} />
-                              </div>
-                              <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
-                            </form>
-                          </details>
-                          <form action={deletePreisstaffel} style={{ marginTop: "0.35rem" }}>
-                            <input type="hidden" name="preisstaffel_id" value={p.id} />
-                            <input type="hidden" name="seminartermin_id" value={id} />
-                            <button type="submit" className="au-link-danger">entfernen</button>
-                          </form>
-                        </td>
-                      </tr>
-                    ))}
+                  {preisstaffelZeilen(opt.preisstaffeln || [], termin.datum_start).map((z) => (
+                    <PreisstaffelZeile
+                      key={z.id}
+                      staffel={z}
+                      terminStart={termin.datum_start}
+                      seminarterminId={id}
+                      updateAction={updatePreisstaffel}
+                      deleteAction={deletePreisstaffel}
+                    />
+                  ))}
                   {!opt.preisstaffeln?.length && (
-                    <tr><td colSpan={5} style={{ color: "var(--color-text-faint)" }}>Noch keine Preisstaffeln.</td></tr>
+                    <tr><td colSpan={6} style={{ color: "var(--color-text-faint)" }}>Noch keine Preisstaffeln.</td></tr>
                   )}
                 </tbody>
               </table>
-              <form action={createPreisstaffel} className="au-row-2">
-                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                <input type="hidden" name="seminartermin_id" value={id} />
-                <div>
-                  <label className="au-label">Name (z. B. Super-Frühbucher)</label>
-                  <input className="au-input" name="name" required />
-                </div>
-                <PreisstaffelStichtagFelder />
-                <div>
-                  <label className="au-label">Preis (€, netto zzgl. USt.)</label>
-                  <input className="au-input" name="preis" type="number" step="0.01" required />
-                </div>
-                <div style={{ display: "flex", alignItems: "flex-end" }}>
-                  <button type="submit" className="au-btn au-btn-secondary">+ Staffel</button>
-                </div>
-              </form>
+              <details style={{ margin: "0.25rem 0 0.5rem" }}>
+                <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>+ Preisstufe hinzufügen</summary>
+                <form action={createPreisstaffel} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem", alignItems: "start", marginTop: "0.5rem" }}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <div>
+                    <label className="au-label">Name der Preisstufe (z. B. Frühbucher)</label>
+                    <input className="au-input" name="name" required />
+                  </div>
+                  <div>
+                    <label className="au-label">Preis (€, netto zzgl. USt.)</label>
+                    <input className="au-input" name="preis" type="number" step="0.01" required />
+                  </div>
+                  <PreisstaffelStichtagFelder terminStart={termin.datum_start} />
+                  <div style={{ alignSelf: "end" }}>
+                    <button type="submit" className="au-btn au-btn-secondary">Preisstufe anlegen</button>
+                  </div>
+                </form>
+              </details>
 
               <PreisstaffelVorlagenAktionen
                 seminarterminOptionId={opt.id}

@@ -27,6 +27,20 @@ function stichtagAlsZeitpunkt(
   return start - (staffel.stichtag_tage_vor_start ?? 0) * 24 * 60 * 60 * 1000;
 }
 
+// Letzter Kalendertag (YYYY-MM-DD, Berliner Zeit), an dem die Stufe noch
+// gilt -- fuer die Backstage-Anzeige "gilt bis einschl. ...". Die beiden
+// Stichtag-Arten enden zu unterschiedlichen Uhrzeiten: ein festes Datum um
+// 23:59:59 Berlin des gewaehlten Tages (stichtagsDatumEndeDesTages), "N Tage
+// vor Start" dagegen um 00:00 UTC (= 01/02 Uhr Berlin) des N-ten Tages vor
+// Start, faktisch also schon mit Ablauf des Vortags. Minus 3 Stunden landet
+// in beiden Faellen sicher auf dem letzten vollen Gueltigkeitstag.
+export function letzterGueltigerTag(
+  staffel: Pick<Preisstaffel, "stichtag_tage_vor_start" | "stichtag_datum">,
+  datumStart: string
+): string {
+  return berlinKalendertag(new Date(stichtagAlsZeitpunkt(staffel, datumStart) - 3 * 60 * 60 * 1000).toISOString());
+}
+
 // Aktiv, solange der Stichtag noch nicht erreicht ist ("jetzt <= Stichtag").
 export function istPreisstaffelAktiv(
   staffel: Pick<Preisstaffel, "stichtag_tage_vor_start" | "stichtag_datum">,
