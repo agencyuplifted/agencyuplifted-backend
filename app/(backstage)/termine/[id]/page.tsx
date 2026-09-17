@@ -21,6 +21,7 @@ import {
   deleteOptionFeature,
   updateOptionFeature,
   moveOptionFeature,
+  moveSeminarOption,
   deletePreisstaffel,
   updatePreisstaffel,
   copyPreisstaffelnFromOption,
@@ -140,7 +141,8 @@ export default async function TerminDetailPage({
       .from("seminartermin_optionen")
       .select("*, seminartermin_options_features(*), preisstaffeln(*)")
       .eq("seminartermin_id", id)
-      .order("sortierung", { ascending: true }),
+      .order("sortierung", { ascending: true })
+      .order("erstellt_am", { ascending: true }),
     supabase
       .from("urgency_stufen")
       .select("*")
@@ -829,6 +831,18 @@ export default async function TerminDetailPage({
                 {opt.deaktiviert_am && <span className="au-badge au-badge-neutral">Deaktiviert</span>}
               </div>
               <div style={{ display: "flex", gap: "0.5rem" }}>
+                <form action={moveSeminarOption}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <input type="hidden" name="richtung" value="hoch" />
+                  <button type="submit" className="au-btn au-btn-secondary" disabled={optIndex === 0} title="Option nach oben verschieben">↑</button>
+                </form>
+                <form action={moveSeminarOption}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <input type="hidden" name="richtung" value="runter" />
+                  <button type="submit" className="au-btn au-btn-secondary" disabled={optIndex === (optionen?.length || 0) - 1} title="Option nach unten verschieben">↓</button>
+                </form>
                 <form action={duplicateSeminarOption}>
                   <input type="hidden" name="seminartermin_option_id" value={opt.id} />
                   <input type="hidden" name="seminartermin_id" value={id} />

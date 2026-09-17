@@ -975,6 +975,45 @@ export async function updateOptionFeature(formData: FormData) {
   revalidatePath(`/termine/${seminarterminId}`);
 }
 
+// Gleiches Prinzip wie moveOptionFeature, nur fuer ganze Optionen eines
+// Termins: komplette Liste neu durchnummerieren statt zwei Werte zu tauschen,
+// weil duplicateSeminarOption (quelle.sortierung + 1) und neu angelegte
+// Optionen doppelte bzw. lueckenhafte Werte hinterlassen koennen. Die
+// Reihenfolge gilt auch fuer die oeffentliche API (sortiert nach sortierung).
+// Deaktivierte Optionen zaehlen mit, damit sie nach dem Reaktivieren wieder
+// an ihrem Platz stehen.
+export async function moveSeminarOption(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id"));
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const richtung = String(formData.get("richtung"));
+
+  const { data: optionen, error: ladeFehler } = await supabase
+    .from("seminartermin_optionen")
+    .select("id, sortierung, erstellt_am")
+    .eq("seminartermin_id", seminarterminId)
+    .order("sortierung", { ascending: true })
+    .order("erstellt_am", { ascending: true });
+  if (ladeFehler) throw new Error(ladeFehler.message);
+
+  const liste = optionen || [];
+  const index = liste.findIndex((o) => o.id === optionId);
+  const zielIndex = richtung === "hoch" ? index - 1 : index + 1;
+  if (index === -1 || zielIndex < 0 || zielIndex >= liste.length) return;
+
+  const neueReihenfolge = [...liste];
+  [neueReihenfolge[index], neueReihenfolge[zielIndex]] = [neueReihenfolge[zielIndex], neueReihenfolge[index]];
+
+  for (let i = 0; i < neueReihenfolge.length; i++) {
+    if (neueReihenfolge[i].sortierung !== i) {
+      const { error } = await supabase.from("seminartermin_optionen").update({ sortierung: i }).eq("id", neueReihenfolge[i].id);
+      if (error) throw new Error(error.message);
+    }
+  }
+
+  revalidatePath(`/termine/${seminarterminId}`);
+}
+
 // Vertauscht per Auf/Ab-Pfeil die Reihenfolge eines Features mit seinem
 // Nachbarn. Bestehende Datensaetze haben durchgehend sortierung=0
 // (createOptionFeature hat das Feld vorher nie sinnvoll befuellt) -- deshalb
