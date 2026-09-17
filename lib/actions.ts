@@ -1939,6 +1939,58 @@ export async function deaktivierenSeminarOption(formData: FormData) {
   revalidatePath(`/termine/${seminarterminId}`);
 }
 
+// Endgueltiges Loeschen fuer Optionen, die nie verwendet wurden (z. B. beim
+// Aufsetzen eines Termins zu viel angelegt) -- Deaktivieren liesse dort nur
+// Datenmuell zurueck. Vorab-Pruefung auf buchungspositionen/fastbill_rechnungen
+// (beide NO ACTION), damit statt eines kryptischen FK-Fehlers ein
+// verstaendlicher Hinweis auf "Deaktivieren" kommt. Preisstaffeln und
+// Features gehen per CASCADE mit, das sagt die Bestaetigung im UI explizit.
+// Gibt { fehler } zurueck statt zu werfen (siehe VorlagenAktionsErgebnis).
+export async function loescheSeminarOption(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const supabase = getSupabaseAdmin();
+  const optionId = String(formData.get("seminartermin_option_id") || "");
+  const seminarterminId = String(formData.get("seminartermin_id") || "");
+  if (!optionId) return { fehler: "Option nicht gefunden." };
+
+  const { data: option } = await supabase
+    .from("seminartermin_optionen")
+    .select("titel")
+    .eq("id", optionId)
+    .maybeSingle();
+  if (!option) return { fehler: "Option nicht gefunden." };
+
+  const [{ count: positionen, error: posFehler }, { count: rechnungen, error: rechFehler }] = await Promise.all([
+    supabase.from("buchungspositionen").select("id", { count: "exact", head: true }).eq("seminartermin_option_id", optionId),
+    supabase
+      .from("fastbill_rechnungen")
+      .select("id", { count: "exact", head: true })
+      .or(`seminartermin_option_id.eq.${optionId},vorgeschlagene_option_id.eq.${optionId}`),
+  ]);
+  if (posFehler || rechFehler) return { fehler: (posFehler || rechFehler)!.message };
+  if ((positionen || 0) > 0 || (rechnungen || 0) > 0) {
+    return {
+      fehler: `„${option.titel}“ kann nicht gelöscht werden, weil sie bereits in ${
+        (positionen || 0) > 0 ? "Buchungen" : "Fastbill-Rechnungen"
+      } verwendet wird. Bitte stattdessen deaktivieren.`,
+    };
+  }
+
+  const { error } = await supabase.from("seminartermin_optionen").delete().eq("id", optionId);
+  if (error) return { fehler: error.message };
+
+  const benutzer = await getAktuellerBenutzer();
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "seminartermin",
+    bezug_id: seminarterminId,
+    ereignis: "option_geloescht",
+    beschreibung: `Option gelöscht: ${option.titel || "(ohne Titel)"}`,
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
+
+  revalidatePath(`/termine/${seminarterminId}`);
+  return { fehler: null };
+}
+
 export async function reaktiviereSeminarOption(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));

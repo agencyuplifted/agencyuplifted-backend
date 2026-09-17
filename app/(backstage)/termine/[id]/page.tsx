@@ -17,6 +17,7 @@ import {
   uebernehmeOptionSchnelleinfuegen,
   deaktivierenSeminarOption,
   reaktiviereSeminarOption,
+  loescheSeminarOption,
   deleteOptionFeature,
   updateOptionFeature,
   moveOptionFeature,
@@ -39,6 +40,7 @@ import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
 import KopierePreisstaffelnButton from "./KopierePreisstaffelnButton";
 import PreisstaffelVorlagenAktionen from "./PreisstaffelVorlagenAktionen";
 import DeaktivierenOptionButton from "./DeaktivierenOptionButton";
+import OptionLoeschenButton from "./OptionLoeschenButton";
 import NeueOptionSchnelleinfuegen from "./NeueOptionSchnelleinfuegen";
 import OptionSchnelleinfuegen from "./OptionSchnelleinfuegen";
 import OptionenImportExportTabs from "./OptionenImportExportTabs";
@@ -834,6 +836,7 @@ export default async function TerminDetailPage({
                     Option duplizieren
                   </button>
                 </form>
+                <OptionLoeschenButton optionId={opt.id} seminarterminId={id} titel={opt.titel || ""} loeschenAction={loescheSeminarOption} />
               </div>
             </div>
             {opt.beschreibung && <p style={{ color: "#444", fontSize: "0.9rem", margin: "0.35rem 0" }}>{renderFett(opt.beschreibung)}</p>}
