@@ -7,6 +7,7 @@ import {
   deletePreisstaffelVorlage,
 } from "@/lib/actions";
 import { formatDatumZeit, formatEUR, formatEURBrutto } from "@/lib/format";
+import { stichtagRegelText } from "@/lib/preisstaffeln";
 import VorlageFormular from "./VorlageFormular";
 import VorlageLoeschenButton from "./VorlageLoeschenButton";
 
@@ -49,6 +50,9 @@ export default async function PreisstaffelVorlagenPage() {
                   {v.beschreibung && (
                     <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>{v.beschreibung}</p>
                   )}
+                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.8rem", color: "var(--color-text-faint)" }}>
+                    Stichtage: {v.stichtag_regel ? `verschieben auf ${stichtagRegelText(v.stichtag_regel)}` : "nicht verschoben (relativ)"}
+                  </p>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                   <span style={{ fontSize: "0.75rem", color: "var(--color-text-faint)" }}>

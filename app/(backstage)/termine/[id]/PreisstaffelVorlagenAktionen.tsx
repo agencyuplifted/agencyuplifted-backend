@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { stufenMitFestemDatum, type PreisstaffelVorlage } from "@/lib/preisstaffeln";
+import { stufenMitFestemDatum, stichtagRegelText, berechneVorlagenStichtage, type PreisstaffelVorlage } from "@/lib/preisstaffeln";
 import type { VorlagenAktionsErgebnis } from "@/lib/actions";
 import { formatEUR } from "@/lib/format";
 import StufenEditor, {
@@ -53,6 +53,7 @@ function Meldung({ art, text }: { art: "fehler" | "erfolg"; text: string }) {
 export default function PreisstaffelVorlagenAktionen({
   seminarterminOptionId,
   seminarterminId,
+  terminDatumStart,
   vorlagen,
   bestehendeStaffeln,
   ersetzenAction,
@@ -60,6 +61,7 @@ export default function PreisstaffelVorlagenAktionen({
 }: {
   seminarterminOptionId: string;
   seminarterminId: string;
+  terminDatumStart: string;
   vorlagen: PreisstaffelVorlage[];
   bestehendeStaffeln: BestehendeStaffel[];
   ersetzenAction: (formData: FormData) => Promise<VorlagenAktionsErgebnis>;
@@ -70,6 +72,7 @@ export default function PreisstaffelVorlagenAktionen({
       <VorlageLaden
         seminarterminOptionId={seminarterminOptionId}
         seminarterminId={seminarterminId}
+        terminDatumStart={terminDatumStart}
         vorlagen={vorlagen}
         anzahlBestehend={bestehendeStaffeln.length}
         ersetzenAction={ersetzenAction}
@@ -87,12 +90,14 @@ export default function PreisstaffelVorlagenAktionen({
 function VorlageLaden({
   seminarterminOptionId,
   seminarterminId,
+  terminDatumStart,
   vorlagen,
   anzahlBestehend,
   ersetzenAction,
 }: {
   seminarterminOptionId: string;
   seminarterminId: string;
+  terminDatumStart: string;
   vorlagen: PreisstaffelVorlage[];
   anzahlBestehend: number;
   ersetzenAction: (formData: FormData) => Promise<VorlagenAktionsErgebnis>;
@@ -103,14 +108,20 @@ function VorlageLaden({
   const [laedt, setLaedt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [erfolg, setErfolg] = useState<string | null>(null);
+  // Regel der Vorlage ist standardmaessig an, laesst sich fuer diesen einen
+  // Termin aber abschalten (z. B. wenn die Stufen hier bewusst relativ bleiben
+  // sollen, damit sie bei einer Terminverschiebung mitwandern).
+  const [regelAnwenden, setRegelAnwenden] = useState(true);
 
   const vorlage = vorlagen.find((v) => v.id === vorlageId) || null;
+  const regel = vorlage?.stichtag_regel && regelAnwenden ? vorlage.stichtag_regel : null;
 
   function waehleVorlage(id: string) {
     setVorlageId(id);
     setFragt(false);
     setFehler(null);
     setErfolg(null);
+    setRegelAnwenden(true);
     const v = vorlagen.find((x) => x.id === id);
     setEntwurf(v ? entwurfAusStufen(v.stufen) : []);
   }
@@ -118,7 +129,11 @@ function VorlageLaden({
   function starteUebernahme() {
     setFehler(null);
     try {
-      entwurfZuStufen(entwurf);
+      const stufen = entwurfZuStufen(entwurf);
+      if (regel) {
+        const { kollision } = berechneVorlagenStichtage(stufen, terminDatumStart, regel);
+        if (kollision) throw new Error(kollision);
+      }
     } catch (e: any) {
       setFehler(e.message);
       return;
@@ -143,6 +158,7 @@ function VorlageLaden({
     formData.set("seminartermin_option_id", seminarterminOptionId);
     formData.set("seminartermin_id", seminarterminId);
     formData.set("stufen_json", JSON.stringify(stufen));
+    formData.set("stichtag_regel_json", JSON.stringify(regel));
 
     setLaedt(true);
     try {
@@ -201,7 +217,30 @@ function VorlageLaden({
               <p style={{ ...hinweisStyle, marginTop: 0 }}>
                 Vorschau – Werte lassen sich vor dem Übernehmen noch für diese Option anpassen. Die Vorlage selbst bleibt unverändert.
               </p>
-              <StufenEditor entwurf={entwurf} onChange={setEntwurf} deaktiviert={laedt || fragt} />
+              {vorlage.stichtag_regel && (
+                <div style={{ margin: "0 0 0.6rem" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={regelAnwenden}
+                      disabled={laedt || fragt}
+                      onChange={(e) => setRegelAnwenden(e.target.checked)}
+                    />
+                    Stichtage verschieben auf {stichtagRegelText(vorlage.stichtag_regel)}
+                  </label>
+                  <p style={{ ...hinweisStyle, margin: "0.2rem 0 0 1.5rem" }}>
+                    {regelAnwenden
+                      ? "Verschobene Stichtage werden als festes Datum gespeichert (öffentlich mit „gültig bis“) – sie wandern bei einer späteren Terminverschiebung nicht mit."
+                      : "Aus: Stufen werden relativ („X Tage vor Start“) übernommen."}
+                  </p>
+                </div>
+              )}
+              <StufenEditor
+                entwurf={entwurf}
+                onChange={setEntwurf}
+                deaktiviert={laedt || fragt}
+                stichtagVorschau={{ terminDatumStart, regel }}
+              />
 
               {fragt ? (
                 <div style={bestaetigungStyle}>

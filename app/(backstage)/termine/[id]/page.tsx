@@ -1082,6 +1082,7 @@ export default async function TerminDetailPage({
               <PreisstaffelVorlagenAktionen
                 seminarterminOptionId={opt.id}
                 seminarterminId={id}
+                terminDatumStart={termin.datum_start}
                 vorlagen={(preisstaffelVorlagen || []) as PreisstaffelVorlage[]}
                 bestehendeStaffeln={opt.preisstaffeln || []}
                 ersetzenAction={ersetzePreisstaffelnDurchVorlage}

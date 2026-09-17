@@ -19,9 +19,12 @@ import {
   stichtagsDatumEndeDesTages,
   berechneMonatlicheStichtageRueckwaerts,
   normalisiereVorlageStufen,
+  normalisiereStichtagRegel,
+  berechneVorlagenStichtage,
   stufenMitFestemDatum,
   type PreisstaffelVorlage,
   type PreisstaffelVorlageStufe,
+  type StichtagRegel,
 } from "./preisstaffeln";
 import { fetchFastbillInvoices, findePreisMatch } from "./fastbill";
 
@@ -1458,6 +1461,16 @@ function leseVorlageStufenAusFormData(formData: FormData): PreisstaffelVorlageSt
   return normalisiereVorlageStufen(roh);
 }
 
+function leseStichtagRegelAusFormData(formData: FormData): StichtagRegel | null {
+  const roh = String(formData.get("stichtag_regel_json") || "").trim();
+  if (!roh || roh === "null") return null;
+  try {
+    return normalisiereStichtagRegel(JSON.parse(roh));
+  } catch (e: any) {
+    throw new Error(e instanceof SyntaxError ? "Die Stichtag-Regel konnte nicht gelesen werden." : e.message);
+  }
+}
+
 function vorlagenDbFehler(error: { code?: string; message: string }, name: string): string {
   // 23505 = unique_violation auf preisstaffel_vorlagen_name_unique
   // (case-insensitiv, siehe Migration) -- beim spaeteren Laden waeren zwei
@@ -1479,8 +1492,10 @@ export async function createPreisstaffelVorlage(formData: FormData): Promise<Vor
   if (!name) return { fehler: "Bitte einen Namen für die Vorlage angeben." };
 
   let stufen: PreisstaffelVorlageStufe[];
+  let stichtagRegel: StichtagRegel | null;
   try {
     stufen = leseVorlageStufenAusFormData(formData);
+    stichtagRegel = leseStichtagRegelAusFormData(formData);
   } catch (e: any) {
     return { fehler: e.message };
   }
@@ -1488,7 +1503,7 @@ export async function createPreisstaffelVorlage(formData: FormData): Promise<Vor
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("preisstaffel_vorlagen")
-    .insert({ name, beschreibung: beschreibung || null, stufen });
+    .insert({ name, beschreibung: beschreibung || null, stufen, stichtag_regel: stichtagRegel });
   if (error) return { fehler: vorlagenDbFehler(error, name) };
 
   revalidatePath("/preisstaffel-vorlagen");
@@ -1503,8 +1518,10 @@ export async function updatePreisstaffelVorlage(formData: FormData): Promise<Vor
   if (!name) return { fehler: "Bitte einen Namen für die Vorlage angeben." };
 
   let stufen: PreisstaffelVorlageStufe[];
+  let stichtagRegel: StichtagRegel | null;
   try {
     stufen = leseVorlageStufenAusFormData(formData);
+    stichtagRegel = leseStichtagRegelAusFormData(formData);
   } catch (e: any) {
     return { fehler: e.message };
   }
@@ -1512,7 +1529,13 @@ export async function updatePreisstaffelVorlage(formData: FormData): Promise<Vor
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("preisstaffel_vorlagen")
-    .update({ name, beschreibung: beschreibung || null, stufen, aktualisiert_am: new Date().toISOString() })
+    .update({
+      name,
+      beschreibung: beschreibung || null,
+      stufen,
+      stichtag_regel: stichtagRegel,
+      aktualisiert_am: new Date().toISOString(),
+    })
     .eq("id", id);
   if (error) return { fehler: vorlagenDbFehler(error, name) };
 
@@ -1538,19 +1561,39 @@ export async function deletePreisstaffelVorlage(formData: FormData): Promise<Vor
 // unveraendert. Ersetzt wie copyPreisstaffelnFromOption alle bestehenden
 // Staffeln der Option (Rueckfrage dafuer im Frontend). Validierung laeuft vor
 // dem Loeschen, damit ungueltige Eingaben nie eine leere Option hinterlassen.
+// Mit Stichtag-Regel werden die Stichtage hier -- serverseitig, gegen das
+// echte datum_start des Termins -- auf passende Tage verschoben und als
+// festes stichtag_datum gespeichert (siehe berechneStichtagMitRegel); die
+// Stufe "0 Tage" (Normalpreis) bleibt relativ.
 export async function ersetzePreisstaffelnDurchVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
   const optionId = String(formData.get("seminartermin_option_id") || "");
   const seminarterminId = String(formData.get("seminartermin_id") || "");
   if (!optionId) return { fehler: "Option nicht gefunden." };
 
   let stufen: PreisstaffelVorlageStufe[];
+  let stichtagRegel: StichtagRegel | null;
   try {
     stufen = leseVorlageStufenAusFormData(formData);
+    stichtagRegel = leseStichtagRegelAusFormData(formData);
   } catch (e: any) {
     return { fehler: e.message };
   }
 
   const supabase = getSupabaseAdmin();
+
+  let stichtage: ({ stichtag: string } | null)[] = stufen.map(() => null);
+  if (stichtagRegel) {
+    const { data: termin, error: terminError } = await supabase
+      .from("seminartermine")
+      .select("datum_start")
+      .eq("id", seminarterminId)
+      .single();
+    if (terminError || !termin) return { fehler: terminError?.message || "Termin nicht gefunden." };
+    const berechnet = berechneVorlagenStichtage(stufen, termin.datum_start, stichtagRegel);
+    if (berechnet.kollision) return { fehler: berechnet.kollision };
+    stichtage = berechnet.stichtage;
+  }
+
   const { error: delError } = await supabase
     .from("preisstaffeln")
     .delete()
@@ -1558,14 +1601,17 @@ export async function ersetzePreisstaffelnDurchVorlage(formData: FormData): Prom
   if (delError) return { fehler: delError.message };
 
   const { error: insError } = await supabase.from("preisstaffeln").insert(
-    stufen.map((s) => ({
-      seminartermin_option_id: optionId,
-      name: s.name,
-      stichtag_tage_vor_start: s.stichtag_tage_vor_start,
-      stichtag_datum: null,
-      preis: s.preis,
-      sortierung: s.stichtag_tage_vor_start,
-    }))
+    stufen.map((s, i) => {
+      const verschoben = stichtage[i];
+      return {
+        seminartermin_option_id: optionId,
+        name: s.name,
+        stichtag_tage_vor_start: verschoben ? null : s.stichtag_tage_vor_start,
+        stichtag_datum: verschoben ? stichtagsDatumEndeDesTages(verschoben.stichtag) : null,
+        preis: s.preis,
+        sortierung: s.stichtag_tage_vor_start,
+      };
+    })
   );
   if (insError) return { fehler: insError.message };
 

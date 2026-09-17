@@ -157,6 +157,7 @@ export type PreisstaffelVorlage = {
   name: string;
   beschreibung: string | null;
   stufen: PreisstaffelVorlageStufe[];
+  stichtag_regel: StichtagRegel | null;
   erstellt_am: string;
   aktualisiert_am: string;
 };
@@ -205,4 +206,243 @@ export function normalisiereVorlageStufen(roh: unknown): PreisstaffelVorlageStuf
 // Stufe ein festes Datum nutzt.
 export function stufenMitFestemDatum<T extends Pick<Preisstaffel, "stichtag_datum">>(staffeln: T[]): T[] {
   return staffeln.filter((s) => !!s.stichtag_datum);
+}
+
+// ---------------------------------------------------------------------------
+// Stichtag-Regel einer Vorlage: verschiebt die Stichtage beim Laden in eine
+// Option auf einen "guten" Kalendertag (z. B. nur Donnerstag, kein Sonntag,
+// keine Feiertage) -- Hintergrund: an Sonntagen/Feiertagen konvertiert eine
+// auslaufende Fruehbucherfrist schlechter.
+//
+// Bewusst NUR beim Laden ausgewertet (Ergebnis wird als festes stichtag_datum
+// gespeichert), nicht live in stichtagAlsZeitpunkt: so bleiben Preislogik,
+// oeffentliche API und die Onepage-Syncs unveraendert. Konsequenz: wird der
+// Termin danach verschoben, wandern diese Stichtage nicht mit.
+
+export type FeiertagsLand = "DE" | "AT" | "CH";
+
+export type StichtagRegel = {
+  wochentage: number[]; // erlaubte Wochentage, 0 = Sonntag ... 6 = Samstag (wie Date.getUTCDay)
+  feiertage_laender: FeiertagsLand[];
+  max_verschiebung_tage: number;
+};
+
+export const FEIERTAGS_LAENDER: FeiertagsLand[] = ["DE", "AT", "CH"];
+export const WOCHENTAG_KURZ = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+
+// Obergrenze fuer die Suche, falls innerhalb max_verschiebung_tage kein
+// passender Tag existiert (z. B. "nur Donnerstag" +/- 2 und der naechste
+// Donnerstag ist Christi Himmelfahrt) -- lieber weiter verschieben und
+// deutlich warnen, als still auf einen Sonntag zu fallen.
+const SUCHGRENZE_TAGE = 14;
+
+export function normalisiereStichtagRegel(roh: unknown): StichtagRegel | null {
+  if (roh === null || roh === undefined || roh === "") return null;
+  if (typeof roh !== "object" || Array.isArray(roh)) throw new Error("Stichtag-Regel ist ungültig.");
+  const r = roh as any;
+  const wochentage = Array.from(
+    new Set((Array.isArray(r.wochentage) ? r.wochentage : []).map(Number).filter((n: number) => Number.isInteger(n) && n >= 0 && n <= 6))
+  ).sort() as number[];
+  if (!wochentage.length) throw new Error("Stichtag-Regel: mindestens einen erlaubten Wochentag auswählen.");
+  const feiertage_laender = FEIERTAGS_LAENDER.filter((l) => Array.isArray(r.feiertage_laender) && r.feiertage_laender.includes(l));
+  const max = Number(r.max_verschiebung_tage);
+  if (!Number.isInteger(max) || max < 0 || max > SUCHGRENZE_TAGE) {
+    throw new Error(`Stichtag-Regel: maximale Verschiebung muss eine ganze Zahl von 0 bis ${SUCHGRENZE_TAGE} sein.`);
+  }
+  return { wochentage, feiertage_laender, max_verschiebung_tage: max };
+}
+
+export function stichtagRegelText(regel: StichtagRegel): string {
+  const tage =
+    regel.wochentage.length === 7
+      ? "alle Wochentage"
+      : [1, 2, 3, 4, 5, 6, 0].filter((w) => regel.wochentage.includes(w)).map((w) => WOCHENTAG_KURZ[w]).join(", ");
+  const feiertage = regel.feiertage_laender.length ? `, keine Feiertage (${regel.feiertage_laender.join("/")})` : "";
+  return `${tage}${feiertage}, max. ±${regel.max_verschiebung_tage} Tage`;
+}
+
+// --- Kalender-Hilfen auf reinen Kalendertagen (YYYY-MM-DD, UTC-Arithmetik,
+// keine Uhrzeit/Zeitzone -- sonst verrutscht der Tag an DST-Grenzen).
+
+function tagZuDate(iso: string): Date {
+  const [j, m, t] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(j, m - 1, t));
+}
+
+function dateZuTag(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+export function tagePlus(iso: string, tage: number): string {
+  const d = tagZuDate(iso);
+  d.setUTCDate(d.getUTCDate() + tage);
+  return dateZuTag(d);
+}
+
+export function wochentagVon(iso: string): number {
+  return tagZuDate(iso).getUTCDay();
+}
+
+// Ostersonntag (gregorianisch, anonymer Algorithmus nach Meeus/Jones/Butcher).
+function ostersonntag(jahr: number): string {
+  const a = jahr % 19;
+  const b = Math.floor(jahr / 100);
+  const c = jahr % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const monat = Math.floor((h + l - 7 * m + 114) / 31);
+  const tag = ((h + l - 7 * m + 114) % 31) + 1;
+  return dateZuTag(new Date(Date.UTC(jahr, monat - 1, tag)));
+}
+
+// Landesweit geltende Feiertage. Regionale (Bundeslaender/Kantone, z. B.
+// Fronleichnam in DE, Berchtoldstag in CH) sind bewusst nicht dabei -- Kunden
+// kommen aus dem ganzen DACH-Raum, ein regionaler Feiertag trifft nur einen
+// kleinen Teil. In CH ist nur der 1. August bundesrechtlich geregelt; die
+// uebrigen hier sind in (fast) allen Kantonen arbeitsfrei.
+function feiertageImJahr(jahr: number, land: FeiertagsLand): [string, string][] {
+  const ostern = ostersonntag(jahr);
+  const fest = (mmtt: string, name: string): [string, string] => [`${jahr}-${mmtt}`, name];
+  const bewegl = (versatz: number, name: string): [string, string] => [tagePlus(ostern, versatz), name];
+
+  if (land === "DE") {
+    return [
+      fest("01-01", "Neujahr"),
+      bewegl(-2, "Karfreitag"),
+      bewegl(1, "Ostermontag"),
+      fest("05-01", "Tag der Arbeit"),
+      bewegl(39, "Christi Himmelfahrt"),
+      bewegl(50, "Pfingstmontag"),
+      fest("10-03", "Tag der Deutschen Einheit"),
+      fest("12-25", "1. Weihnachtstag"),
+      fest("12-26", "2. Weihnachtstag"),
+    ];
+  }
+  if (land === "AT") {
+    return [
+      fest("01-01", "Neujahr"),
+      fest("01-06", "Heilige Drei Könige"),
+      bewegl(1, "Ostermontag"),
+      fest("05-01", "Staatsfeiertag"),
+      bewegl(39, "Christi Himmelfahrt"),
+      bewegl(50, "Pfingstmontag"),
+      bewegl(60, "Fronleichnam"),
+      fest("08-15", "Mariä Himmelfahrt"),
+      fest("10-26", "Nationalfeiertag"),
+      fest("11-01", "Allerheiligen"),
+      fest("12-08", "Mariä Empfängnis"),
+      fest("12-25", "Christtag"),
+      fest("12-26", "Stefanitag"),
+    ];
+  }
+  return [
+    fest("01-01", "Neujahr"),
+    bewegl(-2, "Karfreitag"),
+    bewegl(1, "Ostermontag"),
+    bewegl(39, "Auffahrt"),
+    bewegl(50, "Pfingstmontag"),
+    fest("08-01", "Bundesfeiertag"),
+    fest("12-25", "Weihnachten"),
+    fest("12-26", "Stephanstag"),
+  ];
+}
+
+// Liefert z. B. "Christi Himmelfahrt (DE/AT/CH)" oder null.
+export function feiertagAm(iso: string, laender: FeiertagsLand[]): string | null {
+  const jahr = Number(iso.slice(0, 4));
+  const treffer = new Map<string, FeiertagsLand[]>();
+  for (const land of laender) {
+    for (const [datum, name] of feiertageImJahr(jahr, land)) {
+      if (datum === iso) treffer.set(name, [...(treffer.get(name) || []), land]);
+    }
+  }
+  if (!treffer.size) return null;
+  return Array.from(treffer.entries())
+    .map(([name, l]) => `${name} (${l.join("/")})`)
+    .join(", ");
+}
+
+function istErlaubterTag(iso: string, regel: StichtagRegel): boolean {
+  return regel.wochentage.includes(wochentagVon(iso)) && !feiertagAm(iso, regel.feiertage_laender);
+}
+
+export type BerechneterStichtag = {
+  ausgangstag: string; // Terminstart - X Tage (YYYY-MM-DD)
+  stichtag: string; // nach Regel verschoben (YYYY-MM-DD)
+  verschiebung: number; // in Tagen, negativ = frueher
+  grund: string | null; // warum der Ausgangstag nicht passte
+  ausserhalbMax: boolean; // kein passender Tag innerhalb max_verschiebung_tage
+  gefunden: boolean; // false = auch bis SUCHGRENZE_TAGE nichts gefunden, Ausgangstag bleibt
+};
+
+// Kalendertag des Stichtags = Terminstart minus X Tage; die Stufe gilt bis
+// 23:59 Uhr (Berlin) dieses Tages (siehe stichtagsDatumEndeDesTages). Der
+// rein relative Modus laesst die Stufe dagegen schon um 00:00 UTC dieses
+// Tages enden -- mit fester Regel gilt der Stichtag also ganztaegig, was fuer
+// eine kommunizierte Frist ("nur noch bis Donnerstag") das Erwartete ist.
+// Naechstgelegener erlaubter Tag gewinnt, bei Gleichstand der fruehere.
+export function berechneStichtagMitRegel(terminDatumStart: string, tageVorStart: number, regel: StichtagRegel): BerechneterStichtag {
+  const ausgangstag = tagePlus(terminDatumStart.slice(0, 10), -tageVorStart);
+  const wochentagGrund = !regel.wochentage.includes(wochentagVon(ausgangstag)) ? WOCHENTAG_KURZ[wochentagVon(ausgangstag)] : null;
+  const feiertag = feiertagAm(ausgangstag, regel.feiertage_laender);
+  const grund = [wochentagGrund, feiertag].filter(Boolean).join(", ") || null;
+
+  for (let abstand = 0; abstand <= SUCHGRENZE_TAGE; abstand++) {
+    for (const verschiebung of abstand === 0 ? [0] : [-abstand, abstand]) {
+      const kandidat = tagePlus(ausgangstag, verschiebung);
+      // Nie auf oder nach den Terminstart schieben -- die Stufe waere sonst
+      // bis zum Seminarbeginn gueltig und wuerde den Normalpreis verdraengen.
+      if (kandidat >= terminDatumStart.slice(0, 10)) continue;
+      if (istErlaubterTag(kandidat, regel)) {
+        return {
+          ausgangstag,
+          stichtag: kandidat,
+          verschiebung,
+          grund,
+          ausserhalbMax: abstand > regel.max_verschiebung_tage,
+          gefunden: true,
+        };
+      }
+    }
+  }
+  return { ausgangstag, stichtag: ausgangstag, verschiebung: 0, grund, ausserhalbMax: true, gefunden: false };
+}
+
+// Wendet die Regel auf alle Stufen an. Stufen mit 0 Tagen (Normalpreis bis
+// Seminarstart) werden nie verschoben und bleiben relativ. Liefert zusaetzlich
+// Kollisionen: durch das Verschieben koennen zwei Stufen auf denselben Tag
+// fallen oder ihre Reihenfolge tauschen -- dann waere nicht eindeutig, welcher
+// Preis gilt.
+export function berechneVorlagenStichtage(
+  stufen: PreisstaffelVorlageStufe[],
+  terminDatumStart: string,
+  regel: StichtagRegel
+): { stichtage: (BerechneterStichtag | null)[]; kollision: string | null } {
+  const stichtage = stufen.map((s) =>
+    s.stichtag_tage_vor_start === 0 ? null : berechneStichtagMitRegel(terminDatumStart, s.stichtag_tage_vor_start, regel)
+  );
+  const sortiert = stufen
+    .map((s, i) => ({ s, st: stichtage[i] }))
+    .filter((x) => x.st)
+    .sort((a, b) => b.s.stichtag_tage_vor_start - a.s.stichtag_tage_vor_start);
+  let kollision: string | null = null;
+  for (let i = 1; i < sortiert.length && !kollision; i++) {
+    if (sortiert[i].st!.stichtag <= sortiert[i - 1].st!.stichtag) {
+      kollision = `„${sortiert[i - 1].s.name}“ und „${sortiert[i].s.name}“ fallen nach dem Verschieben auf denselben Stichtag bzw. tauschen die Reihenfolge – Abstand zwischen den Stufen vergrößern oder Regel lockern.`;
+    }
+  }
+  return { stichtage, kollision };
+}
+
+// "Do 10.09.2026" fuer einen reinen Kalendertag (YYYY-MM-DD).
+export function formatKalendertag(iso: string): string {
+  const [j, m, t] = iso.slice(0, 10).split("-");
+  return `${WOCHENTAG_KURZ[wochentagVon(iso)]} ${t}.${m}.${j}`;
 }

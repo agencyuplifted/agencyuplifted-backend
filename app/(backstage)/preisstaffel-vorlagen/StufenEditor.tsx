@@ -1,7 +1,15 @@
 "use client";
 
 import { formatEURBrutto } from "@/lib/format";
-import { normalisiereVorlageStufen, type PreisstaffelVorlageStufe } from "@/lib/preisstaffeln";
+import {
+  normalisiereVorlageStufen,
+  berechneStichtagMitRegel,
+  berechneVorlagenStichtage,
+  formatKalendertag,
+  tagePlus,
+  type PreisstaffelVorlageStufe,
+  type StichtagRegel,
+} from "@/lib/preisstaffeln";
 
 // Editierbare Liste von Preisstufen im relativen Modus ("Tage vor Start").
 // Gemeinsam genutzt von der Vorlagen-Verwaltung (/preisstaffel-vorlagen) und
@@ -41,15 +49,78 @@ export function entwurfZuStufen(entwurf: StufeEntwurf[]): PreisstaffelVorlageStu
 
 const zellenInput = { marginBottom: 0 } as const;
 
+export type StichtagVorschau = { terminDatumStart: string; regel: StichtagRegel | null };
+
+function heuteISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Vorschau-Zelle "welcher Kalendertag wird das fuer diesen Termin" -- mit
+// Regel inkl. Verschiebung und Grund, damit vor dem Uebernehmen sichtbar ist,
+// was aus "90 Tage vor Start" wird.
+function StichtagZelle({ tage, vorschau }: { tage: string; vorschau: StichtagVorschau }) {
+  const n = tage === "" ? NaN : Number(tage);
+  if (!Number.isInteger(n) || n < 0) return <span style={{ color: "var(--color-text-faint)" }}>—</span>;
+  if (n === 0) return <span style={{ color: "var(--color-text-muted)" }}>bis Seminarstart</span>;
+
+  const klein = { display: "block", fontSize: "0.72rem", lineHeight: 1.3 } as const;
+  const verstrichen = (tag: string) =>
+    tag < heuteISO() ? <span style={{ ...klein, color: "var(--color-text-faint)" }}>bereits verstrichen</span> : null;
+
+  if (!vorschau.regel) {
+    const tag = tagePlus(vorschau.terminDatumStart, -n);
+    return (
+      <span style={{ color: "var(--color-text-muted)" }}>
+        {formatKalendertag(tag)}
+        {verstrichen(tag)}
+      </span>
+    );
+  }
+
+  const b = berechneStichtagMitRegel(vorschau.terminDatumStart, n, vorschau.regel);
+  return (
+    <span>
+      <strong style={{ fontWeight: 600 }}>{formatKalendertag(b.stichtag)}</strong>
+      {b.verschiebung !== 0 && (
+        <span style={{ ...klein, color: "var(--color-text-faint)" }}>
+          statt {formatKalendertag(b.ausgangstag)} ({b.verschiebung > 0 ? "+" : "−"}
+          {Math.abs(b.verschiebung)} T.{b.grund ? `, ${b.grund}` : ""})
+        </span>
+      )}
+      {!b.gefunden ? (
+        <span style={{ ...klein, color: "var(--color-danger)" }}>kein passender Tag gefunden</span>
+      ) : b.ausserhalbMax ? (
+        <span style={{ ...klein, color: "var(--color-warning)" }}>mehr als ±{vorschau.regel.max_verschiebung_tage} Tage verschoben</span>
+      ) : null}
+      {verstrichen(b.stichtag)}
+    </span>
+  );
+}
+
 export default function StufenEditor({
   entwurf,
   onChange,
   deaktiviert = false,
+  stichtagVorschau,
 }: {
   entwurf: StufeEntwurf[];
   onChange: (entwurf: StufeEntwurf[]) => void;
   deaktiviert?: boolean;
+  stichtagVorschau?: StichtagVorschau | null;
 }) {
+  // Kollision (zwei Stufen nach dem Verschieben auf demselben Tag) nur
+  // pruefbar, wenn der Entwurf gueltig ist -- sonst zeigt das Speichern ohnehin
+  // die konkrete Validierungsmeldung.
+  let kollision: string | null = null;
+  if (stichtagVorschau?.regel) {
+    try {
+      kollision = berechneVorlagenStichtage(entwurfZuStufen(entwurf), stichtagVorschau.terminDatumStart, stichtagVorschau.regel).kollision;
+    } catch {
+      kollision = null;
+    }
+  }
+
   function aendere(key: string, feld: "name" | "tage" | "preis", wert: string) {
     onChange(entwurf.map((e) => (e.key === key ? { ...e, [feld]: wert } : e)));
   }
@@ -71,12 +142,13 @@ export default function StufenEditor({
   return (
     <div>
       <div style={{ overflowX: "auto" }}>
-        <table className="au-table" style={{ marginBottom: "0.5rem", minWidth: 520 }}>
+        <table className="au-table" style={{ marginBottom: "0.5rem", minWidth: stichtagVorschau ? 720 : 520 }}>
           <thead>
             <tr>
               <th>Name</th>
               <th style={{ width: 130 }}>Tage vor Start</th>
               <th style={{ width: 140 }}>Preis (€, netto)</th>
+              {stichtagVorschau && <th style={{ width: 190 }}>Stichtag</th>}
               <th style={{ width: 120 }}>Brutto (19% USt.)</th>
               <th style={{ width: 70 }}></th>
             </tr>
@@ -123,6 +195,11 @@ export default function StufenEditor({
                       aria-label="Preis netto"
                     />
                   </td>
+                  {stichtagVorschau && (
+                    <td style={{ verticalAlign: "middle", fontSize: "0.85rem" }}>
+                      <StichtagZelle tage={e.tage} vorschau={stichtagVorschau} />
+                    </td>
+                  )}
                   <td style={{ color: "var(--color-text-muted)", verticalAlign: "middle" }}>
                     {Number.isFinite(preisZahl) ? formatEURBrutto(preisZahl) : "—"}
                   </td>
@@ -143,6 +220,11 @@ export default function StufenEditor({
           </tbody>
         </table>
       </div>
+      {kollision && (
+        <div className="au-banner au-banner-error" style={{ margin: "0 0 0.5rem", padding: "0.45rem 0.75rem", fontSize: "0.82rem" }}>
+          {kollision}
+        </div>
+      )}
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
         <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={stufeHinzufuegen} disabled={deaktiviert}>
           + Stufe

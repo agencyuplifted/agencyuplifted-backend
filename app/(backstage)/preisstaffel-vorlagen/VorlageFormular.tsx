@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import type { PreisstaffelVorlage } from "@/lib/preisstaffeln";
+import { useEffect, useState } from "react";
+import { normalisiereStichtagRegel, tagePlus, type PreisstaffelVorlage, type StichtagRegel } from "@/lib/preisstaffeln";
 import type { VorlagenAktionsErgebnis } from "@/lib/actions";
 import StufenEditor, { entwurfAusStufen, entwurfZuStufen, leererEntwurf, type StufeEntwurf } from "./StufenEditor";
+import StichtagRegelFelder from "./StichtagRegelFelder";
 
 // Anlegen (ohne vorlage) bzw. Bearbeiten (mit vorlage) einer Preisstaffel-
 // Vorlage. Kein <form action>, weil die Stufen als JSON aus dem State kommen
@@ -20,6 +21,16 @@ export default function VorlageFormular({
   const [entwurf, setEntwurf] = useState<StufeEntwurf[]>(() =>
     vorlage ? entwurfAusStufen(vorlage.stufen) : leererEntwurf()
   );
+  const [regel, setRegel] = useState<StichtagRegel | null>(vorlage?.stichtag_regel ?? null);
+  // Beispiel-Terminstart nur fuer die Stichtag-Vorschau (wird nicht
+  // gespeichert). Erst nach dem Mounten gesetzt: "heute" auf dem Server (UTC)
+  // und im Browser koennen abweichen -> sonst Hydration-Mismatch im Datumsfeld.
+  const [beispielStart, setBeispielStart] = useState("");
+  useEffect(() => {
+    const d = new Date();
+    const heute = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    setBeispielStart(tagePlus(heute, 180));
+  }, []);
   const [laedt, setLaedt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [erfolg, setErfolg] = useState<string | null>(null);
@@ -32,8 +43,10 @@ export default function VorlageFormular({
       return;
     }
     let stufen;
+    let geprueftRegel: StichtagRegel | null;
     try {
       stufen = entwurfZuStufen(entwurf);
+      geprueftRegel = normalisiereStichtagRegel(regel);
     } catch (e: any) {
       setFehler(e.message);
       return;
@@ -44,6 +57,7 @@ export default function VorlageFormular({
     formData.set("name", name);
     formData.set("beschreibung", beschreibung);
     formData.set("stufen_json", JSON.stringify(stufen));
+    formData.set("stichtag_regel_json", JSON.stringify(geprueftRegel));
 
     setLaedt(true);
     try {
@@ -61,6 +75,7 @@ export default function VorlageFormular({
         setName("");
         setBeschreibung("");
         setEntwurf(leererEntwurf());
+        setRegel(null);
         setErfolg(`Vorlage „${name.trim()}“ angelegt.`);
       }
     } catch (e: any) {
@@ -95,8 +110,27 @@ export default function VorlageFormular({
         </div>
       </div>
 
-      <label className="au-label">Preisstufen</label>
-      <StufenEditor entwurf={entwurf} onChange={setEntwurf} deaktiviert={laedt} />
+      <StichtagRegelFelder regel={regel} onChange={setRegel} deaktiviert={laedt} />
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.35rem" }}>
+        <label className="au-label" style={{ margin: 0 }}>Preisstufen</label>
+        <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
+          Stichtag-Vorschau für Terminstart
+          <input
+            type="date"
+            className="au-input"
+            style={{ marginBottom: 0, width: "auto", padding: "0.25rem 0.45rem", fontSize: "0.8rem" }}
+            value={beispielStart}
+            onChange={(e) => setBeispielStart(e.target.value)}
+          />
+        </label>
+      </div>
+      <StufenEditor
+        entwurf={entwurf}
+        onChange={setEntwurf}
+        deaktiviert={laedt}
+        stichtagVorschau={beispielStart ? { terminDatumStart: beispielStart, regel } : null}
+      />
 
       {fehler && (
         <div className="au-banner au-banner-error" style={{ margin: "0.75rem 0 0", padding: "0.5rem 0.75rem" }}>
