@@ -1543,6 +1543,41 @@ export async function updatePreisstaffelVorlage(formData: FormData): Promise<Vor
   return { fehler: null };
 }
 
+// Duplizieren legt eine 1:1-Kopie unter "<Name> (Kopie)" an. Der Name muss
+// wegen preisstaffel_vorlagen_name_unique frei sein, daher bei Kollision
+// "(Kopie 2)", "(Kopie 3)" usw. -- per Insert-Versuch statt Vorab-Abfrage,
+// weil der Unique-Index case-insensitiv ist und sich ein ilike-Vergleich an
+// Sonderzeichen wie "%"/"_" im Namen verschlucken wuerde.
+export async function duplizierePreisstaffelVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("vorlage_id") || "");
+  if (!id) return { fehler: "Vorlage nicht gefunden." };
+  const supabase = getSupabaseAdmin();
+  const { data: original, error: ladeFehler } = await supabase
+    .from("preisstaffel_vorlagen")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (ladeFehler) return { fehler: ladeFehler.message };
+  if (!original) return { fehler: "Vorlage nicht gefunden." };
+
+  const vorlage = original as PreisstaffelVorlage;
+  for (let nr = 1; nr <= 50; nr++) {
+    const name = `${vorlage.name} (Kopie${nr === 1 ? "" : ` ${nr}`})`;
+    const { error } = await supabase.from("preisstaffel_vorlagen").insert({
+      name,
+      beschreibung: vorlage.beschreibung,
+      stufen: vorlage.stufen,
+      stichtag_regel: vorlage.stichtag_regel,
+    });
+    if (!error) {
+      revalidatePath("/preisstaffel-vorlagen");
+      return { fehler: null };
+    }
+    if (error.code !== "23505") return { fehler: error.message };
+  }
+  return { fehler: "Kein freier Name für die Kopie gefunden – bitte vorhandene Kopien umbenennen." };
+}
+
 // Loeschen betrifft nur die Vorlage selbst -- bereits in Optionen geladene
 // Stufen sind eigenstaendige Kopien in preisstaffeln und bleiben erhalten.
 export async function deletePreisstaffelVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {

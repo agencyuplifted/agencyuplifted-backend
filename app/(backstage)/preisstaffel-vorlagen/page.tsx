@@ -5,11 +5,13 @@ import {
   createPreisstaffelVorlage,
   updatePreisstaffelVorlage,
   deletePreisstaffelVorlage,
+  duplizierePreisstaffelVorlage,
 } from "@/lib/actions";
 import { formatDatumZeit, formatEUR, formatEURBrutto } from "@/lib/format";
 import { stichtagRegelText } from "@/lib/preisstaffeln";
 import VorlageFormular from "./VorlageFormular";
 import VorlageLoeschenButton from "./VorlageLoeschenButton";
+import VorlageDuplizierenButton from "./VorlageDuplizierenButton";
 
 export default async function PreisstaffelVorlagenPage() {
   const vorlagen = await listePreisstaffelVorlagen();
@@ -58,6 +60,7 @@ export default async function PreisstaffelVorlagenPage() {
                   <span style={{ fontSize: "0.75rem", color: "var(--color-text-faint)" }}>
                     zuletzt geändert {formatDatumZeit(v.aktualisiert_am)}
                   </span>
+                  <VorlageDuplizierenButton vorlageId={v.id} duplizierenAction={duplizierePreisstaffelVorlage} />
                   <VorlageLoeschenButton vorlageId={v.id} vorlageName={v.name} loeschenAction={deletePreisstaffelVorlage} />
                 </div>
               </div>
