@@ -15,7 +15,7 @@ export default async function VerzeichnisPage({ searchParams }: { searchParams: 
   const [{ data: personen, error }, { data: staerken }] = await Promise.all([
     client
       .from("teilnehmer")
-      .select("id, vorname, nachname, position, netzwerk_spezialisierungen, netzwerk_standort, teilnehmer_organisationen(agentur_rolle, ist_hauptorganisation, organisationen(id, name, rechnungsadresse_ort))")
+      .select("id, vorname, nachname, position, netzwerk_gastgeber, netzwerk_spezialisierungen, netzwerk_standort, teilnehmer_organisationen(agentur_rolle, ist_hauptorganisation, organisationen(id, name, rechnungsadresse_ort))")
       .order("nachname"),
     client.from("verbindungsstaerke").select("teilnehmer_a_id, teilnehmer_b_id, staerke").or(`teilnehmer_a_id.eq.${teilnehmerId},teilnehmer_b_id.eq.${teilnehmerId}`),
   ]);
@@ -39,6 +39,8 @@ export default async function VerzeichnisPage({ searchParams }: { searchParams: 
     if (f.standort && p.standort !== f.standort) return false;
     return true;
   });
+  // Gastgeber zuerst -- wer neu dazukommt, sieht sofort, wer dahintersteht.
+  gefiltert.sort((a: any, b: any) => Number(!!b.netzwerk_gastgeber) - Number(!!a.netzwerk_gastgeber));
 
   const agenturen = new Map<string, { id: string; name: string; ort: string | null; personen: any[] }>();
   for (const p of gefiltert) {
@@ -93,6 +95,7 @@ export default async function VerzeichnisPage({ searchParams }: { searchParams: 
                   <span className="ua-avatar">{initialen(p.vorname, p.nachname)}</span>
                   <div style={{ minWidth: 0 }}>
                     <strong>{p.vorname} {p.nachname}</strong>{ich && <span className="ua-klein"> (du)</span>}
+                    {p.netzwerk_gastgeber && <span className="ua-gastgeber">Gastgeber</span>}
                     <div className="ua-klein">
                       {[p.position, p.haupt?.organisationen?.name].filter(Boolean).join(" · ")}
                     </div>
@@ -102,7 +105,7 @@ export default async function VerzeichnisPage({ searchParams }: { searchParams: 
                 {(p.netzwerk_spezialisierungen || []).length > 0 && (
                   <div className="ua-tags">{p.netzwerk_spezialisierungen.slice(0, 5).map((s: string) => <span key={s} className="ua-tag">{s}</span>)}</div>
                 )}
-                {!ich && (
+                {!ich && !p.netzwerk_gastgeber && (
                   <div className="ua-faden" title={`Verbindung ${staerke}/100`}>
                     <span style={{ width: `${staerke}%` }} />
                   </div>
@@ -118,7 +121,7 @@ export default async function VerzeichnisPage({ searchParams }: { searchParams: 
               <strong>{a.name}</strong>
               {a.ort && <div className="ua-klein">📍 {a.ort}</div>}
               <div className="ua-klein" style={{ marginTop: "0.4rem" }}>
-                {a.personen.map((p: any) => `${p.vorname} ${p.nachname}${AGENTUR_ROLLE_LABEL[p.rolle] ? ` (${AGENTUR_ROLLE_LABEL[p.rolle]})` : ""}`).join(", ")}
+                {a.personen.map((p: any) => `${p.vorname} ${p.nachname}${p.netzwerk_gastgeber ? " (Gastgeber)" : AGENTUR_ROLLE_LABEL[p.rolle] ? ` (${AGENTUR_ROLLE_LABEL[p.rolle]})` : ""}`).join(", ")}
               </div>
             </Link>
           ))}

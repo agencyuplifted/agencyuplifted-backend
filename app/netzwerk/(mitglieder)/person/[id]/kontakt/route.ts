@@ -11,7 +11,7 @@ import { whatsappNummer, kanonischesPaar } from "../../../../hilfen";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { client, teilnehmerId } = await requireMitglied();
-  const { data: p } = await client.from("teilnehmer").select("id, email, telefon, mobiltelefon, linkedin_url").eq("id", id).maybeSingle();
+  const { data: p } = await client.from("teilnehmer").select("id, email, telefon, mobiltelefon, linkedin_url, netzwerk_gastgeber").eq("id", id).maybeSingle();
   if (!p || id === teilnehmerId) return NextResponse.redirect(new URL("/netzwerk", request.url));
 
   const weg = request.nextUrl.searchParams.get("weg");
@@ -23,6 +23,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     weg === "linkedin" && p.linkedin_url && /^https?:\/\//i.test(p.linkedin_url) ? p.linkedin_url :
     null;
   if (!ziel) return NextResponse.redirect(new URL(`/netzwerk/person/${id}`, request.url));
+
+  const { data: ich } = await client.from("teilnehmer").select("netzwerk_gastgeber").eq("id", teilnehmerId).single();
+  if (p.netzwerk_gastgeber || ich?.netzwerk_gastgeber) return NextResponse.redirect(ziel);
 
   const [a, b] = kanonischesPaar(teilnehmerId, id);
   await getSupabaseAdmin()

@@ -2093,3 +2093,15 @@ a.au-kennzahl:hover {
     font-size: 16px;
   }
 }
+
+.ua-gastgeber {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.08rem 0.5rem;
+  border-radius: 999px;
+  background: #c9a227;
+  color: #0b1b33;
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: middle;
+}

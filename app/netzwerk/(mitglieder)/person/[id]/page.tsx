@@ -10,12 +10,15 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   const { client, teilnehmerId } = await requireMitglied();
   const { data: p } = await client
     .from("teilnehmer")
-    .select("id, vorname, nachname, position, email, telefon, mobiltelefon, linkedin_url, netzwerk_spezialisierungen, netzwerk_standort, netzwerk_kurzprofil, teilnehmer_organisationen(agentur_rolle, ist_hauptorganisation, organisationen(id, name, rechnungsadresse_ort, branche))")
+    .select("id, vorname, nachname, position, email, telefon, mobiltelefon, linkedin_url, netzwerk_gastgeber, netzwerk_spezialisierungen, netzwerk_standort, netzwerk_kurzprofil, teilnehmer_organisationen(agentur_rolle, ist_hauptorganisation, organisationen(id, name, rechnungsadresse_ort, branche))")
     .eq("id", id)
     .maybeSingle();
   if (!p) notFound(); // unsichtbar, kein Mitglied oder gibt es nicht -- bewusst nicht unterscheidbar
 
   const ich = id === teilnehmerId;
+  const { data: meinProfil } = await client.from("teilnehmer").select("netzwerk_gastgeber").eq("id", teilnehmerId).single();
+  // Mit dem Gastgeber gibt es bewusst keine Fadenstaerke (siehe Migration netzwerk_gastgeber).
+  const gastgeberBeteiligt = !!p.netzwerk_gastgeber || !!meinProfil?.netzwerk_gastgeber;
   const [a, b] = kanonischesPaar(teilnehmerId, id);
   const [{ data: gemeinsam }, { data: alleStaerken }] = await Promise.all([
     ich ? Promise.resolve({ data: [] as any[] }) : client.from("verbindungs_events").select("quelle_bezeichnung, erstellt_am").eq("typ", "seminar_gemeinsam").eq("teilnehmer_a_id", a).eq("teilnehmer_b_id", b),
@@ -45,6 +48,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
           <span className="ua-avatar ua-avatar-gross">{initialen(p.vorname, p.nachname)}</span>
           <div style={{ minWidth: 0 }}>
             <h1 style={{ margin: 0 }}>{p.vorname} {p.nachname}</h1>
+            {p.netzwerk_gastgeber && <span className="ua-gastgeber" style={{ marginLeft: 0 }}>Gastgeber von Uplifted Agencies</span>}
             {p.position && <div className="ua-klein" style={{ fontSize: "0.95rem" }}>{p.position}</div>}
             {p.netzwerk_standort && <div className="ua-klein">📍 {p.netzwerk_standort}</div>}
           </div>
@@ -73,7 +77,13 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         </Link>
       ))}
 
-      {!ich && (
+      {!ich && p.netzwerk_gastgeber && (
+        <div className="ua-karte ua-klein">
+          {p.vorname} hat {"Uplifted Agencies"} ins Leben gerufen und begleitet das Netzwerk persönlich – melde dich jederzeit, wenn du eine Idee, eine Frage oder einen Kontaktwunsch hast.
+        </div>
+      )}
+
+      {!ich && !gastgeberBeteiligt && (
         <div className="ua-karte">
           <h2 style={{ marginBottom: "0.4rem" }}>Eure Verbindung</h2>
           <div className="ua-faden" style={{ height: 8 }}><span style={{ width: `${staerke}%` }} /></div>

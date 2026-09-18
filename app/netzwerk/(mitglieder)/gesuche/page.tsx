@@ -10,7 +10,7 @@ export default async function GesuchePage({ searchParams }: { searchParams: Prom
   const { client, teilnehmerId } = await requireMitglied();
   let query = client
     .from("gesuche_angebote")
-    .select("id, typ, titel, beschreibung, tags, status, erstellt_am, teilnehmer_id, teilnehmer(id, vorname, nachname, teilnehmer_organisationen(ist_hauptorganisation, organisationen(name)))")
+    .select("id, typ, titel, beschreibung, tags, status, erstellt_am, teilnehmer_id, teilnehmer(id, vorname, nachname, netzwerk_gastgeber, teilnehmer_organisationen(ist_hauptorganisation, organisationen(name)))")
     .order("erstellt_am", { ascending: false })
     .limit(200);
   if (f.meine === "1") query = query.eq("teilnehmer_id", teilnehmerId);
@@ -60,7 +60,7 @@ export default async function GesuchePage({ searchParams }: { searchParams: Prom
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginTop: "0.6rem", flexWrap: "wrap" }}>
               {g.teilnehmer ? (
                 <Link href={`/netzwerk/person/${g.teilnehmer.id}`} className="ua-klein">
-                  {g.teilnehmer.vorname} {g.teilnehmer.nachname}{org ? ` · ${org}` : ""}
+                  {g.teilnehmer.vorname} {g.teilnehmer.nachname}{g.teilnehmer.netzwerk_gastgeber ? " · Gastgeber" : org ? ` · ${org}` : ""}
                 </Link>
               ) : <span />}
               {meins && (

@@ -12,7 +12,7 @@ export default async function AgenturPage({ params }: { params: Promise<{ id: st
   const { client } = await requireMitglied();
   const { data: o } = await client
     .from("organisationen")
-    .select("id, name, branche, rechnungsadresse_ort, rechnungsadresse_land, teilnehmer_organisationen(agentur_rolle, teilnehmer(id, vorname, nachname, position))")
+    .select("id, name, branche, rechnungsadresse_ort, rechnungsadresse_land, teilnehmer_organisationen(agentur_rolle, teilnehmer(id, vorname, nachname, position, netzwerk_gastgeber))")
     .eq("id", id)
     .maybeSingle();
   if (!o) notFound();
@@ -36,7 +36,7 @@ export default async function AgenturPage({ params }: { params: Promise<{ id: st
               <span className="ua-avatar">{initialen(z.teilnehmer.vorname, z.teilnehmer.nachname)}</span>
               <div>
                 <strong>{z.teilnehmer.vorname} {z.teilnehmer.nachname}</strong>
-                <div className="ua-klein">{[AGENTUR_ROLLE_LABEL[z.agentur_rolle], z.teilnehmer.position].filter(Boolean).join(" · ")}</div>
+                <div className="ua-klein">{[z.teilnehmer.netzwerk_gastgeber ? "Gastgeber" : AGENTUR_ROLLE_LABEL[z.agentur_rolle], z.teilnehmer.position].filter(Boolean).join(" · ")}</div>
               </div>
             </div>
           </Link>
