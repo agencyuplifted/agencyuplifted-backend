@@ -8,7 +8,10 @@ import {
   toggleFunnelMailAktiv,
   importiereFunnelMail,
   stelleFunnelMailWiederHer,
+  speichereMailBausteine,
 } from "@/lib/actions";
+import { ladeBausteine } from "@/lib/mail-bausteine";
+import BausteinEditor from "./BausteinEditor";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatDatumZeit } from "@/lib/format";
 import { TRIGGER_LABEL, PLATZHALTER_HILFE, SYSTEM_FUNNEL_IDS, type TriggerTyp } from "@/lib/funnel";
@@ -45,7 +48,7 @@ export default async function FunnelPage({
   const heute = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
   const vorVierMonaten = new Date(Date.now() - 120 * TAG_MS).toISOString().slice(0, 10);
 
-  const [{ data: alleFunnelMails }, { data: log }, { data: termine }] = await Promise.all([
+  const [{ data: alleFunnelMails }, { data: log }, { data: termine }, bausteine] = await Promise.all([
     supabase.from("funnel_mails").select("*").order("erstellt_am", { ascending: false }),
     supabase.from("funnel_versand_log").select("*, funnel_mails(name)").order("gesendet_am", { ascending: false }).limit(30),
     supabase
@@ -55,13 +58,14 @@ export default async function FunnelPage({
       .gte("datum_start", vorVierMonaten)
       .order("datum_start")
       .limit(40),
+    ladeBausteine(supabase),
   ]);
   const funnelMails = (alleFunnelMails || [])
     .filter((f: any) => !f.geloescht_am)
     .sort((a: any, b: any) => zeitstrahlRang(a) - zeitstrahlRang(b));
   const geloeschte = (alleFunnelMails || []).filter((f: any) => f.geloescht_am);
 
-  const modus = mailParam === "neu" ? "neu" : mailParam === "import" ? "import" : "mail";
+  const modus = mailParam === "neu" ? "neu" : mailParam === "import" ? "import" : mailParam === "bausteine" ? "bausteine" : "mail";
   const ausgewaehlt: any = modus === "mail" ? funnelMails.find((f: any) => f.id === mailParam) || funnelMails[0] || null : null;
   const istSystem = !!(ausgewaehlt && SYSTEM_FUNNEL_IDS[ausgewaehlt.id]);
 
@@ -121,6 +125,10 @@ export default async function FunnelPage({
             <Link href="/funnel?mail=neu" data-funnel-link className={`au-btn au-btn-primary au-btn-sm${modus === "neu" ? " aktiv" : ""}`}>+ Neue Mail</Link>
             <Link href="/funnel?mail=import" data-funnel-link className="au-btn au-btn-secondary au-btn-sm">Import</Link>
           </div>
+          <Link href="/funnel?mail=bausteine" data-funnel-link className={`au-zs-mail au-funnel-bausteine-link${modus === "bausteine" ? " gewaehlt" : ""}`}>
+            <span className="au-zs-mail-name">Signatur &amp; Fußzeile</span>
+            <span className="au-zs-mail-zeit">gilt für alle Mails</span>
+          </Link>
           <TerminWahl
             termine={terminListe.map((t) => ({ id: t.id, label: `${formatDatum(t.datum_start)} · ${t.kennung || t.titel}` }))}
             gewaehlt={beispiel?.id || null}
@@ -149,7 +157,16 @@ export default async function FunnelPage({
               <div className="au-panel-kopf"><h2 style={{ margin: 0 }}>Neue Funnel-Mail</h2></div>
               <div className="au-funnel-rechts-inhalt">
                 <p className="au-klein" style={{ marginTop: 0 }}>Wird inaktiv angelegt. Nach dem Aktivieren geht sie nur für Stichtage ab dem Aktivierungstag raus – nie rückwirkend.</p>
-                <FunnelEditor key="neu" mail={null} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={createFunnelMail} />
+                <FunnelEditor key="neu" mail={null} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={createFunnelMail} bausteine={bausteine} />
+              </div>
+            </>
+          )}
+
+          {modus === "bausteine" && (
+            <>
+              <div className="au-panel-kopf"><h2 style={{ margin: 0 }}>Signatur &amp; Fußzeile</h2></div>
+              <div className="au-funnel-rechts-inhalt">
+                <BausteinEditor bausteine={bausteine} speichernAction={speichereMailBausteine} />
               </div>
             </>
           )}
@@ -211,7 +228,7 @@ export default async function FunnelPage({
                 ) : ausgewaehlt.aktiv && ausgewaehlt.aktiviert_am ? (
                   <p className="au-klein" style={{ marginTop: 0 }}>Aktiv seit {formatDatum(ausgewaehlt.aktiviert_am)} – verschickt nur für Stichtage ab diesem Tag.</p>
                 ) : null}
-                <FunnelEditor key={ausgewaehlt.id + (ausgewaehlt.aktualisiert_am || "")} mail={ausgewaehlt} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={updateFunnelMail} />
+                <FunnelEditor key={ausgewaehlt.id + (ausgewaehlt.aktualisiert_am || "")} mail={ausgewaehlt} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={updateFunnelMail} bausteine={bausteine} istSystem={istSystem} />
               </div>
             </>
           )}

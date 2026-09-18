@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import Link from "next/link";
+import { baueMailHtml, schalterAus, BEISPIEL_WERTE, type MailBausteine } from "@/lib/mail-html";
 
 type Platzhalter = { key: string; beschreibung: string; verfuegbarBei: string[] };
 
@@ -14,8 +16,22 @@ export default function FunnelEditor({
   trigger,
   platzhalter,
   speichernAction,
+  bausteine,
+  istSystem = false,
 }: {
-  mail: { id?: string; name: string; trigger_typ: string; versatz_tage: number; betreff: string; inhalt: string } | null;
+  mail: {
+    id?: string;
+    name: string;
+    trigger_typ: string;
+    versatz_tage: number;
+    betreff: string;
+    inhalt: string;
+    baustein_signatur?: boolean;
+    baustein_rechtliches?: boolean;
+    baustein_abmelden?: boolean;
+  } | null;
+  bausteine: MailBausteine;
+  istSystem?: boolean;
   trigger: { key: string; label: string }[];
   platzhalter: Platzhalter[];
   speichernAction: (fd: FormData) => Promise<void>;
@@ -29,13 +45,22 @@ export default function FunnelEditor({
   const inhaltRef = useRef<HTMLTextAreaElement>(null);
   const zuletzt = useRef<"betreff" | "inhalt">("inhalt");
   const speichertRef = useRef(false);
+  const start = schalterAus(mail || {});
+  const [mitSignatur, setMitSignatur] = useState(start.signatur);
+  const [mitRechtlichem, setMitRechtlichem] = useState(start.rechtliches);
+  // Transaktionale System-Mails (Reservierung/Zahlung) bekommen nie einen Abmeldelink
+  const [mitAbmelden, setMitAbmelden] = useState(istSystem ? false : start.abmelden);
+  const [vorschau, setVorschau] = useState(false);
 
   const geaendert =
     name !== (mail?.name || "") ||
     triggerTyp !== (mail?.trigger_typ || "vor_seminarstart") ||
     versatz !== String(mail?.versatz_tage ?? 3) ||
     betreff !== (mail?.betreff || "") ||
-    inhalt !== (mail?.inhalt || "");
+    inhalt !== (mail?.inhalt || "") ||
+    mitSignatur !== start.signatur ||
+    mitRechtlichem !== start.rechtliches ||
+    (!istSystem && mitAbmelden !== start.abmelden);
 
   // Ungespeicherte Aenderungen nicht still verwerfen, wenn links eine andere
   // Mail angeklickt oder die Seite verlassen wird.
@@ -155,10 +180,38 @@ export default function FunnelEditor({
         onFocus={() => (zuletzt.current = "inhalt")}
         placeholder={"Hallo {{vorname}},\n\nnur noch wenige Tage bis {{seminartitel}} am {{datum_start}}.\n\nViele Grüße"}
       />
+      <div className="au-fe-bausteine">
+        <span className="au-label" style={{ margin: 0 }}>Automatisch anhängen</span>
+        <label><input type="checkbox" name="baustein_signatur" checked={mitSignatur} onChange={(e) => setMitSignatur(e.target.checked)} /> Signatur</label>
+        <label><input type="checkbox" name="baustein_rechtliches" checked={mitRechtlichem} onChange={(e) => setMitRechtlichem(e.target.checked)} /> Impressum &amp; Datenschutz</label>
+        <label title={istSystem ? "Transaktionale Mail – bekommt nie einen Abmeldelink" : undefined}>
+          <input type="checkbox" name="baustein_abmelden" checked={mitAbmelden} disabled={istSystem} onChange={(e) => setMitAbmelden(e.target.checked)} /> Abmeldelink
+        </label>
+        <Link href="/funnel?mail=bausteine" data-funnel-link className="au-klein">Bausteine bearbeiten</Link>
+      </div>
+      {!istSystem && !mitAbmelden && (
+        <p className="au-fe-warnung">Ohne Abmeldelink nur für reine Service-Mails zum gebuchten Seminar (z. B. Anreise-Infos) – nicht für Werbung oder Follow-ups.</p>
+      )}
+
       {problematisch.length > 0 && (
         <p className="au-fe-warnung">
           {problematisch.join(", ")}: gibt es bei diesem Auslöser nicht – bleibt im Versand leer.
         </p>
+      )}
+
+      <button type="button" className="au-link" style={{ marginTop: "0.75rem" }} onClick={() => setVorschau((v) => !v)}>
+        {vorschau ? "Vorschau ausblenden" : "Vorschau mit Beispieldaten anzeigen"}
+      </button>
+      {vorschau && (
+        <div className="au-fe-vorschau">
+          <div className="au-fe-vorschau-betreff">{ersetze(betreff) || "(kein Betreff)"}</div>
+          <div
+            className="au-fe-vorschau-inhalt"
+            dangerouslySetInnerHTML={{
+              __html: baueMailHtml(ersetze(inhalt), bausteine, { signatur: mitSignatur, rechtliches: mitRechtlichem, abmelden: mitAbmelden }, null),
+            }}
+          />
+        </div>
       )}
 
       <div className="au-fe-fuss">
@@ -167,6 +220,10 @@ export default function FunnelEditor({
       </div>
     </form>
   );
+}
+
+function ersetze(text: string) {
+  return text.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in BEISPIEL_WERTE ? BEISPIEL_WERTE[k] : m));
 }
 
 function nichtVerfuegbarZeile(liste: Platzhalter[]) {

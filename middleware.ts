@@ -124,6 +124,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/kalender/") ||
     // Persoenliche Teilnehmer-Seiten aus den Seminar-Mails (signierter Token)
     pathname.startsWith("/seminar/") ||
+    // Abmeldeseite aus den Mails (signierter Token)
+    pathname.startsWith("/abmelden/") ||
     pathname.startsWith("/wissen") ||
     pathname === "/sitemap.xml" ||
     pathname === "/robots.txt" ||

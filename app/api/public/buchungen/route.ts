@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { ladeBausteine, schalterAus, baueMailHtml } from "@/lib/mail-bausteine";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getResend, ABSENDER } from "@/lib/email";
@@ -347,13 +348,15 @@ export async function POST(request: NextRequest) {
   // nicht ueber den taeglichen Funnel-Cron, damit sie direkt beim Absenden ankommt).
   const seminartitel = termin.titel || (termin as any).seminartypen?.name || "das Seminar";
   const seminardatum = formatDatum(termin.datum_start);
-  const funnelMail = await supabase.from("funnel_mails").select("betreff, inhalt").eq("id", RESERVIERUNG_FUNNEL_MAIL_ID).single();
+  const funnelMail = await supabase.from("funnel_mails").select("betreff, inhalt, baustein_signatur, baustein_rechtliches").eq("id", RESERVIERUNG_FUNNEL_MAIL_ID).single();
 
   if (funnelMail.data) {
+    // Transaktionale Mail: Signatur/Rechtliches wie im Funnel, aber nie ein Abmeldelink
+    const bausteine = await ladeBausteine(supabase);
     for (const t of teilnehmerIds) {
       const werte = { vorname: t.vorname, seminartitel, seminardatum };
       const betreff = renderPlatzhalter(funnelMail.data.betreff, werte);
-      const inhaltHtml = renderPlatzhalter(funnelMail.data.inhalt, werte).replace(/\n/g, "<br/>");
+      const inhaltHtml = baueMailHtml(renderPlatzhalter(funnelMail.data.inhalt, werte), bausteine, { ...schalterAus(funnelMail.data), abmelden: false }, null);
 
       let status: "gesendet" | "fehler" = "gesendet";
       let fehlermeldung: string | null = null;

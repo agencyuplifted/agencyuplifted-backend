@@ -1,5 +1,6 @@
 "use server";
 
+import { ladeBausteine, schalterAus, baueMailHtml } from "@/lib/mail-bausteine";
 import { getSupabaseAdmin } from "./supabase";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
@@ -1284,15 +1285,17 @@ export async function bestaetigeBuchung(formData: FormData) {
 
   const { data: funnelMail } = await supabase
     .from("funnel_mails")
-    .select("betreff, inhalt")
+    .select("betreff, inhalt, baustein_signatur, baustein_rechtliches")
     .eq("id", ZAHLUNGSBESTAETIGUNG_FUNNEL_MAIL_ID)
     .single();
 
   if (funnelMail) {
+    // Transaktionale Mail: Signatur/Rechtliches wie im Funnel, aber nie ein Abmeldelink
+    const bausteine = await ladeBausteine(supabase);
     for (const [email, vorname] of empfaengerMap) {
       const werte = { vorname, seminartitel, seminardatum };
       const betreff = renderPlatzhalter(funnelMail.betreff, werte);
-      const inhaltHtml = renderPlatzhalter(funnelMail.inhalt, werte).replace(/\n/g, "<br/>");
+      const inhaltHtml = baueMailHtml(renderPlatzhalter(funnelMail.inhalt, werte), bausteine, { ...schalterAus(funnelMail), abmelden: false }, null);
 
       let status: "gesendet" | "fehler" = "gesendet";
       let fehlermeldung: string | null = null;
@@ -2312,6 +2315,38 @@ export async function sendeTestMail(formData: FormData) {
   redirect("/email-test?erfolg=1");
 }
 
+function bausteinSchalterAusFormular(formData: FormData) {
+  return {
+    baustein_signatur: formData.get("baustein_signatur") === "on",
+    baustein_rechtliches: formData.get("baustein_rechtliches") === "on",
+    baustein_abmelden: formData.get("baustein_abmelden") === "on",
+  };
+}
+
+export async function speichereMailBausteine(formData: FormData) {
+  await requireBackstageLogin();
+  const text = (feld: string, max: number) => String(formData.get(feld) || "").trim().slice(0, max);
+  const url = (feld: string) => {
+    const wert = text(feld, 300);
+    if (wert && !/^https:\/\//i.test(wert)) throw new Error("Links bitte mit https:// angeben.");
+    return wert;
+  };
+  const { error } = await getSupabaseAdmin()
+    .from("mail_bausteine")
+    .update({
+      signatur: text("signatur", 2000),
+      firmenangaben: text("firmenangaben", 2000),
+      impressum_url: url("impressum_url"),
+      datenschutz_url: url("datenschutz_url"),
+      abmelde_text: text("abmelde_text", 300),
+      aktualisiert_am: new Date().toISOString(),
+    })
+    .eq("id", 1);
+  if (error) throw new Error(error.message);
+  revalidatePath("/funnel");
+  redirect("/funnel?mail=bausteine&gespeichert=1");
+}
+
 export async function createFunnelMail(formData: FormData) {
   await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
@@ -2321,6 +2356,7 @@ export async function createFunnelMail(formData: FormData) {
     versatz_tage: Number(formData.get("versatz_tage") || 0),
     betreff: String(formData.get("betreff")),
     inhalt: String(formData.get("inhalt")),
+    ...bausteinSchalterAusFormular(formData),
     // Neu angelegte Mails sind nie sofort aktiv -- erst pruefen, dann bewusst aktivieren.
     aktiv: false,
   }).select("id").single();
@@ -2341,6 +2377,7 @@ export async function updateFunnelMail(formData: FormData) {
       versatz_tage: Number(formData.get("versatz_tage") || 0),
       betreff: String(formData.get("betreff")),
       inhalt: String(formData.get("inhalt")),
+      ...bausteinSchalterAusFormular(formData),
       aktualisiert_am: new Date().toISOString(),
     })
     .eq("id", id);

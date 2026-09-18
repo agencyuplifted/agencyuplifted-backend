@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "./supabase";
 import { getResend, ABSENDER } from "./email";
 import { formatDatum, splitName } from "./format";
 import { seminarLinks } from "./seminar-links";
+import { ladeBausteine, schalterAus, baueMailHtml, abmeldeUrl, abmeldeHeader, type AbmeldeTyp } from "./mail-bausteine";
 
 // Diese beiden Mails verschickt der Code direkt (Buchungseingang in
 // app/api/public/buchungen, Zahlungsbestaetigung in bestaetigeBuchung) --
@@ -91,7 +92,7 @@ async function teilnehmerlisteText(supabase: any, seminarterminId: string): Prom
   return zeilen.join("\n") || "(noch keine Teilnehmer)";
 }
 
-type Empfaenger = { email: string; werte: Record<string, string> };
+type Empfaenger = { email: string; werte: Record<string, string>; abmelde: { typ: AbmeldeTyp; id: string } };
 
 async function sammleFaelligeEmpfaenger(
   supabase: any,
@@ -123,13 +124,14 @@ async function sammleFaelligeEmpfaenger(
       if (!imFenster(anchor)) continue;
       const { data: positionen } = await supabase
         .from("buchungspositionen")
-        .select("teilnehmer(vorname, nachname, email, marketing_consent_status)")
+        .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status)")
         .eq("buchung_id", b.id);
       const empfaenger: Empfaenger[] = (positionen || [])
         .filter((p: any) => p.teilnehmer?.email && p.teilnehmer?.marketing_consent_status !== "abgemeldet")
         .map((p: any) => ({
           email: p.teilnehmer.email,
           werte: { vorname: p.teilnehmer.vorname, nachname: p.teilnehmer.nachname, firma: b.organisationen?.name || "" },
+          abmelde: { typ: "t" as const, id: p.teilnehmer.id },
         }));
       if (empfaenger.length) ergebnis.push({ bezugTyp: "buchung", bezugId: b.id, empfaenger });
     }
@@ -181,6 +183,7 @@ async function sammleFaelligeEmpfaenger(
             ort: ortLang || ort,
             ...seminarLinks(p.teilnehmer.id, t.id),
           },
+          abmelde: { typ: "t" as const, id: p.teilnehmer.id },
         }));
       if (empfaenger.length) ergebnis.push({ bezugTyp: "seminartermin", bezugId: t.id, empfaenger });
     }
@@ -193,7 +196,7 @@ async function sammleFaelligeEmpfaenger(
       const anchor = tageVerschieben(String(l.erstellt_am).slice(0, 10), funnel.versatz_tage);
       if (!imFenster(anchor)) continue;
       const { vorname, nachname } = splitName(l.name || "");
-      ergebnis.push({ bezugTyp: "lead", bezugId: l.id, empfaenger: [{ email: l.email, werte: { vorname, nachname } }] });
+      ergebnis.push({ bezugTyp: "lead", bezugId: l.id, empfaenger: [{ email: l.email, werte: { vorname, nachname }, abmelde: { typ: "l", id: l.id } }] });
     }
   }
 
@@ -204,7 +207,7 @@ async function sammleFaelligeEmpfaenger(
       const anchor = tageVerschieben(String(w.angemeldet_am).slice(0, 10), funnel.versatz_tage);
       if (!imFenster(anchor)) continue;
       const { vorname, nachname } = splitName(w.name || "");
-      ergebnis.push({ bezugTyp: "warteliste", bezugId: w.id, empfaenger: [{ email: w.email, werte: { vorname, nachname } }] });
+      ergebnis.push({ bezugTyp: "warteliste", bezugId: w.id, empfaenger: [{ email: w.email, werte: { vorname, nachname }, abmelde: { typ: "w", id: w.id } }] });
     }
   }
 
@@ -219,6 +222,7 @@ export type FaelligeVorschauEintrag = {
   empfaengerEmail: string;
   betreff: string;
   inhaltHtml: string;
+  headers?: Record<string, string>;
 };
 
 async function ermittleFaelligeEintraege(
@@ -229,11 +233,17 @@ async function ermittleFaelligeEintraege(
 
   const eintraege: FaelligeVorschauEintrag[] = [];
   let uebersprungen = 0;
+  const bausteine = await ladeBausteine(supabase);
+  // Wer sich per Abmeldelink abgemeldet hat, bekommt keine Funnel-Mail mehr --
+  // gilt auch fuer Leads/Warteliste, die kein marketing_consent_status haben.
+  const { data: abmeldungen } = await supabase.from("mail_abmeldungen").select("email");
+  const abgemeldet = new Set((abmeldungen || []).map((a: any) => a.email));
 
   for (const funnel of funnels || []) {
     const gruppen = await sammleFaelligeEmpfaenger(supabase, funnel as any);
     for (const gruppe of gruppen) {
       for (const empf of gruppe.empfaenger) {
+        if (abgemeldet.has(empf.email.trim().toLowerCase())) continue;
         const { data: bereitsGesendet } = await supabase
           .from("funnel_versand_log")
           .select("id")
@@ -253,7 +263,13 @@ async function ermittleFaelligeEintraege(
           bezugId: gruppe.bezugId,
           empfaengerEmail: empf.email,
           betreff: renderPlatzhalter(funnel.betreff, empf.werte),
-          inhaltHtml: renderPlatzhalter(funnel.inhalt, empf.werte).replace(/\n/g, "<br/>"),
+          inhaltHtml: baueMailHtml(
+            renderPlatzhalter(funnel.inhalt, empf.werte),
+            bausteine,
+            schalterAus(funnel),
+            abmeldeUrl(empf.abmelde.typ, empf.abmelde.id)
+          ),
+          headers: schalterAus(funnel).abmelden ? abmeldeHeader(empf.abmelde.typ, empf.abmelde.id) : undefined,
         });
       }
     }
@@ -299,6 +315,7 @@ export async function pruefeUndSendeFaelligeFunnelMails(): Promise<{
         to: [eintrag.empfaengerEmail],
         subject: eintrag.betreff,
         html: eintrag.inhaltHtml,
+        headers: eintrag.headers,
       });
       if (error) {
         status = "fehler";

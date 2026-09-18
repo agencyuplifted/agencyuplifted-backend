@@ -3396,3 +3396,72 @@ a.au-kennzahl:hover {
     max-height: none;
   }
 }
+
+/* Funnel: Bausteine (Signatur, Rechtliches, Abmeldelink) + Vorschau */
+.au-funnel-bausteine-link {
+  margin-bottom: 0.9rem;
+  border-color: var(--color-border);
+}
+
+.au-fe-bausteine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  margin-top: 0.25rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+}
+
+.au-fe-bausteine label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.au-fe-vorschau {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.au-fe-vorschau-betreff {
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.au-fe-vorschau-inhalt {
+  padding: 0.9rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.au-bs-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.au-bs-titel {
+  font-size: 0.95rem;
+  margin: 1.1rem 0 0.4rem;
+}
+
+.au-bs-raster form > .au-bs-titel:first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 1100px) {
+  .au-bs-raster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
