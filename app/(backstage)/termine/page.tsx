@@ -18,78 +18,102 @@ function gruppeProMonat(liste: any[]) {
   return proMonat;
 }
 
-const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const MONATSKURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
 function isoDatum(jahr: number, monatIndex: number, tag: number) {
   return `${jahr}-${String(monatIndex + 1).padStart(2, "0")}-${String(tag).padStart(2, "0")}`;
 }
 
-function MonatKarte({
-  jahr,
-  monatIndex,
+// Rollierender Jahresplaner: eine Zeile pro Monat (Vormonat bis +10), Tage
+// 1-31 als Spalten, Seminare als Balken ueber ihre ganze Dauer. Ersetzt die
+// frueheren Monatskaertchen zum Seitwaertsscrollen -- gerade am Jahreswechsel
+// (2026/2027 parallel in Arbeit) sieht man so alles auf einen Blick.
+function Jahresplaner({
+  monate,
   termine,
   gebuchtProTermin,
   heuteISO,
 }: {
-  jahr: number;
-  monatIndex: number;
+  monate: { jahr: number; monatIndex: number }[];
   termine: any[];
   gebuchtProTermin: Map<string, number>;
   heuteISO: string;
 }) {
-  const ersterTag = new Date(jahr, monatIndex, 1);
-  const anzahlTage = new Date(jahr, monatIndex + 1, 0).getDate();
-  const startOffset = (ersterTag.getDay() + 6) % 7; // Montag = 0
-
-  const zellen: (number | null)[] = [];
-  for (let i = 0; i < startOffset; i++) zellen.push(null);
-  for (let d = 1; d <= anzahlTage; d++) zellen.push(d);
-  while (zellen.length % 7 !== 0) zellen.push(null);
-
-  const terminFuerTag = (iso: string) =>
-    termine.find((t: any) => iso >= t.datum_start && iso <= (t.datum_ende || t.datum_start));
-
   return (
-    <div className="au-monat-karte">
-      <div className="au-monat-titel">{MONATSKURZ[monatIndex]} {jahr}</div>
-      <div className="au-monat-grid">
-        {WOCHENTAGE.map((w) => (
-          <div className="au-monat-wt" key={w}>{w}</div>
+    <div className="au-planer" role="table" aria-label="Seminare der nächsten 12 Monate">
+      <div className="au-planer-zeile au-planer-kopfzeile" role="row">
+        <span className="au-planer-monat" />
+        {Array.from({ length: 31 }, (_, i) => (
+          <span key={i} className="au-planer-tagnr" style={{ gridColumn: i + 2 }}>{(i + 1) % 5 === 0 || i === 0 ? i + 1 : ""}</span>
         ))}
-        {zellen.map((d, i) => {
-          if (d === null) return <div className="au-monat-zelle au-monat-leer" key={i} />;
-          const iso = isoDatum(jahr, monatIndex, d);
-          const termin = terminFuerTag(iso);
-          const istHeute = iso === heuteISO;
-          if (!termin) {
-            return (
-              <div className={`au-monat-zelle${istHeute ? " au-monat-heute" : ""}`} key={i}>
-                <span className="au-monat-tag">{d}</span>
-              </div>
-            );
-          }
-          const farbe = termin.seminartypen?.farbe || "var(--color-accent)";
-          const gebucht = gebuchtProTermin.get(termin.id) || 0;
-          const label = termin.kennung || (termin.seminartypen?.name || "").slice(0, 4);
-          return (
-            <a
-              href={`/termine/${termin.id}`}
-              className={`au-monat-zelle au-monat-event${istHeute ? " au-monat-heute" : ""}`}
-              title={`${termin.titel || termin.seminartypen?.name || ""} — TN ${gebucht} von ${termin.kapazitaet}`}
-              key={i}
-            >
-              <span className="au-monat-tag">{d}</span>
-              <span className="au-monat-pill" style={{ background: farbe }}>{label}</span>
-            </a>
-          );
-        })}
       </div>
+      {monate.map(({ jahr, monatIndex }) => {
+        const anzahlTage = new Date(jahr, monatIndex + 1, 0).getDate();
+        const monatStart = isoDatum(jahr, monatIndex, 1);
+        const monatEnde = isoDatum(jahr, monatIndex, anzahlTage);
+        const imMonat = termine
+          .filter((t: any) => t.datum_start <= monatEnde && (t.datum_ende || t.datum_start) >= monatStart)
+          .sort((a: any, b: any) => a.datum_start.localeCompare(b.datum_start));
+        // Ueberlappende Termine auf eigene Spuren verteilen
+        const spurEnde: number[] = [];
+        const balken = imMonat.map((t: any) => {
+          const von = t.datum_start < monatStart ? 1 : Number(t.datum_start.slice(8, 10));
+          const bis = (t.datum_ende || t.datum_start) > monatEnde ? anzahlTage : Number((t.datum_ende || t.datum_start).slice(8, 10));
+          let spur = spurEnde.findIndex((e) => e < von);
+          if (spur === -1) { spur = spurEnde.length; spurEnde.push(bis); } else spurEnde[spur] = bis;
+          return { t, von, bis, spur };
+        });
+        const spuren = Math.max(1, spurEnde.length);
+        const istAktuell = heuteISO.slice(0, 7) === monatStart.slice(0, 7);
+        return (
+          <div key={monatStart} className={`au-planer-zeile${istAktuell ? " aktuell" : ""}`} role="row" style={{ gridTemplateRows: `repeat(${spuren}, 22px)` }}>
+            <span className="au-planer-monat" role="rowheader" style={{ gridRow: `1 / span ${spuren}` }}>
+              {MONATSKURZ[monatIndex]} <span>{String(jahr).slice(2)}</span>
+            </span>
+            {Array.from({ length: 31 }, (_, i) => {
+              const tag = i + 1;
+              if (tag > anzahlTage) return <span key={i} className="au-planer-tag leer" style={{ gridColumn: i + 2, gridRow: `1 / span ${spuren}` }} />;
+              const wt = new Date(jahr, monatIndex, tag).getDay();
+              const iso = isoDatum(jahr, monatIndex, tag);
+              return (
+                <span
+                  key={i}
+                  className={`au-planer-tag${wt === 0 || wt === 6 ? " wochenende" : ""}${iso === heuteISO ? " heute" : ""}`}
+                  style={{ gridColumn: i + 2, gridRow: `1 / span ${spuren}` }}
+                />
+              );
+            })}
+            {balken.map(({ t, von, bis, spur }) => {
+              const gebucht = gebuchtProTermin.get(t.id) || 0;
+              return (
+                <a
+                  key={t.id}
+                  href={`/termine/${t.id}`}
+                  className="au-planer-balken"
+                  style={{ gridColumn: `${von + 1} / ${bis + 2}`, gridRow: spur + 1, background: t.seminartypen?.farbe || "var(--color-accent)" }}
+                  title={`${t.titel || t.seminartypen?.name || ""} · ${formatDatumsspanne(t.datum_start, t.datum_ende)} · ${gebucht} von ${t.kapazitaet} TN`}
+                >
+                  {t.kennung || (t.seminartypen?.name || "").slice(0, 4)}
+                </a>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function TerminTabelle({
+const STATUS_STIL: Record<string, { label: string; klasse: string }> = {
+  geplant: { label: "geplant", klasse: "au-badge-neutral" },
+  bestaetigt: { label: "bestätigt", klasse: "au-badge-success" },
+  unterbesetzt: { label: "unterbesetzt", klasse: "au-badge-warning" },
+  abgesagt: { label: "abgesagt", klasse: "au-badge-danger" },
+};
+
+// Eine durchgehende Liste mit Monats-Trennzeilen statt einer Tabelle pro
+// Monat -- ruhiger zu scannen und mobil stapelbar (CSS-Grid statt <table>).
+function TerminListe({
   termine,
   gebuchtProTermin,
   gesamtProTermin,
@@ -103,105 +127,117 @@ function TerminTabelle({
   heuteISO: string;
 }) {
   const proMonat = gruppeProMonat(termine);
-  const monatsSchluessel = [...proMonat.keys()];
-
   return (
-    <>
-      {monatsSchluessel.map((key) => {
+    <section className="au-panel">
+      <div className="au-tliste-kopf" aria-hidden="true">
+        <span>Termin</span>
+        <span>Ort</span>
+        <span>Belegung</span>
+        <span>Status</span>
+        <span />
+      </div>
+      {[...proMonat.entries()].map(([key, liste]) => {
         const [jahrStr, monatStr] = key.split("-");
-        const liste = proMonat.get(key)!;
         return (
-          <div className="au-card" key={key}>
-            <h2>{monatsName(Number(monatStr))} {jahrStr}</h2>
-            <table className="au-table">
-              <thead>
-                <tr>
-                  <th>Titel</th>
-                  <th>Kennung</th>
-                  <th>Datum</th>
-                  <th>Ort</th>
-                  <th>Format</th>
-                  <th>Belegung</th>
-                  <th>Status</th>
-                  <th>Aktionen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {liste.map((t: any) => {
-                  const gebucht = gebuchtProTermin.get(t.id) || 0;
-                  const gesamt = gesamtProTermin.get(t.id) || 0;
-                  const vergangen = t.datum_start < heuteISO;
-                  return (
-                    <tr key={t.id} style={vergangen ? { opacity: 0.6 } : undefined}>
-                      <td><Link href={`/termine/${t.id}`}>{t.titel || t.seminartypen?.name}</Link></td>
-                      <td>{t.kennung ? <span className="au-badge">{t.kennung}</span> : "—"}</td>
-                      <td>{formatDatumsspanne(t.datum_start, t.datum_ende)}</td>
-                      <td>{t.veranstaltungsorte?.name || "—"}</td>
-                      <td>{t.format}</td>
-                      <td>
-                        TN {gebucht} von {t.kapazitaet}
-                        <br />
-                        <span style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
-                          Gesamt (TN+MA+Gastreferent): {gesamt}
-                        </span>
-                        {websiteAnzeigeProTermin.has(t.id) && (
-                          <WebsiteAnzeigeHinweis anzeige={websiteAnzeigeProTermin.get(t.id)!} termin={t} />
-                        )}
-                      </td>
-                      <td>{t.status}</td>
-                      <td>
-                        <form action={duplicateSeminartermin}>
-                          <input type="hidden" name="seminartermin_id" value={t.id} />
-                          <button
-                            type="submit"
-                            title="Termin inkl. Optionen, Preisstaffeln und Urgency-Stufen duplizieren"
-                            className="au-btn au-btn-secondary au-btn-sm"
-                          >
-                            Duplizieren
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div key={key}>
+            <div className="au-tliste-monat">
+              {monatsName(Number(monatStr))} {jahrStr}
+              <span>{liste.length} {liste.length === 1 ? "Termin" : "Termine"}</span>
+            </div>
+            {liste.map((t: any) => {
+              const gebucht = gebuchtProTermin.get(t.id) || 0;
+              const gesamt = gesamtProTermin.get(t.id) || 0;
+              const kapazitaet = Number(t.kapazitaet) || 0;
+              const anteil = kapazitaet ? Math.min(1, gebucht / kapazitaet) : 0;
+              const vergangen = t.datum_start < heuteISO;
+              const d = new Date(t.datum_start);
+              const status = STATUS_STIL[t.status] || { label: t.status, klasse: "au-badge-neutral" };
+              return (
+                <div key={t.id} className={`au-tliste-zeile${vergangen ? " vergangen" : ""}`}>
+                  <Link href={`/termine/${t.id}`} className="au-tliste-termin" prefetch={false}>
+                    <span className="au-termin-datum" style={t.seminartypen?.farbe ? { borderColor: t.seminartypen.farbe } : undefined}>
+                      <strong>{d.getUTCDate()}</strong>
+                      <span>{MONATSKURZ[d.getUTCMonth()]}</span>
+                    </span>
+                    <span className="au-termin-text">
+                      <strong>{t.titel || t.seminartypen?.name}</strong>
+                      <span className="au-klein">
+                        {[t.kennung, formatDatumsspanne(t.datum_start, t.datum_ende), t.titel && t.seminartypen?.name !== t.titel ? t.seminartypen?.name : null].filter(Boolean).join(" · ")}
+                      </span>
+                    </span>
+                  </Link>
+                  <div className="au-tliste-ort">
+                    <span>{t.veranstaltungsorte?.ort || t.veranstaltungsorte?.name || "—"}</span>
+                    {t.format && t.format !== "praesenz" && <span className="au-klein">{t.format}</span>}
+                  </div>
+                  <div className="au-tliste-belegung" title={`Gesamt vor Ort (TN + Mitarbeiter + Gastreferenten): ${gesamt}`}>
+                    <span className="au-klein"><strong>{gebucht}</strong> / {kapazitaet} TN</span>
+                    <span className="au-belegung-balken"><span style={{ width: `${anteil * 100}%` }} /></span>
+                    {gesamt !== gebucht && <span className="au-klein">{gesamt} Personen vor Ort</span>}
+                  </div>
+                  <div>
+                    <span className={`au-badge ${status.klasse}`}>{status.label}</span>
+                  </div>
+                  <div className="au-tliste-aktionen">
+                    <form action={duplicateSeminartermin}>
+                      <input type="hidden" name="seminartermin_id" value={t.id} />
+                      <button type="submit" title="Termin inkl. Optionen, Preisstaffeln und Urgency-Stufen duplizieren" className="au-btn au-btn-secondary au-btn-sm">
+                        Duplizieren
+                      </button>
+                    </form>
+                  </div>
+                  {websiteAnzeigeProTermin.has(t.id) && (
+                    <div className="au-tliste-website">
+                      <WebsiteAnzeigeHinweis anzeige={websiteAnzeigeProTermin.get(t.id)!} termin={t} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         );
       })}
-    </>
+    </section>
   );
 }
+
+type Ansicht = "anstehend" | "vergangen" | "abgesagt";
 
 export default async function TerminePage({
   searchParams,
 }: {
-  searchParams: Promise<{ jahr?: string }>;
+  searchParams: Promise<{ ansicht?: string }>;
 }) {
-  const { jahr: jahrRaw } = await searchParams;
+  const { ansicht: ansichtRaw } = await searchParams;
+  const ansicht: Ansicht = ansichtRaw === "vergangen" || ansichtRaw === "abgesagt" ? ansichtRaw : "anstehend";
   const heute = new Date();
-  const jahr = Number(jahrRaw) || heute.getFullYear();
+  const heuteISO = heute.toISOString().slice(0, 10);
 
   const supabase = getSupabaseAdmin();
-  const { data: termine } = await supabase
-    .from("seminartermine")
-    .select("*, seminartypen(name), veranstaltungsorte(name, ort)")
-    .gte("datum_start", `${jahr}-01-01`)
-    .lte("datum_start", `${jahr}-12-31`)
-    .order("datum_start", { ascending: true });
+  const auswahl = "*, seminartypen(name, farbe), veranstaltungsorte(name, ort)";
+  // Keine Jahresauswahl mehr: "Anstehend" = alle kuenftigen Termine, egal in
+  // welchem Jahr; Vergangen/Abgesagt = alle, neueste zuerst. Vorher war die
+  // Liste pro Kalenderjahr gefiltert -- am Jahreswechsel, wenn 2026 und 2027
+  // parallel laufen, musste man staendig umschalten.
+  const [{ data: anstehendDaten }, { data: vergangeneOderAbgesagt }] = await Promise.all([
+    supabase.from("seminartermine").select(auswahl).gte("datum_start", heuteISO).neq("status", "abgesagt").order("datum_start", { ascending: true }),
+    supabase.from("seminartermine").select(auswahl).or(`datum_start.lt.${heuteISO},status.eq.abgesagt`).order("datum_start", { ascending: false }),
+  ]);
 
-  // Monatsstreifen oben: unabhaengig vom Jahres-Filter, 2 Monate zurueck bis 6 Monate voraus.
-  const monatsFensterStart = new Date(heute.getFullYear(), heute.getMonth() - 2, 1);
-  const monatsFensterEnde = new Date(heute.getFullYear(), heute.getMonth() + 7, 0);
+  // Jahresplaner oben: Vormonat bis 10 Monate voraus. Termine, die im Vormonat
+  // beginnen und in den Fenster-Start hineinreichen, fehlen hoechstens am Rand.
+  const monatsFensterStart = new Date(heute.getFullYear(), heute.getMonth() - 1, 1);
+  const monatsFensterEnde = new Date(heute.getFullYear(), heute.getMonth() + 11, 0);
   const { data: kalenderTermine } = await supabase
     .from("seminartermine")
     .select("id, titel, kennung, datum_start, datum_ende, kapazitaet, seminartypen(name, farbe)")
-    .gte("datum_start", monatsFensterStart.toISOString().slice(0, 10))
-    .lte("datum_start", monatsFensterEnde.toISOString().slice(0, 10))
+    .gte("datum_start", isoDatum(monatsFensterStart.getFullYear(), monatsFensterStart.getMonth(), 1))
+    .lte("datum_start", isoDatum(monatsFensterEnde.getFullYear(), monatsFensterEnde.getMonth(), monatsFensterEnde.getDate()))
+    .neq("status", "abgesagt")
     .order("datum_start", { ascending: true });
 
   const monatsKarten: { jahr: number; monatIndex: number }[] = [];
-  for (let i = -2; i <= 6; i++) {
+  for (let i = -1; i <= 10; i++) {
     const d = new Date(heute.getFullYear(), heute.getMonth() + i, 1);
     monatsKarten.push({ jahr: d.getFullYear(), monatIndex: d.getMonth() });
   }
@@ -246,77 +282,98 @@ export default async function TerminePage({
   const gesamtProTermin = new Map<string, number>();
   alleProTermin.forEach((set, id) => gesamtProTermin.set(id, set.size));
 
-  const heuteISO = heute.toISOString().slice(0, 10);
-  const anstehend = (termine || []).filter((t: any) => t.datum_start >= heuteISO && t.status !== "abgesagt");
-  const alt = (termine || [])
-    .filter((t: any) => t.datum_start < heuteISO && t.status !== "abgesagt")
-    .sort((a: any, b: any) => (a.datum_start < b.datum_start ? 1 : -1));
-  const storniert = (termine || [])
-    .filter((t: any) => t.status === "abgesagt")
-    .sort((a: any, b: any) => (a.datum_start < b.datum_start ? 1 : -1));
+  const anstehend = anstehendDaten || [];
+  const vergangen = (vergangeneOderAbgesagt || []).filter((t: any) => t.datum_start < heuteISO && t.status !== "abgesagt");
+  const abgesagt = (vergangeneOderAbgesagt || []).filter((t: any) => t.status === "abgesagt");
+  const liste = ansicht === "anstehend" ? anstehend : ansicht === "vergangen" ? vergangen : abgesagt;
 
   // Nur fuer anstehende Termine: vergangene/abgesagte liefert die oeffentliche
   // API nicht mehr aus, dort gibt es also auch keine Website-Anzeige.
-  const websiteAnzeigeProTermin = await ladeWebsiteVerfuegbarkeit(supabase, anstehend);
+  const websiteAnzeigeProTermin = ansicht === "anstehend" ? await ladeWebsiteVerfuegbarkeit(supabase, anstehend) : new Map();
+
+  const naechster = anstehend[0];
+  const tab = (a: Ansicht, label: string, anzahl: number) => (
+    <Link
+      href={a === "anstehend" ? "/termine" : `/termine?ansicht=${a}`}
+      className={ansicht === a ? "aktiv" : ""}
+      aria-current={ansicht === a ? "page" : undefined}
+      prefetch={false}
+    >
+      {label} <span className="au-tab-zahl">{anzahl}</span>
+    </Link>
+  );
 
   return (
     <main>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>Seminartermine</h1>
-        <Link href="/termine/neu" className="au-btn au-btn-primary">+ Neuer Termin</Link>
+      <header className="au-dash-kopf">
+        <div>
+          <p className="au-dash-datum">
+            {anstehend.length} anstehende Seminare
+            {naechster && <> · nächstes am {formatDatum(naechster.datum_start)}</>}
+          </p>
+          <h1>Seminartermine</h1>
+        </div>
+        <div className="au-dash-aktionen">
+          <Link href="/termine/neu" className="au-btn au-btn-primary au-btn-sm" prefetch={false}>+ Neuer Termin</Link>
+        </div>
+      </header>
+
+      <Kalender monatsKarten={monatsKarten} kalenderTermine={kalenderTermine || []} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} />
+
+      <div className="au-tliste-leiste">
+        <nav className="au-seitentabs" aria-label="Termin-Ansichten" style={{ marginBottom: 0, flex: 1 }}>
+          {tab("anstehend", "Anstehend", anstehend.length)}
+          {tab("vergangen", "Vergangen", vergangen.length)}
+          {tab("abgesagt", "Abgesagt", abgesagt.length)}
+        </nav>
       </div>
 
-      <div className="au-card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-          <h2 style={{ margin: 0 }}>Monatsübersicht</h2>
-          <Link href="/seminartypen" className="au-btn au-btn-secondary au-btn-sm">Farben verwalten</Link>
-        </div>
-        <div className="au-monat-streifen">
-          {monatsKarten.map(({ jahr: mJahr, monatIndex }) => (
-            <MonatKarte
-              key={`${mJahr}-${monatIndex}`}
-              jahr={mJahr}
-              monatIndex={monatIndex}
-              termine={kalenderTermine || []}
-              gebuchtProTermin={gebuchtProTermin}
-              heuteISO={heuteISO}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="au-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Link href={`/termine?jahr=${jahr - 1}`} className="au-btn au-btn-secondary au-btn-sm">← {jahr - 1}</Link>
-        <strong style={{ fontSize: "1.15rem" }}>{jahr} · {termine?.length || 0} Termin(e)</strong>
-        <Link href={`/termine?jahr=${jahr + 1}`} className="au-btn au-btn-secondary au-btn-sm">{jahr + 1} →</Link>
-      </div>
-
-      {!termine?.length && (
-        <div className="au-card">
-          <p style={{ margin: 0 }}>Keine Seminartermine in {jahr}.</p>
-        </div>
-      )}
-
-      {anstehend.length > 0 && (
-        <>
-          <h2 style={{ marginTop: "1.5rem" }}>Anstehende Seminare</h2>
-          <TerminTabelle termine={anstehend} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} websiteAnzeigeProTermin={websiteAnzeigeProTermin} heuteISO={heuteISO} />
-        </>
-      )}
-
-      {storniert.length > 0 && (
-        <>
-          <h2 style={{ marginTop: "1.5rem", color: "var(--color-danger, #c0392b)" }}>Stornierte Seminare</h2>
-          <TerminTabelle termine={storniert} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} websiteAnzeigeProTermin={websiteAnzeigeProTermin} heuteISO={heuteISO} />
-        </>
-      )}
-
-      {alt.length > 0 && (
-        <>
-          <h2 style={{ marginTop: "1.5rem", color: "var(--color-text-muted)" }}>Alte Seminare</h2>
-          <TerminTabelle termine={alt} gebuchtProTermin={gebuchtProTermin} gesamtProTermin={gesamtProTermin} websiteAnzeigeProTermin={websiteAnzeigeProTermin} heuteISO={heuteISO} />
-        </>
+      {liste.length ? (
+        <TerminListe
+          termine={liste}
+          gebuchtProTermin={gebuchtProTermin}
+          gesamtProTermin={gesamtProTermin}
+          websiteAnzeigeProTermin={websiteAnzeigeProTermin}
+          heuteISO={heuteISO}
+        />
+      ) : (
+        <div className="au-panel"><div className="au-panel-inhalt au-leer">
+          {ansicht === "anstehend" ? "Keine anstehenden Seminare." : ansicht === "vergangen" ? "Keine vergangenen Seminare." : "Keine abgesagten Seminare."}
+        </div></div>
       )}
     </main>
+  );
+}
+
+function Kalender({
+  monatsKarten,
+  kalenderTermine,
+  gebuchtProTermin,
+  heuteISO,
+}: {
+  monatsKarten: { jahr: number; monatIndex: number }[];
+  kalenderTermine: any[];
+  gebuchtProTermin: Map<string, number>;
+  heuteISO: string;
+}) {
+  const kategorien = new Map<string, string>();
+  kalenderTermine.forEach((t: any) => {
+    if (t.seminartypen?.name) kategorien.set(t.seminartypen.name, t.seminartypen.farbe || "var(--color-accent)");
+  });
+  return (
+    <section className="au-panel au-panel-breit">
+      <div className="au-panel-kopf">
+        <h2>Die nächsten 12 Monate</h2>
+        <span className="au-planer-legende">
+          {[...kategorien.entries()].map(([name, farbe]) => (
+            <span key={name}><i style={{ background: farbe }} />{name}</span>
+          ))}
+          <Link href="/seminartypen" className="au-panel-link" prefetch={false}>Farben →</Link>
+        </span>
+      </div>
+      <div className="au-panel-inhalt" style={{ overflowX: "auto" }}>
+        <Jahresplaner monate={monatsKarten} termine={kalenderTermine} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} />
+      </div>
+    </section>
   );
 }
