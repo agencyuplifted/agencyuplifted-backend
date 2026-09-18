@@ -66,6 +66,7 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 ## Betriebs-Notizen (wichtig, nicht aus dem Code ersichtlich)
 
 - Deploy: Push auf `main` → Vercel deployt automatisch (kein manueller Deploy-Schritt).
+- Funktionen laufen in `fra1` (Frankfurt, `regions` in `vercel.json`) — bewusst neben der Supabase-DB (eu-central-1). Vorher Standard `iad1` (USA): jede DB-Abfrage ging über den Atlantik, Seiten mit mehreren Abfragen wurden spürbar langsam. Nicht zurückstellen.
 - Vercel-Projekt: prj_hpcInyOVpB7ftCFV5R8nuIlzyw92, Team team_5tzNyimWTHu8DkmGONYdMM8R (Slug ag3ncy-uplift3d).
 - Git-Commit-Identität muss sein: `agencyuplifted <markus@agencyuplifted.de>` (nicht die Mac-Standard-Identität).
 - `.env.local` ist gitignored und lokal per `npx vercel env pull .env.local --environment=production` befüllt.

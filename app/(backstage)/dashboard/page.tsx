@@ -252,15 +252,6 @@ async function UmsatzProSeminar({
   jahr: number;
   seminartypFilter?: string;
 }) {
-  const { data: konfig } = await supabase
-    .from("finanz_konfiguration")
-    .select("fremdkosten_pro_person_netto")
-    .eq("id", 1)
-    .single();
-  const fremdkostenProPerson = Number(konfig?.fremdkosten_pro_person_netto ?? 300);
-
-  const { data: seminartypen } = await supabase.from("seminartypen").select("id, name").order("name");
-
   let terminQuery = supabase
     .from("seminartermine")
     .select("id, titel, kennung, datum_start, seminartypen(id, name)")
@@ -269,7 +260,13 @@ async function UmsatzProSeminar({
     .neq("status", "abgesagt")
     .order("datum_start", { ascending: true });
   if (seminartypFilter) terminQuery = terminQuery.eq("seminartyp_id", seminartypFilter);
-  const { data: termine } = await terminQuery;
+  // Parallel statt nacheinander -- jede Abfrage ist ein eigener Round-Trip zur DB.
+  const [{ data: konfig }, { data: seminartypen }, { data: termine }] = await Promise.all([
+    supabase.from("finanz_konfiguration").select("fremdkosten_pro_person_netto").eq("id", 1).single(),
+    supabase.from("seminartypen").select("id, name").order("name"),
+    terminQuery,
+  ]);
+  const fremdkostenProPerson = Number(konfig?.fremdkosten_pro_person_netto ?? 300);
 
   const terminIds = (termine || []).map((t: any) => t.id);
 
