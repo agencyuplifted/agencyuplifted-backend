@@ -3465,3 +3465,95 @@ a.au-kennzahl:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Funnel: Letzte Versendungen als kompakte Liste statt 8-Spalten-Tabelle */
+.au-versand {
+  margin-top: 1.5rem;
+}
+
+.au-versand-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.au-versand-liste li {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.6rem 1.15rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.au-versand-liste li:first-child {
+  border-top: 0;
+}
+
+.au-versand-liste li.problem {
+  background: var(--color-danger-soft);
+}
+
+.au-versand-datum {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.au-versand-wer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.au-versand-mail {
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.au-versand-an {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.au-versand-fehler {
+  font-size: 0.8rem;
+  color: var(--color-danger);
+}
+
+.au-versand-status {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.au-versand-schritt {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-faint);
+  white-space: nowrap;
+}
+
+.au-versand-schritt.an {
+  border-color: var(--color-success-border);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+@media (max-width: 700px) {
+  .au-versand-liste li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+  .au-versand-status {
+    justify-content: flex-start;
+  }
+}

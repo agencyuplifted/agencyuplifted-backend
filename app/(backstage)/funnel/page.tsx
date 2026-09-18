@@ -235,74 +235,45 @@ export default async function FunnelPage({
         </section>
       </div>
 
-      <div className="au-card" style={{ marginTop: "1.5rem" }}>
-        <h2>Letzte Versendungen</h2>
-        <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: 0 }}>
-          Zustellung/Öffnung/Klick werden von Resend per Webhook gemeldet (nur bei aktivierter Tracking-Domain,
-          siehe Einrichtung auf der Seite „E-Mail-Versand testen“). Bis zur Einrichtung bleiben diese Spalten leer.
-        </p>
-        <table className="au-table">
-          <thead>
-            <tr>
-              <th>Datum</th>
-              <th>Funnel-Mail</th>
-              <th>Empfänger</th>
-              <th>Status</th>
-              <th>Zugestellt</th>
-              <th>Geöffnet (erste / letzte)</th>
-              <th>Geklickt (erste / letzte)</th>
-              <th>Fehler</th>
-            </tr>
-          </thead>
-          <tbody>
+      <section className="au-panel au-versand">
+        <div className="au-panel-kopf">
+          <h2 style={{ margin: 0 }}>Letzte Versendungen</h2>
+          <span className="au-klein">Zustellung, Öffnen und Klicks meldet Resend (sofern Tracking aktiv ist)</span>
+        </div>
+        {(log || []).length === 0 ? (
+          <p className="au-leer" style={{ padding: "1rem 1.15rem", margin: 0 }}>Noch keine Mails verschickt.</p>
+        ) : (
+          <ul className="au-versand-liste">
             {(log || []).map((l: any) => (
-              <tr key={l.id}>
-                <td>{formatDatum(l.gesendet_am)}</td>
-                <td>{l.funnel_mails?.name || "—"}</td>
-                <td>{l.empfaenger_email}</td>
-                <td>
-                  <span className={`au-badge ${l.status === "fehler" ? "au-badge-danger" : "au-badge-success"}`}>{l.status}</span>
-                  {l.bounced_am && <span className="au-badge au-badge-danger" style={{ marginLeft: "0.35rem" }}>Bounce</span>}
-                  {l.beschwerde_am && <span className="au-badge au-badge-danger" style={{ marginLeft: "0.35rem" }}>Beschwerde</span>}
-                </td>
-                <td style={{ fontSize: "0.85rem" }}>{l.zugestellt_am ? formatDatumZeit(l.zugestellt_am) : "—"}</td>
-                <td style={{ fontSize: "0.85rem" }}>
-                  {l.geoeffnet_am ? (
-                    <>
-                      {formatDatumZeit(l.geoeffnet_am)}
-                      {l.anzahl_oeffnungen > 1 && (
-                        <div style={{ color: "var(--color-text-muted)" }}>
-                          zuletzt {formatDatumZeit(l.zuletzt_geoeffnet_am)} ({l.anzahl_oeffnungen}×)
-                        </div>
-                      )}
-                    </>
+              <li key={l.id} className={l.status === "fehler" || l.bounced_am || l.beschwerde_am ? "problem" : undefined}>
+                <span className="au-versand-datum">{formatDatumZeit(l.gesendet_am)}</span>
+                <span className="au-versand-wer">
+                  <span className="au-versand-mail">{l.funnel_mails?.name || "—"}</span>
+                  <span className="au-versand-an">{l.empfaenger_email}</span>
+                  {l.fehlermeldung && <span className="au-versand-fehler">{l.fehlermeldung}</span>}
+                </span>
+                <span className="au-versand-status">
+                  {l.status === "fehler" ? (
+                    <span className="au-badge au-badge-danger">Fehler</span>
                   ) : (
-                    "—"
-                  )}
-                </td>
-                <td style={{ fontSize: "0.85rem" }}>
-                  {l.geklickt_am ? (
                     <>
-                      {formatDatumZeit(l.geklickt_am)}
-                      {l.anzahl_klicks > 1 && (
-                        <div style={{ color: "var(--color-text-muted)" }}>
-                          zuletzt {formatDatumZeit(l.zuletzt_geklickt_am)} ({l.anzahl_klicks}×)
-                        </div>
-                      )}
+                      <span className={`au-versand-schritt${l.zugestellt_am ? " an" : ""}`} title={l.zugestellt_am ? `Zugestellt ${formatDatumZeit(l.zugestellt_am)}` : "Zustellung noch nicht gemeldet"}>Zugestellt</span>
+                      <span className={`au-versand-schritt${l.geoeffnet_am ? " an" : ""}`} title={l.geoeffnet_am ? `Zuerst ${formatDatumZeit(l.geoeffnet_am)}${l.zuletzt_geoeffnet_am ? `, zuletzt ${formatDatumZeit(l.zuletzt_geoeffnet_am)}` : ""}` : "Nicht geöffnet"}>
+                        Geöffnet{l.anzahl_oeffnungen > 1 ? ` ${l.anzahl_oeffnungen}×` : ""}
+                      </span>
+                      <span className={`au-versand-schritt${l.geklickt_am ? " an" : ""}`} title={l.geklickt_am ? `Zuerst ${formatDatumZeit(l.geklickt_am)}` : "Kein Klick"}>
+                        Geklickt{l.anzahl_klicks > 1 ? ` ${l.anzahl_klicks}×` : ""}
+                      </span>
                     </>
-                  ) : (
-                    "—"
                   )}
-                </td>
-                <td style={{ color: "var(--color-danger)", fontSize: "0.85rem" }}>{l.fehlermeldung || "—"}</td>
-              </tr>
+                  {l.bounced_am && <span className="au-badge au-badge-danger">Bounce</span>}
+                  {l.beschwerde_am && <span className="au-badge au-badge-danger">Beschwerde</span>}
+                </span>
+              </li>
             ))}
-            {!log?.length && (
-              <tr className="au-table-empty"><td colSpan={8}>Noch keine Mails verschickt.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          </ul>
+        )}
+      </section>
     </main>
   );
 }
