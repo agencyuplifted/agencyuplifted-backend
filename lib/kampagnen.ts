@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { getSupabaseAdmin } from "./supabase";
 import { getResend, ABSENDER } from "./email";
 import { renderPlatzhalter } from "./funnel";
+import { parseRegeln, wirksameRegeln, regelnErfuellt, beschreibeBedingung, FELDER, type Regeln, type Bedingung } from "./kampagnen-regeln";
 import { ladeBausteine, baueMailHtml, abmeldeUrl, abmeldeHeader, ladeSperrliste } from "./mail-bausteine";
 
 // Filterkriterien fuer Kampagnen & gespeicherte Filtergruppen (teilnehmer_segmente).
@@ -19,6 +20,8 @@ export type FilterKriterien = {
   teilnahme_stand?: string[]; // 'erstteilnehmer' | 'wiederholer' | 'kein_seminar_besucht' (View teilnehmer_lifecycle_stage)
   netzwerk_mitglied?: "ja" | "nein";
   tags?: string[]; // tags.id -- Person muss ALLE gewaehlten Tags haben
+  /** Regel-Baukasten (lib/kampagnen-regeln.ts); ersetzt die Einzelfelder oben, die nur noch fuer alte Daten gelesen werden */
+  regeln?: Regeln;
   /** Nachfass-Kampagne: nur wer Kampagne X bekommen, aber nicht geoeffnet hat */
   nicht_geoeffnet_kampagne_id?: string;
 };
@@ -59,17 +62,7 @@ export function leereFilterKriterien(): FilterKriterien {
 }
 
 export function filterIstLeer(filter: FilterKriterien): boolean {
-  return (
-    !filter.anrede?.length &&
-    !filter.rolle?.length &&
-    !filter.seminartypen?.length &&
-    !filter.unternehmer_status?.length &&
-    !filter.kategorie2 &&
-    !filter.teilnahme_stand?.length &&
-    !filter.netzwerk_mitglied &&
-    !filter.tags?.length &&
-    !filter.nicht_geoeffnet_kampagne_id
-  );
+  return !wirksameRegeln(normalisiereFilter(filter)).gruppen.length && !filter.nicht_geoeffnet_kampagne_id;
 }
 
 /**
@@ -80,25 +73,24 @@ export function filterIstLeer(filter: FilterKriterien): boolean {
  */
 export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise<GefilterterTeilnehmer[]> {
   const supabase = getSupabaseAdmin();
-  const { data } = await supabase
-    .from("teilnehmer")
-    .select(
-      "id, vorname, nachname, email, anrede, rolle, unternehmer_status, marketing_consent_status, deaktiviert_am, buchungspositionen(seminartermine(seminartypen(name))), legacy_buchungen(seminartypen(name))"
-    )
-    .order("nachname", { ascending: true });
+  const regeln = wirksameRegeln(normalisiereFilter(filter));
+  const bedingungen = regeln.gruppen.flatMap((g) => g.bedingungen);
+  const brauchtBesuche = bedingungen.some((b) => ["seminar_besucht", "seminar_gebucht", "seminar_termin", "letztes_seminar_monate"].includes(b.feld));
+  const brauchtTags = bedingungen.some((b) => b.feld === "tag");
+  const brauchtKampagnen = bedingungen.some((b) => b.feld.startsWith("kampagne_"));
 
-  const [lifecycle, besuche, tagZuordnungen, nichtGeoeffnet] = await Promise.all([
+  const [{ data }, lifecycle, besuche, tagZuordnungen, nichtGeoeffnet, kampagnenLog] = await Promise.all([
+    supabase
+      .from("teilnehmer")
+      .select("id, vorname, nachname, email, anrede, rolle, unternehmer_status, marketing_consent_status, deaktiviert_am")
+      .order("nachname", { ascending: true }),
     ladeAlleZeilen((von, bis) =>
-      supabase.from("teilnehmer_lifecycle_stage").select("teilnehmer_id, teilnahme_stand, netzwerk_mitglied, vermutlich_ruhend").range(von, bis)
+      supabase.from("teilnehmer_lifecycle_stage").select("teilnehmer_id, anzahl_besuchte_seminare, teilnahme_stand, netzwerk_mitglied, vermutlich_ruhend").range(von, bis)
     ),
-    filter.kategorie2
-      ? ladeAlleZeilen((von, bis) =>
-          supabase.from("teilnehmer_seminar_besuche").select("teilnehmer_id").eq("stand", "besucht").eq("seminarkategorie", filter.kategorie2).range(von, bis)
-        )
+    brauchtBesuche
+      ? ladeAlleZeilen((von, bis) => supabase.from("teilnehmer_seminar_besuche").select("teilnehmer_id, seminarkategorie, seminartermin_id, stand, datum_start, datum_ende").range(von, bis))
       : Promise.resolve([]),
-    filter.tags?.length
-      ? ladeAlleZeilen((von, bis) => supabase.from("teilnehmer_tags").select("teilnehmer_id, tag_id").in("tag_id", filter.tags!).range(von, bis))
-      : Promise.resolve([]),
+    brauchtTags ? ladeAlleZeilen((von, bis) => supabase.from("teilnehmer_tags").select("teilnehmer_id, tag_id").range(von, bis)) : Promise.resolve([]),
     filter.nicht_geoeffnet_kampagne_id
       ? ladeAlleZeilen((von, bis) =>
           supabase
@@ -110,59 +102,129 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
             .range(von, bis)
         )
       : Promise.resolve([]),
+    brauchtKampagnen
+      ? ladeAlleZeilen((von, bis) =>
+          supabase.from("kampagnen_versand_log").select("teilnehmer_id, kampagne_id, geoeffnet_am, geklickt_am").eq("status", "gesendet").range(von, bis)
+        )
+      : Promise.resolve([]),
   ]);
   const nichtGeoeffnetSet = new Set(nichtGeoeffnet.map((z: any) => z.teilnehmer_id));
   const lifecycleMap = new Map(lifecycle.map((l: any) => [l.teilnehmer_id, l]));
-  const besuchtKategorie2 = new Set(besuche.map((b: any) => b.teilnehmer_id));
-  const tagsProTeilnehmer = new Map<string, Set<string>>();
-  for (const z of tagZuordnungen) {
-    if (!tagsProTeilnehmer.has(z.teilnehmer_id)) tagsProTeilnehmer.set(z.teilnehmer_id, new Set());
-    tagsProTeilnehmer.get(z.teilnehmer_id)!.add(z.tag_id);
+  const mengeProTeilnehmer = () => new Map<string, Set<string>>();
+  const besucht = mengeProTeilnehmer();
+  const gebucht = mengeProTeilnehmer();
+  const tagsVon = mengeProTeilnehmer();
+  const termineVon = mengeProTeilnehmer();
+  const kBekommen = mengeProTeilnehmer();
+  const kGeoeffnet = mengeProTeilnehmer();
+  const kGeklickt = mengeProTeilnehmer();
+  const letztesSeminar = new Map<string, string>();
+  const hinzu = (m: Map<string, Set<string>>, id: string, wert: string) => {
+    if (!m.has(id)) m.set(id, new Set());
+    m.get(id)!.add(wert);
+  };
+  for (const b of besuche) {
+    if (b.seminartermin_id && b.stand !== "laeuft_oder_unklar") hinzu(termineVon, b.teilnehmer_id, b.seminartermin_id);
+    const ende = b.datum_ende || b.datum_start;
+    if (b.stand === "besucht" && ende && ende > (letztesSeminar.get(b.teilnehmer_id) || "")) letztesSeminar.set(b.teilnehmer_id, ende);
+    if (!b.seminarkategorie) continue;
+    if (b.stand === "besucht") hinzu(besucht, b.teilnehmer_id, b.seminarkategorie);
+    else if (b.stand === "gebucht_kuenftig") hinzu(gebucht, b.teilnehmer_id, b.seminarkategorie);
+  }
+  for (const z of tagZuordnungen) hinzu(tagsVon, z.teilnehmer_id, z.tag_id);
+  for (const z of kampagnenLog) {
+    if (!z.teilnehmer_id) continue;
+    hinzu(kBekommen, z.teilnehmer_id, z.kampagne_id);
+    if (z.geoeffnet_am) hinzu(kGeoeffnet, z.teilnehmer_id, z.kampagne_id);
+    if (z.geklickt_am) hinzu(kGeklickt, z.teilnehmer_id, z.kampagne_id);
   }
 
-  const alle: GefilterterTeilnehmer[] = (data || [])
-    .filter((t: any) => t.marketing_consent_status === "abonniert" && !t.deaktiviert_am && t.email)
-    .map((t: any) => {
-      const seminare = Array.from(
-        new Set(
-          [
-            ...(t.buchungspositionen || []).map((p: any) => p.seminartermine?.seminartypen?.name),
-            ...(t.legacy_buchungen || []).map((l: any) => l.seminartypen?.name),
-          ].filter(Boolean)
-        )
-      ) as string[];
-      return {
-        id: t.id,
-        vorname: t.vorname,
-        nachname: t.nachname,
-        email: t.email,
-        anrede: t.anrede || "keine_angabe",
-        rolle: t.rolle || "teilnehmer",
-        unternehmer_status: t.unternehmer_status || "unbekannt",
-        seminare,
-        vermutlichRuhend: !!lifecycleMap.get(t.id)?.vermutlich_ruhend,
-      };
-    });
+  const erfuellt = (t: any, b: Bedingung): boolean => {
+    const lc: any = lifecycleMap.get(t.id) || {};
+    const menge = (m: Map<string, Set<string>>) => {
+      const hat = m.get(t.id) || new Set<string>();
+      if (b.operator === "alle") return b.werte.every((w) => hat.has(w));
+      if (b.operator === "eine") return b.werte.some((w) => hat.has(w));
+      if (b.operator === "nicht_alle") return !b.werte.every((w) => hat.has(w));
+      return !b.werte.some((w) => hat.has(w)); // "keine"
+    };
+    const merkmal = (wert: string) => (b.operator === "ist_nicht" ? !b.werte.includes(wert) : b.werte.includes(wert));
+    switch (b.feld) {
+      case "seminar_besucht":
+        return menge(besucht);
+      case "seminar_gebucht":
+        return menge(gebucht);
+      case "tag":
+        return menge(tagsVon);
+      case "seminar_termin":
+        return menge(termineVon);
+      case "kampagne_bekommen":
+        return menge(kBekommen);
+      case "kampagne_geoeffnet":
+        return menge(kGeoeffnet);
+      case "kampagne_geklickt":
+        return menge(kGeklickt);
+      case "letztes_seminar_monate": {
+        const letzt = letztesSeminar.get(t.id);
+        if (!letzt) return false; // noch nie ein Seminar -> weder "vor mindestens" noch "vor hoechstens"
+        const monate = (Date.now() - Date.parse(letzt)) / (30.44 * 86_400_000);
+        const grenze = Number(b.werte[0] || 0);
+        return b.operator === "max" ? monate <= grenze : monate >= grenze;
+      }
+      case "anzahl_seminare": {
+        const n = Number(lc.anzahl_besuchte_seminare || 0);
+        const grenze = Number(b.werte[0] || 0);
+        return b.operator === "max" ? n <= grenze : n >= grenze;
+      }
+      case "teilnahme_stand":
+        return merkmal(lc.teilnahme_stand || "kein_seminar_besucht");
+      case "unternehmer_status":
+        return merkmal(t.unternehmer_status || "unbekannt");
+      case "anrede":
+        return merkmal(t.anrede || "keine_angabe");
+      case "rolle":
+        return merkmal(t.rolle || "teilnehmer");
+      case "netzwerk":
+        return (b.werte[0] === "ja") === !!lc.netzwerk_mitglied;
+    }
+  };
 
-  return alle.filter((t) => {
-    if (filter.anrede?.length && !filter.anrede.includes(t.anrede)) return false;
-    if (filter.rolle?.length && !filter.rolle.includes(t.rolle)) return false;
-    if (filter.unternehmer_status?.length && !filter.unternehmer_status.includes(t.unternehmer_status)) return false;
-    if (filter.seminartypen?.length && !t.seminare.some((s) => filter.seminartypen!.includes(s))) return false;
-    if (filter.kategorie2) {
-      const war = besuchtKategorie2.has(t.id);
-      if (filter.kategorie2_modus === "nicht_besucht" ? war : !war) return false;
-    }
-    const lc: any = lifecycleMap.get(t.id);
-    if (filter.teilnahme_stand?.length && !filter.teilnahme_stand.includes(lc?.teilnahme_stand || "kein_seminar_besucht")) return false;
-    if (filter.netzwerk_mitglied && (filter.netzwerk_mitglied === "ja") !== !!lc?.netzwerk_mitglied) return false;
-    if (filter.nicht_geoeffnet_kampagne_id && !nichtGeoeffnetSet.has(t.id)) return false;
-    if (filter.tags?.length) {
-      const hat = tagsProTeilnehmer.get(t.id);
-      if (!hat || !filter.tags.every((id) => hat.has(id))) return false;
-    }
-    return true;
-  });
+  return (data || [])
+    .filter((t: any) => t.marketing_consent_status === "abonniert" && !t.deaktiviert_am && t.email)
+    .filter((t: any) => !filter.nicht_geoeffnet_kampagne_id || nichtGeoeffnetSet.has(t.id))
+    .filter((t: any) => regelnErfuellt(regeln, (b) => erfuellt(t, b)))
+    .map((t: any) => ({
+      id: t.id,
+      vorname: t.vorname,
+      nachname: t.nachname,
+      email: t.email,
+      anrede: t.anrede || "keine_angabe",
+      rolle: t.rolle || "teilnehmer",
+      unternehmer_status: t.unternehmer_status || "unbekannt",
+      seminare: Array.from(besucht.get(t.id) || []),
+      vermutlichRuhend: !!lifecycleMap.get(t.id)?.vermutlich_ruhend,
+    }));
+}
+
+/**
+ * Alte Filter (Einzelfelder aus frueheren Kampagnen/Filtergruppen) in Regeln
+ * uebersetzen, damit alles ueber eine Auswertung laeuft. Sind Regeln
+ * gespeichert, gelten nur diese.
+ */
+export function normalisiereFilter(filter: FilterKriterien): Regeln {
+  const r = parseRegeln(filter.regeln);
+  if (r) return r;
+  const b: Bedingung[] = [];
+  const merkmal = (feld: Bedingung["feld"], werte?: string[]) => werte?.length && b.push({ feld, operator: "ist", werte });
+  merkmal("anrede", filter.anrede);
+  merkmal("rolle", filter.rolle);
+  merkmal("unternehmer_status", filter.unternehmer_status);
+  merkmal("teilnahme_stand", filter.teilnahme_stand);
+  if (filter.seminartypen?.length) b.push({ feld: "seminar_besucht", operator: "eine", werte: filter.seminartypen });
+  if (filter.kategorie2) b.push({ feld: "seminar_besucht", operator: filter.kategorie2_modus === "nicht_besucht" ? "keine" : "alle", werte: [filter.kategorie2] });
+  if (filter.netzwerk_mitglied) b.push({ feld: "netzwerk", operator: "ist", werte: [filter.netzwerk_mitglied] });
+  if (filter.tags?.length) b.push({ feld: "tag", operator: "alle", werte: filter.tags });
+  return { verknuepfung: "oder", gruppen: [{ verknuepfung: "und", bedingungen: b }] };
 }
 
 export type KampagnenEmpfaenger = GefilterterTeilnehmer & {
@@ -178,23 +240,21 @@ export type KampagnenEmpfaenger = GefilterterTeilnehmer & {
 
 const TAG_MS = 86_400_000;
 
-const ANREDE_TEXT: Record<string, string> = { Frau: "Frauen", Herr: "Männer", Divers: "Divers", keine_angabe: "Ohne Anrede" };
-const ROLLE_TEXT: Record<string, string> = { teilnehmer: "Teilnehmer", mitarbeiter: "Mitarbeiter", gastreferent: "Gastreferenten", organisator: "Organisatoren" };
-const UNTERNEHMER_TEXT: Record<string, string> = { unternehmer: "Unternehmer:innen", mitarbeiter: "Mitarbeiter:innen", unbekannt: "Position unbekannt" };
 
-/** Kurzbeschreibung eines Filters fuer Listen, z. B. ["Frauen", "Preisfindung", "nicht Führung"] */
+/** Kurzbeschreibung eines Filters fuer Listen, z. B. ["Seminar besucht: Preisfindung + Fokussierung", "oder", "#VIP"] */
 export function beschreibeFilter(filter: FilterKriterien, tagLabel: Map<string, string> = new Map()): string[] {
-  const teile: string[] = [];
-  filter.anrede?.forEach((a) => teile.push(ANREDE_TEXT[a] || a));
-  filter.unternehmer_status?.forEach((u) => teile.push(UNTERNEHMER_TEXT[u] || u));
-  filter.rolle?.forEach((r) => teile.push(ROLLE_TEXT[r] || r));
-  filter.seminartypen?.forEach((k) => teile.push(k));
-  if (filter.kategorie2) teile.push(filter.kategorie2_modus === "nicht_besucht" ? `nicht ${filter.kategorie2}` : `+ ${filter.kategorie2}`);
-  filter.teilnahme_stand?.forEach((t) => teile.push(TEILNAHME_STAND_LABEL[t] || t));
-  if (filter.nicht_geoeffnet_kampagne_id) teile.push("Nicht-Öffner einer früheren Kampagne");
-  if (filter.netzwerk_mitglied) teile.push(filter.netzwerk_mitglied === "ja" ? "Netzwerk-Mitglieder" : "keine Netzwerk-Mitglieder");
-  filter.tags?.forEach((id) => teile.push(`#${tagLabel.get(id) || "Tag"}`));
-  return teile;
+  const regeln = wirksameRegeln(normalisiereFilter(filter));
+  const wertLabel = (feld: Bedingung["feld"], wert: string) =>
+    feld === "tag" ? tagLabel.get(wert) || "Tag" : FELDER[feld].werte?.find((w) => w.key === wert)?.label || wert;
+  // Jede Gruppe als ein Etikett, Gruppen durch "oder"/"und" getrennt
+  const gruppenTexte = regeln.gruppen.map((g) => g.bedingungen.map((b) => beschreibeBedingung(b, wertLabel)).join(g.verknuepfung === "oder" ? " oder " : " · "));
+  const mehrere = gruppenTexte.length > 1;
+  const ergebnis = gruppenTexte.flatMap((t, i) => {
+    const text = mehrere && regeln.gruppen[i].bedingungen.length > 1 ? `(${t})` : t;
+    return i ? [regeln.verknuepfung, text] : [text];
+  });
+  if (filter.nicht_geoeffnet_kampagne_id) ergebnis.push("Nicht-Öffner einer früheren Kampagne");
+  return ergebnis;
 }
 
 // Frequency-Capping: letzte Marketing-Mail pro Adresse. Abfrage in Paketen,

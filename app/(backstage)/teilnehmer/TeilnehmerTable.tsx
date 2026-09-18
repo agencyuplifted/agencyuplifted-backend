@@ -26,7 +26,7 @@ type Row = {
 type Segment = {
   id: string;
   name: string;
-  filter_kriterien: { anrede?: string[]; rolle?: string[]; seminartypen?: string[]; unternehmer_status?: string[]; tags?: string[] };
+  filter_kriterien: { anrede?: string[]; rolle?: string[]; seminartypen?: string[]; unternehmer_status?: string[]; tags?: string[]; regeln?: unknown };
 };
 
 const ANREDE_LABEL: Record<string, string> = { Herr: "Männer", Frau: "Frauen", Divers: "Divers", keine_angabe: "Ohne Angabe" };
@@ -49,6 +49,9 @@ export default function TeilnehmerTable({
   tags: { id: string; label: string; aktiv: boolean }[];
 }) {
   const [tagFilter, setTagFilter] = useState("");
+  // Filtergruppen aus dem Kampagnen-Baukasten (Regeln mit und/oder) kann diese
+  // einfache Filterleiste nicht abbilden -- die gibt es nur unter /kampagnen.
+  const einfacheSegmente = segmente.filter((sg) => !sg.filter_kriterien?.regeln);
   const tagLabel = new Map(tags.map((t) => [t.id, t.label]));
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -207,10 +210,10 @@ export default function TeilnehmerTable({
                 ))}
             </select>
           )}
-          {segmente.length > 0 && (
+          {einfacheSegmente.length > 0 && (
             <select className="au-select" value="" onChange={(e) => e.target.value && wendeSegmentAn(e.target.value)} aria-label="Gespeicherte Filtergruppe">
               <option value="">Filtergruppe laden …</option>
-              {segmente.map((s) => (
+              {einfacheSegmente.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>

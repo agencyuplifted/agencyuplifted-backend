@@ -1,5 +1,6 @@
 "use server";
 
+import { parseRegeln } from "./kampagnen-regeln";
 import { ladeBausteine, schalterAus, baueMailHtml } from "@/lib/mail-bausteine";
 import { getSupabaseAdmin } from "./supabase";
 import { revalidatePath, revalidateTag } from "next/cache";
@@ -3324,7 +3325,18 @@ function leseFilterAusFormData(formData: FormData): import("./kampagnen").Filter
     teilnahme_stand: listeAus("teilnahme_stand"),
     netzwerk_mitglied: (["ja", "nein"].includes(String(formData.get("netzwerk_mitglied"))) ? String(formData.get("netzwerk_mitglied")) : undefined) as "ja" | "nein" | undefined,
     tags: listeAus("tags"),
+    regeln: parseRegeln(formData.get("regeln")) || undefined,
   };
+}
+
+// Live-Trefferzahl fuer den Regel-Baukasten (neue Kampagne)
+export async function zaehleKampagnenEmpfaenger(regelnJson: string): Promise<{ fehler: string | null; anzahl?: number }> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const regeln = parseRegeln(regelnJson);
+  if (!regeln) return { fehler: "Ungültige Regeln." };
+  const { ladeTeilnehmerFuerFilter } = await import("./kampagnen");
+  return { fehler: null, anzahl: (await ladeTeilnehmerFuerFilter({ regeln })).length };
 }
 
 export async function speichereTeilnehmerSegment(formData: FormData) {
@@ -3339,6 +3351,7 @@ export async function speichereTeilnehmerSegment(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/teilnehmer");
   revalidatePath("/kampagnen/neu");
+  revalidatePath("/kampagnen");
 }
 
 export async function loescheTeilnehmerSegment(formData: FormData) {

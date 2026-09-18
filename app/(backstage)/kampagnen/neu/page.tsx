@@ -2,8 +2,11 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { erstelleKampagne } from "@/lib/actions";
-import { ladeTeilnehmerFuerFilter, TEILNAHME_STAND_LABEL, type FilterKriterien } from "@/lib/kampagnen";
+import { erstelleKampagne, zaehleKampagnenEmpfaenger, speichereTeilnehmerSegment } from "@/lib/actions";
+import { ladeTeilnehmerFuerFilter, normalisiereFilter, type FilterKriterien } from "@/lib/kampagnen";
+import { parseRegeln, wirksameRegeln } from "@/lib/kampagnen-regeln";
+import { formatDatum } from "@/lib/format";
+import RegelBuilder from "./RegelBuilder";
 import { ladeBausteine } from "@/lib/mail-bausteine";
 import InhaltMitLinkCheck from "./InhaltMitLinkCheck";
 
@@ -11,61 +14,50 @@ export default async function NeueKampagnePage({
   searchParams,
 }: {
   searchParams: Promise<{
+    regeln?: string;
+    segment_id?: string;
+    // Alte Einzelparameter (z. B. "Kampagne aus Auswahl" in der Teilnehmer-Liste)
     anrede?: string;
     rolle?: string;
     seminartypen?: string;
     unternehmer_status?: string;
-    segment_id?: string;
-    kategorie2?: string;
-    kategorie2_modus?: string;
-    teilnahme_stand?: string;
-    netzwerk_mitglied?: string;
     tags?: string;
   }>;
 }) {
   const sp = await searchParams;
   const supabase = getSupabaseAdmin();
 
-  const { data: segmente } = await supabase.from("teilnehmer_segmente").select("*").order("erstellt_am", { ascending: false });
-  const { data: seminartypen } = await supabase.from("seminartypen").select("name").order("name");
-  const { data: tags } = await supabase.from("tags").select("id, label").eq("aktiv", true).order("label");
+  const vorDreiJahren = new Date(Date.now() - 3 * 365 * 86_400_000).toISOString().slice(0, 10);
+  const [{ data: segmente }, { data: seminartypen }, { data: tags }, { data: termine }, { data: alteKampagnen }] = await Promise.all([
+    supabase.from("teilnehmer_segmente").select("*").order("erstellt_am", { ascending: false }),
+    supabase.from("seminartypen").select("name").order("name"),
+    supabase.from("tags").select("id, label").eq("aktiv", true).order("label"),
+    supabase.from("seminartermine").select("id, kennung, titel, datum_start").gte("datum_start", vorDreiJahren).order("datum_start", { ascending: false }),
+    supabase.from("kampagnen").select("id, name, versendet_am").eq("status", "versendet").order("versendet_am", { ascending: false }),
+  ]);
 
   let filter: FilterKriterien;
   let aktivesSegment: { id: string; name: string } | null = null;
-
-  if (sp.segment_id) {
-    const segment = (segmente || []).find((s: any) => s.id === sp.segment_id);
-    if (segment) {
-      filter = segment.filter_kriterien || {};
-      aktivesSegment = { id: segment.id, name: segment.name };
-    } else {
-      filter = {};
-    }
+  const segment = sp.segment_id ? (segmente || []).find((s: any) => s.id === sp.segment_id) : null;
+  if (sp.regeln) {
+    filter = { regeln: parseRegeln(sp.regeln) || undefined };
+  } else if (segment) {
+    filter = segment.filter_kriterien || {};
+    aktivesSegment = { id: segment.id, name: segment.name };
   } else {
     filter = {
       anrede: sp.anrede ? [sp.anrede] : [],
       rolle: sp.rolle ? [sp.rolle] : [],
       seminartypen: sp.seminartypen ? [sp.seminartypen] : [],
       unternehmer_status: sp.unternehmer_status ? [sp.unternehmer_status] : [],
-      kategorie2: sp.kategorie2 || undefined,
-      kategorie2_modus: sp.kategorie2_modus === "nicht_besucht" ? "nicht_besucht" : "besucht",
-      teilnahme_stand: sp.teilnahme_stand ? [sp.teilnahme_stand] : [],
-      netzwerk_mitglied: sp.netzwerk_mitglied === "ja" || sp.netzwerk_mitglied === "nein" ? sp.netzwerk_mitglied : undefined,
       tags: sp.tags ? [sp.tags] : [],
     };
   }
+  // Alles in Regeln uebersetzen -- ab hier gibt es nur noch den Baukasten
+  const regeln = normalisiereFilter(filter);
+  const regelnJson = JSON.stringify(wirksameRegeln(regeln));
 
-  const [empfaenger, bausteine] = await Promise.all([ladeTeilnehmerFuerFilter(filter), ladeBausteine(supabase)]);
-
-  const anredeWert = filter.anrede?.[0] || "";
-  const rolleWert = filter.rolle?.[0] || "";
-  const seminarWert = filter.seminartypen?.[0] || "";
-  const unternehmerWert = filter.unternehmer_status?.[0] || "";
-  const kategorie2Wert = filter.kategorie2 || "";
-  const kategorie2Modus = filter.kategorie2_modus || "besucht";
-  const teilnahmeWert = filter.teilnahme_stand?.[0] || "";
-  const netzwerkWert = filter.netzwerk_mitglied || "";
-  const tagWert = filter.tags?.[0] || "";
+  const [empfaenger, bausteine] = await Promise.all([ladeTeilnehmerFuerFilter({ regeln }), ladeBausteine(supabase)]);
   const ruhend = empfaenger.filter((e) => e.vermutlichRuhend).length;
 
   return (
@@ -103,97 +95,21 @@ export default async function NeueKampagnePage({
                 </div>
               </div>
             )}
-            <form method="get" action="/kampagnen/neu">
-          <div className="au-row-2">
-            <div>
-              <label className="au-label">Geschlecht</label>
-              <select className="au-select" name="anrede" defaultValue={anredeWert}>
-                <option value="">Alle</option>
-                <option value="Frau">Frauen</option>
-                <option value="Herr">Männer</option>
-                <option value="Divers">Divers</option>
-                <option value="keine_angabe">Ohne Angabe</option>
-              </select>
-            </div>
-            <div>
-              <label className="au-label">Unternehmer:in / Mitarbeiter:in</label>
-              <select className="au-select" name="unternehmer_status" defaultValue={unternehmerWert}>
-                <option value="">Alle</option>
-                <option value="unternehmer">Unternehmer:in</option>
-                <option value="mitarbeiter">Mitarbeiter:in</option>
-                <option value="unbekannt">Ohne Angabe</option>
-              </select>
-            </div>
-          </div>
-          <div className="au-row-2">
-            <div>
-              <label className="au-label">Rolle (Event-Funktion)</label>
-              <select className="au-select" name="rolle" defaultValue={rolleWert}>
-                <option value="">Alle</option>
-                <option value="teilnehmer">Teilnehmer</option>
-                <option value="mitarbeiter">Mitarbeiter</option>
-                <option value="gastreferent">Gastreferent</option>
-                <option value="organisator">Organisator</option>
-              </select>
-            </div>
-            <div>
-              <label className="au-label">Seminarkategorie besucht</label>
-              <select className="au-select" name="seminartypen" defaultValue={seminarWert}>
-                <option value="">Alle</option>
-                {(seminartypen || []).map((s: any) => (
-                  <option key={s.name} value={s.name}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="au-row-2">
-            <div>
-              <label className="au-label">UND außerdem …</label>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <select className="au-select" name="kategorie2_modus" defaultValue={kategorie2Modus} style={{ maxWidth: 170 }}>
-                  <option value="besucht">schon besucht</option>
-                  <option value="nicht_besucht">noch nicht besucht</option>
-                </select>
-                <select className="au-select" name="kategorie2" defaultValue={kategorie2Wert}>
-                  <option value="">– egal –</option>
-                  {(seminartypen || []).map((s: any) => (
-                    <option key={s.name} value={s.name}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-              <p className="au-klein" style={{ marginTop: "-0.5rem" }}>Zählt nur abgeschlossene Seminare, z. B. „Preisfindung, aber noch nicht Führung“.</p>
-            </div>
-            <div>
-              <label className="au-label">Teilnahme-Stand</label>
-              <select className="au-select" name="teilnahme_stand" defaultValue={teilnahmeWert}>
-                <option value="">Alle</option>
-                {Object.entries(TEILNAHME_STAND_LABEL).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="au-row-2">
-            <div>
-              <label className="au-label">Netzwerk-Mitglied (Uplifted Agencies)</label>
-              <select className="au-select" name="netzwerk_mitglied" defaultValue={netzwerkWert}>
-                <option value="">Alle</option>
-                <option value="ja">Ja</option>
-                <option value="nein">Nein</option>
-              </select>
-            </div>
-            <div>
-              <label className="au-label">Tag</label>
-              <select className="au-select" name="tags" defaultValue={tagWert} disabled={!tags?.length}>
-                <option value="">{tags?.length ? "Alle" : "Noch keine Tags angelegt"}</option>
-                {(tags || []).map((t: any) => (
-                  <option key={t.id} value={t.id}>{t.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="au-kampagne-filterfuss"><button type="submit" className="au-btn au-btn-secondary au-btn-sm">Filter anwenden</button><Link href="/kampagnen/neu" className="au-link">zurücksetzen</Link></div>
-        </form>
+            <RegelBuilder
+              key={regelnJson}
+              start={regeln}
+              seminartypen={(seminartypen || []).map((t: any) => t.name)}
+              tags={(tags || []) as any[]}
+              termine={(termine || []).map((t: any) => ({ id: t.id, label: `${t.kennung || t.titel} · ${formatDatum(t.datum_start)}` }))}
+              kampagnen={(alteKampagnen || []).map((k: any) => ({ id: k.id, label: `${k.name}${k.versendet_am ? ` · ${formatDatum(k.versendet_am)}` : ""}` }))}
+              zaehlen={zaehleKampagnenEmpfaenger}
+              angewendetAnzahl={empfaenger.length}
+            />
+            <form action={speichereTeilnehmerSegment} className="au-regeln-speichern">
+              <input type="hidden" name="regeln" value={regelnJson} />
+              <input className="au-input" name="segment_name" required placeholder="Als Filtergruppe speichern, z. B. „Preisfindung ohne Führung“" />
+              <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
+            </form>
           </div>
           <div className="au-kampagne-treffer">
             <div>
@@ -227,15 +143,7 @@ export default async function NeueKampagnePage({
               <p className="au-leer" style={{ margin: 0 }}>Mit diesem Filter gibt es aktuell keine Empfänger:innen. Bitte links den Filter anpassen.</p>
             ) : (
               <form action={erstelleKampagne}>
-            {anredeWert && <input type="hidden" name="anrede" value={anredeWert} />}
-            {rolleWert && <input type="hidden" name="rolle" value={rolleWert} />}
-            {seminarWert && <input type="hidden" name="seminartypen" value={seminarWert} />}
-            {unternehmerWert && <input type="hidden" name="unternehmer_status" value={unternehmerWert} />}
-            {kategorie2Wert && <input type="hidden" name="kategorie2" value={kategorie2Wert} />}
-            {kategorie2Wert && <input type="hidden" name="kategorie2_modus" value={kategorie2Modus} />}
-            {teilnahmeWert && <input type="hidden" name="teilnahme_stand" value={teilnahmeWert} />}
-            {netzwerkWert && <input type="hidden" name="netzwerk_mitglied" value={netzwerkWert} />}
-            {tagWert && <input type="hidden" name="tags" value={tagWert} />}
+            <input type="hidden" name="regeln" value={regelnJson} />
             {aktivesSegment && <input type="hidden" name="segment_id" value={aktivesSegment.id} />}
 
             <label className="au-label">Name der Kampagne (intern)</label>
