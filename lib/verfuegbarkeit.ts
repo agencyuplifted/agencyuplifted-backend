@@ -63,8 +63,42 @@ function stufeGreift(stufe: UrgencyStufe, effektivGebucht: number, freiePlaetze:
   return stufe.schwellenwert_prozent != null && belegtProzent >= Number(stufe.schwellenwert_prozent);
 }
 
+const ZAHLWOERTER = ["null", "ein", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf"];
+
+// "Nur noch zwei Plaetze" liest sich in der Werbesprache besser als "nur noch
+// 2 Plaetze" -- deshalb gibt es zu jeder Zahl auch ein ausgeschriebenes
+// Platzhalter-Gegenstueck. Ab 13 bleibt es bei Ziffern.
+export function zahlwort(n: number): string {
+  return ZAHLWOERTER[n] ?? String(n);
+}
+
+// Textbausteine fuer die Auswahl in Backstage. Freitext bleibt moeglich, die
+// Liste nimmt nur die haeufigen Faelle ab (und zeigt, welche Platzhalter es
+// ueberhaupt gibt).
+export const URGENCY_TEXTBAUSTEINE: { wert: string; titel: string }[] = [
+  { wert: "Nur noch {remaining} von {total} Plätzen frei", titel: "Nur noch 2 von 12 Plätzen frei (mit Gesamtzahl)" },
+  { wert: "Noch {remaining} {plaetze} frei", titel: "Noch 2 Plätze frei (ohne Gesamtzahl)" },
+  { wert: "Nur noch {remaining_wort} {plaetze} frei", titel: "Nur noch zwei Plätze frei (Zahl ausgeschrieben)" },
+  { wert: "Nur noch wenige Plätze frei", titel: "Nur noch wenige Plätze frei (ohne Zahl)" },
+  { wert: "Noch Plätze frei", titel: "Noch Plätze frei (neutral)" },
+  { wert: "Ausgebucht", titel: "Ausgebucht" },
+];
+
+export const URGENCY_PLATZHALTER: { wert: string; erklaerung: string }[] = [
+  { wert: "{remaining}", erklaerung: "freie Plätze als Zahl, z. B. 2" },
+  { wert: "{remaining_wort}", erklaerung: "freie Plätze ausgeschrieben, z. B. zwei" },
+  { wert: "{plaetze}", erklaerung: "„Platz“ oder „Plätze“, passend zur Anzahl" },
+  { wert: "{total}", erklaerung: "Gesamtzahl der Plätze, z. B. 12" },
+  { wert: "{total_wort}", erklaerung: "Gesamtzahl ausgeschrieben, z. B. zwölf" },
+];
+
 export function setzeUrgencyPlatzhalter(vorlage: string, freiePlaetze: number, kapazitaet: number): string {
-  return vorlage.replaceAll("{remaining}", String(freiePlaetze)).replaceAll("{total}", String(kapazitaet));
+  return vorlage
+    .replaceAll("{remaining_wort}", zahlwort(freiePlaetze))
+    .replaceAll("{total_wort}", zahlwort(kapazitaet))
+    .replaceAll("{remaining}", String(freiePlaetze))
+    .replaceAll("{total}", String(kapazitaet))
+    .replaceAll("{plaetze}", freiePlaetze === 1 ? "Platz" : "Plätze");
 }
 
 export function berechneWebsiteVerfuegbarkeit(

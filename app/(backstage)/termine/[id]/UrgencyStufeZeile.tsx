@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import UrgencyTextFeld from "./UrgencyTextFeld";
 
 export type UrgencyStufeZeileDaten = {
   id: string;
@@ -53,11 +54,15 @@ export function UrgencySchwellenwertFelder({
 export default function UrgencyStufeZeile({
   stufe,
   seminarterminId,
+  freiePlaetze,
+  kapazitaet,
   updateAction,
   deleteAction,
 }: {
   stufe: UrgencyStufeZeileDaten;
   seminarterminId: string;
+  freiePlaetze: number;
+  kapazitaet: number;
   updateAction: (formData: FormData) => Promise<void>;
   deleteAction: (formData: FormData) => Promise<void>;
 }) {
@@ -106,10 +111,14 @@ export default function UrgencyStufeZeile({
               <input type="hidden" name="urgency_stufe_id" value={stufe.id} />
               <input type="hidden" name="seminartermin_id" value={seminarterminId} />
               <UrgencySchwellenwertFelder initialTyp={typ} initialWert={wert} />
-              <div>
-                <label className="au-label">Text</label>
-                <input className="au-input" name="text_vorlage" defaultValue={stufe.text_vorlage} required />
-              </div>
+              <UrgencyTextFeld
+                name="text_vorlage"
+                label="Text"
+                defaultValue={stufe.text_vorlage}
+                freiePlaetze={freiePlaetze}
+                kapazitaet={kapazitaet}
+                required
+              />
               <div style={{ display: "flex", gap: "0.5rem", alignSelf: "end" }}>
                 <button type="submit" className="au-btn au-btn-primary au-btn-sm">Speichern</button>
                 <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={() => setBearbeiten(false)}>Abbrechen</button>

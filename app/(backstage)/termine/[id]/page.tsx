@@ -4,6 +4,7 @@ import {
   createPreisstaffel,
   createUrgencyStufe,
   updateUrgencyStufe,
+  updateVerfuegbarkeitsAnzeige,
   deleteUrgencyStufe,
   previewSeminarterminUpdate,
   createSeminarOption,
@@ -36,11 +37,12 @@ import {
   entferneZimmerpartner,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatDatum, formatEUR, formatEURBrutto, effektiveTerminNaechte } from "@/lib/format";
+import { formatDatum, formatEUR, formatEURBrutto, effektiveTerminNaechte, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
 import { renderFett } from "@/lib/richtext";
 import { FettTextarea, FettInput } from "../BoldEditor";
 import PreisstaffelStichtagFelder from "./PreisstaffelStichtagFelder";
 import UrgencyStufeZeile, { UrgencySchwellenwertFelder } from "./UrgencyStufeZeile";
+import UrgencyTextFeld from "./UrgencyTextFeld";
 import WebsiteAnzeigeHinweis from "../WebsiteAnzeigeHinweis";
 import { ladeWebsiteVerfuegbarkeit, beschreibeUrgencyStufe, setzeUrgencyPlatzhalter, urgencyBelegteSchwelle } from "@/lib/verfuegbarkeit";
 import PreisstaffelZeile, { type PreisstaffelZeileDaten } from "./PreisstaffelZeile";
@@ -657,25 +659,10 @@ export default async function TerminDetailPage({
               <input className="au-input" name="ueberbuchungspuffer" type="number" defaultValue={termin.ueberbuchungspuffer} />
             </div>
             <div>
-              <label className="au-label">Angezeigte Restplätze (manuell, Urgency)</label>
-              <input className="au-input" name="angezeigte_restplaetze" type="number" defaultValue={termin.angezeigte_restplaetze ?? ""} placeholder="leer = kein Hinweis" />
-              {termin.angezeigte_restplaetze !== null && termin.angezeigte_restplaetze !== undefined && (
-                <p style={{ margin: "-0.5rem 0 0.75rem" }}>
-                  <span className="au-badge au-badge-warning">Manuell überschrieben</span>{" "}
-                  <span style={{ color: "var(--color-text-faint)", fontSize: "0.8rem" }}>
-                    — zeigt {termin.angezeigte_restplaetze} statt der echten {websiteAnzeige?.freiRechnerisch ?? "?"} Restplätze an
-                  </span>
-                </p>
-              )}
+              <p style={{ fontSize: "0.82rem", color: "var(--color-text-faint)", margin: "1.6rem 0 0" }}>
+                Restplatz-Anzeige, Anzeige-Modus und Urgency-Texte stehen unten in der Karte „Anzeige auf der Website“.
+              </p>
             </div>
-          </div>
-
-          <div>
-            <label className="au-label">Anzeige-Modus Verfügbarkeit (Onepage-Hero)</label>
-            <select className="au-select" name="verfuegbarkeit_anzeige_modus" defaultValue={termin.verfuegbarkeit_anzeige_modus || "zahlen"}>
-              <option value="zahlen">Platzzahl anzeigen (Zahl + Füllstandsbalken)</option>
-              <option value="neutral">Neutral (ohne Zahlen/Balken)</option>
-            </select>
           </div>
 
           <div>
@@ -683,15 +670,9 @@ export default async function TerminDetailPage({
             <textarea className="au-textarea" name="untertitel" defaultValue={termin.untertitel || ""} placeholder="z. B. Kalkulieren Sie Preise, die Wert sichtbar machen ..." rows={2} />
           </div>
 
-          <div className="au-row-2">
-            <div>
-              <label className="au-label">Eyebrow-Text (Onepage-Hero)</label>
-              <input className="au-input" name="eyebrow_text" defaultValue={termin.eyebrow_text || ""} placeholder="Standard: Seminar" />
-            </div>
-            <div>
-              <label className="au-label">Urgency-Text Standard (Onepage-Hero, ohne Platzzahl)</label>
-              <input className="au-input" name="urgency_label_template" defaultValue={termin.urgency_label_template || ""} placeholder="z. B. Noch Plätze frei" />
-            </div>
+          <div>
+            <label className="au-label">Eyebrow-Text (Onepage-Hero)</label>
+            <input className="au-input" name="eyebrow_text" defaultValue={termin.eyebrow_text || ""} placeholder="Standard: Seminar" />
           </div>
 
           <div>
@@ -755,6 +736,89 @@ export default async function TerminDetailPage({
           </button>
         </form>
       </div>
+
+      {websiteAnzeige && (
+        <div className="au-card">
+          <h2>Anzeige auf der Website</h2>
+          <WebsiteAnzeigeHinweis anzeige={websiteAnzeige} termin={termin} ausfuehrlich />
+
+          <form action={updateVerfuegbarkeitsAnzeige} style={{ maxWidth: 560, borderTop: "1px solid var(--color-border, #e5e7eb)", paddingTop: "0.9rem" }}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <div>
+              <label className="au-label">Was der Hero zeigt</label>
+              <select className="au-select" name="verfuegbarkeit_anzeige_modus" defaultValue={termin.verfuegbarkeit_anzeige_modus || "zahlen"}>
+                <option value="zahlen">Platzzahl + Füllstandsbalken + Urgency-Text</option>
+                <option value="neutral">Neutral: nur „{VERFUEGBARKEIT_NEUTRAL_TEXT}“, keine Zahlen</option>
+              </select>
+            </div>
+            <div>
+              <label className="au-label">Angezeigte Restplätze (statt der echten Buchungszahl)</label>
+              <input className="au-input" name="angezeigte_restplaetze" type="number" min={0} defaultValue={termin.angezeigte_restplaetze ?? ""} placeholder={`leer = echte Restplätze (aktuell ${websiteAnzeige.freiRechnerisch} von ${termin.kapazitaet})`} />
+              <p style={{ fontSize: "0.8rem", color: "var(--color-text-faint)", margin: "-0.35rem 0 0.75rem" }}>
+                Gilt für Zahl, Balken und alle Urgency-Stufen. Kapazität ({termin.kapazitaet} Plätze) änderst du oben im Termin-Formular.
+              </p>
+            </div>
+            <UrgencyTextFeld
+              name="urgency_label_template"
+              label="Standard-Text (gilt, solange keine Stufe unten greift)"
+              defaultValue={termin.urgency_label_template || ""}
+              freiePlaetze={websiteAnzeige.freiePlaetze}
+              kapazitaet={termin.kapazitaet}
+              platzhalter="z. B. Noch Plätze frei"
+            />
+            <button type="submit" className="au-btn au-btn-primary au-btn-sm">Anzeige speichern</button>
+          </form>
+
+          <h3 style={{ margin: "1.5rem 0 0.25rem" }}>Urgency-Stufen (ab wann ein anderer Text erscheint)</h3>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
+            Greifen mehrere Stufen, gewinnt die mit der höchsten Belegung. Greift keine, erscheint der Standard-Text von oben.
+          </p>
+          <table className="au-table">
+            <thead>
+              <tr>
+                <th>Wenn …</th>
+                <th>… zeigt die Website</th>
+                <th></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {urgencyStufenZeilen.map((u) => (
+                <UrgencyStufeZeile
+                  key={u.id}
+                  stufe={u}
+                  seminarterminId={id}
+                  freiePlaetze={websiteAnzeige.freiePlaetze}
+                  kapazitaet={termin.kapazitaet}
+                  updateAction={updateUrgencyStufe}
+                  deleteAction={deleteUrgencyStufe}
+                />
+              ))}
+              {!urgencyStufenZeilen.length && (
+                <tr><td colSpan={4} style={{ color: "var(--color-text-faint)" }}>Noch keine Stufen — es gilt immer der Standard-Text.</td></tr>
+              )}
+            </tbody>
+          </table>
+          <details style={{ margin: "0.5rem 0 0" }}>
+            <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>+ Urgency-Stufe hinzufügen</summary>
+            <form action={createUrgencyStufe} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem", alignItems: "start", marginTop: "0.5rem" }}>
+              <input type="hidden" name="seminartermin_id" value={id} />
+              <UrgencySchwellenwertFelder />
+              <UrgencyTextFeld
+                name="text_vorlage"
+                label="Text"
+                freiePlaetze={websiteAnzeige.freiePlaetze}
+                kapazitaet={termin.kapazitaet}
+                platzhalter="z. B. Nur noch wenige Plätze frei"
+                required
+              />
+              <div style={{ alignSelf: "start" }}>
+                <button type="submit" className="au-btn au-btn-primary au-btn-sm">Stufe hinzufügen</button>
+              </div>
+            </form>
+          </details>
+        </div>
+      )}
 
       <div className="au-card">
         <h2>Mitarbeiter beim Termin</h2>
@@ -1315,53 +1379,6 @@ export default async function TerminDetailPage({
             <button type="submit" className="au-btn au-btn-primary">Option anlegen</button>
           </form>
         </div>
-      </div>
-
-      <div className="au-card">
-        <h2>Urgency-Stufen</h2>
-        {websiteAnzeige && <WebsiteAnzeigeHinweis anzeige={websiteAnzeige} termin={termin} ausfuehrlich />}
-        <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
-          Greifen mehrere Stufen, wird die mit der höchsten Belegungsschwelle angezeigt. Greift keine, erscheint der „Urgency-Text Standard“ aus dem Termin-Formular.
-          Grundlage sind die angezeigten (ggf. manuell überschriebenen) Restplätze. Platzhalter <code>{"{remaining}"}</code> / <code>{"{total}"}</code> möglich.
-        </p>
-        <table className="au-table">
-          <thead>
-            <tr>
-              <th>Bedingung</th>
-              <th>Text</th>
-              <th></th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {urgencyStufenZeilen.map((u) => (
-              <UrgencyStufeZeile
-                key={u.id}
-                stufe={u}
-                seminarterminId={id}
-                updateAction={updateUrgencyStufe}
-                deleteAction={deleteUrgencyStufe}
-              />
-            ))}
-            {!urgencyStufenZeilen.length && (
-              <tr><td colSpan={4} style={{ color: "var(--color-text-faint)" }}>Noch keine Urgency-Stufen.</td></tr>
-            )}
-          </tbody>
-        </table>
-        <details style={{ margin: "0.5rem 0 0" }}>
-          <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>+ Urgency-Stufe hinzufügen</summary>
-          <form action={createUrgencyStufe} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem", alignItems: "start", marginTop: "0.5rem" }}>
-            <input type="hidden" name="seminartermin_id" value={id} />
-            <UrgencySchwellenwertFelder />
-            <div>
-              <label className="au-label">Text</label>
-              <input className="au-input" name="text_vorlage" placeholder="z. B. Nur noch {remaining} Plätze frei" required />
-            </div>
-            <div style={{ alignSelf: "end" }}>
-              <button type="submit" className="au-btn au-btn-primary au-btn-sm">Stufe hinzufügen</button>
-            </div>
-          </form>
-        </details>
       </div>
 
       <div className="au-card">

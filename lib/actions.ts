@@ -488,10 +488,6 @@ export async function updateSeminartermin(formData: FormData) {
     kapazitaet: Number(formData.get("kapazitaet") || 12),
     mindestteilnehmerzahl: Number(formData.get("mindestteilnehmerzahl") || 5),
     ueberbuchungspuffer: Number(formData.get("ueberbuchungspuffer") || 3),
-    angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
-      ? Number(formData.get("angezeigte_restplaetze"))
-      : null,
-    verfuegbarkeit_anzeige_modus: String(formData.get("verfuegbarkeit_anzeige_modus") || "zahlen"),
     vorabendanreise_inklusive: formData.get("vorabendanreise_inklusive") === "on",
     zusatzteilnehmer_preis: formData.get("zusatzteilnehmer_preis")
       ? Number(formData.get("zusatzteilnehmer_preis"))
@@ -501,7 +497,6 @@ export async function updateSeminartermin(formData: FormData) {
       : null,
     untertitel: formData.get("untertitel") || null,
     eyebrow_text: formData.get("eyebrow_text") || null,
-    urgency_label_template: formData.get("urgency_label_template") || null,
     onepage_slug: formData.get("onepage_slug") || null,
     zimmerupgrade_beschreibung: formData.get("zimmerupgrade_beschreibung") || null,
     zimmerupgrade_preis_pro_nacht_netto: formData.get("zimmerupgrade_preis_pro_nacht_netto")
@@ -509,6 +504,20 @@ export async function updateSeminartermin(formData: FormData) {
       : null,
     selbstauskunft_label: formData.get("selbstauskunft_label") || null,
     selbstauskunft_aktiv: formData.get("selbstauskunft_aktiv") === "on",
+    // Die Anzeige-Einstellungen der Website liegen jetzt in einer eigenen
+    // Karte mit eigenem Formular (updateVerfuegbarkeitsAnzeige). Kommen sie
+    // hier ausnahmsweise doch mit (z. B. ueber einen alten Link auf die
+    // Bestaetigungsseite), werden sie uebernommen -- fehlen sie, bleiben sie
+    // unveraendert, statt auf null zurueckzufallen.
+    ...(formData.has("verfuegbarkeit_anzeige_modus")
+      ? { verfuegbarkeit_anzeige_modus: String(formData.get("verfuegbarkeit_anzeige_modus") || "zahlen") }
+      : {}),
+    ...(formData.has("angezeigte_restplaetze")
+      ? { angezeigte_restplaetze: formData.get("angezeigte_restplaetze") ? Number(formData.get("angezeigte_restplaetze")) : null }
+      : {}),
+    ...(formData.has("urgency_label_template")
+      ? { urgency_label_template: formData.get("urgency_label_template") || null }
+      : {}),
   };
 
   const { error } = await supabase.from("seminartermine").update(update).eq("id", id);
@@ -1737,6 +1746,53 @@ export async function speicherePreisstaffelnAlsVorlage(formData: FormData): Prom
   revalidatePath("/preisstaffel-vorlagen");
   revalidatePath(`/termine/${seminarterminId}`);
   return { fehler: null };
+}
+
+// Die Anzeige-Einstellungen der Website (Anzeige-Modus, manuelle Restplaetze,
+// Standard-Urgency-Text) liegen in einer eigenen Karte "Anzeige auf der
+// Website" statt verstreut im grossen Termin-Formular -- sie werden oft und
+// schnell nachjustiert und brauchen deshalb keinen Bestaetigungs-Zwischenschritt
+// wie Datum/Ort/Kapazitaet. Ins Aenderungsprotokoll wandern sie trotzdem.
+export async function updateVerfuegbarkeitsAnzeige(formData: FormData) {
+  const supabase = getSupabaseAdmin();
+  const id = String(formData.get("seminartermin_id"));
+
+  const update = {
+    verfuegbarkeit_anzeige_modus: String(formData.get("verfuegbarkeit_anzeige_modus") || "zahlen"),
+    angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
+      ? Number(formData.get("angezeigte_restplaetze"))
+      : null,
+    urgency_label_template: formData.get("urgency_label_template") || null,
+  };
+
+  const { data: alterTermin } = await supabase
+    .from("seminartermine")
+    .select("verfuegbarkeit_anzeige_modus, angezeigte_restplaetze, urgency_label_template")
+    .eq("id", id)
+    .single();
+
+  const { error } = await supabase.from("seminartermine").update(update).eq("id", id);
+  if (error) throw new Error(error.message);
+
+  const geaenderteFelder = Object.keys(update).filter(
+    (feld) => String((alterTermin as any)?.[feld] ?? "") !== String((update as any)[feld] ?? "")
+  );
+  if (alterTermin && geaenderteFelder.length > 0) {
+    const anzeige = (wert: any) => (wert === null || wert === undefined || wert === "" ? "—" : String(wert));
+    const benutzer = await getAktuellerBenutzer();
+    await supabase.from("aenderungsprotokoll").insert({
+      bezug_typ: "seminartermin",
+      bezug_id: id,
+      ereignis: "aktualisierung",
+      beschreibung: geaenderteFelder
+        .map((feld) => `${TERMIN_FELD_LABELS[feld] || feld}: "${anzeige((alterTermin as any)[feld])}" → "${anzeige((update as any)[feld])}"`)
+        .join("; "),
+      bearbeiter: benutzer?.name || "Unbekannt",
+    });
+  }
+
+  revalidatePath("/termine");
+  revalidatePath(`/termine/${id}`);
 }
 
 // Urgency-Stufen koennen prozentual ("ab 60 % belegt") oder absolut ("ab 6

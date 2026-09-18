@@ -53,6 +53,10 @@ export default async function TerminBestaetigenPage({
     : null;
 
   const geaenderteFelder = FELDER.filter((feld) => {
+    // Felder, die das Termin-Formular gar nicht mitschickt (die
+    // Anzeige-Einstellungen aus der Karte "Anzeige auf der Website"), duerfen
+    // hier nicht als geleert erscheinen -- sie bleiben unveraendert.
+    if (!(feld in neueWerte)) return false;
     const alt = (termin as any)[feld] ?? "";
     const neu = neueWerte[feld] ?? "";
     // Zeit-Felder in der DB haben Sekunden (HH:MM:SS), das Formular nur HH:MM.
