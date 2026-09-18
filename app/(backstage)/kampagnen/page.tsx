@@ -159,6 +159,7 @@ export default async function KampagnenPage({
                         </span>
                       </div>
                       <div className="au-kliste-aktionen">
+                        <Link href={`/kampagnen/neu?kampagne=${k.id}&schritt=inhalt`} className="au-panel-link">bearbeiten</Link>
                         <Link href={`/kampagnen/${k.id}/vorschau`} className="au-btn au-btn-primary au-btn-sm">Vorschau &amp; Versand →</Link>
                         <form action={loescheKampagnenEntwurf}>
                           <input type="hidden" name="id" value={k.id} />

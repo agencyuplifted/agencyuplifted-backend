@@ -8,7 +8,7 @@ import { parseRegeln, wirksameRegeln } from "@/lib/kampagnen-regeln";
 import { formatDatum } from "@/lib/format";
 import RegelBuilder from "./RegelBuilder";
 import { ladeBausteine } from "@/lib/mail-bausteine";
-import KampagnenInhalt from "./KampagnenInhalt";
+import KampagnenInhalt, { LEERER_ENTWURF } from "./KampagnenInhalt";
 
 export default async function NeueKampagnePage({
   searchParams,
@@ -17,6 +17,8 @@ export default async function NeueKampagnePage({
     regeln?: string;
     segment_id?: string;
     schritt?: string;
+    /** bestehenden Entwurf bearbeiten */
+    kampagne?: string;
     // Alte Einzelparameter (z. B. "Kampagne aus Auswahl" in der Teilnehmer-Liste)
     anrede?: string;
     rolle?: string;
@@ -39,11 +41,19 @@ export default async function NeueKampagnePage({
   ]);
   const optionsTitel = Array.from(new Set((optionsListe || []).map((o: any) => String(o.titel || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "de"));
 
+  // Zurueck aus der Vorschau: bestehenden Entwurf laden (nur solange "entwurf")
+  const { data: entwurf } = sp.kampagne
+    ? await supabase.from("kampagnen").select("*").eq("id", sp.kampagne).eq("status", "entwurf").maybeSingle()
+    : { data: null };
+  const zusatzQuery = entwurf ? `&kampagne=${entwurf.id}` : "";
+
   let filter: FilterKriterien;
   let aktivesSegment: { id: string; name: string } | null = null;
   const segment = sp.segment_id ? (segmente || []).find((s: any) => s.id === sp.segment_id) : null;
   if (sp.regeln) {
     filter = { regeln: parseRegeln(sp.regeln) || undefined };
+  } else if (entwurf) {
+    filter = entwurf.filter_kriterien || {};
   } else if (segment) {
     filter = segment.filter_kriterien || {};
     aktivesSegment = { id: segment.id, name: segment.name };
@@ -66,7 +76,7 @@ export default async function NeueKampagnePage({
   const schrittInhalt = sp.schritt === "inhalt" && empfaenger.length > 0;
   const tagLabel = new Map((tags || []).map((t: any) => [t.id, t.label]));
   const filterText = beschreibeFilter({ regeln }, tagLabel);
-  const empfaengerHref = `/kampagnen/neu?regeln=${encodeURIComponent(regelnJson)}`;
+  const empfaengerHref = `/kampagnen/neu?regeln=${encodeURIComponent(regelnJson)}${zusatzQuery}`;
   const fussUnvollstaendig = !bausteine.firmenangaben.trim();
 
   return (
@@ -76,14 +86,14 @@ export default async function NeueKampagnePage({
           <p className="au-dash-datum">
             <Link href="/kampagnen" className="au-panel-link">← Kampagnen</Link>
           </p>
-          <h1>Neue Kampagne</h1>
+          <h1>{entwurf ? `Entwurf bearbeiten: ${entwurf.name}` : "Neue Kampagne"}</h1>
         </div>
         <ol className="au-schritte au-schritte-gross" aria-label="Ablauf">
           <li className={schrittInhalt ? "erledigt" : "aktiv"}>
             {schrittInhalt ? <Link href={empfaengerHref}>1 · Empfänger</Link> : "1 · Empfänger"}
           </li>
           <li className={schrittInhalt ? "aktiv" : undefined}>2 · Inhalt</li>
-          <li>3 · Vorschau &amp; Versand</li>
+          <li>{entwurf ? <Link href={`/kampagnen/${entwurf.id}/vorschau`}>3 · Vorschau &amp; Versand</Link> : "3 · Vorschau & Versand"}</li>
         </ol>
       </header>
 
@@ -107,7 +117,7 @@ export default async function NeueKampagnePage({
                   <span className="au-klein">Schnellstart mit gespeicherter Filtergruppe:</span>
                   <div className="au-chips">
                     {segmente.map((sg: any) => (
-                      <Link key={sg.id} href={`/kampagnen/neu?segment_id=${sg.id}`} className={`au-chip${aktivesSegment?.id === sg.id ? " aktiv" : ""}`}>
+                      <Link key={sg.id} href={`/kampagnen/neu?segment_id=${sg.id}${zusatzQuery}`} className={`au-chip${aktivesSegment?.id === sg.id ? " aktiv" : ""}`}>
                         {sg.name}
                       </Link>
                     ))}
@@ -124,6 +134,7 @@ export default async function NeueKampagnePage({
                 optionen={optionsTitel}
                 zaehlen={zaehleKampagnenEmpfaenger}
                 angewendetAnzahl={empfaenger.length}
+                zusatzQuery={zusatzQuery}
               />
             </div>
           </section>
@@ -198,6 +209,19 @@ export default async function NeueKampagnePage({
             anzahl={empfaenger.length}
             beispiel={empfaenger[0] ? { vorname: empfaenger[0].vorname, nachname: empfaenger[0].nachname } : null}
             bausteine={bausteine}
+            kampagneId={entwurf?.id || null}
+            start={
+              entwurf
+                ? {
+                    name: entwurf.name,
+                    betreff: entwurf.betreff,
+                    betreffB: entwurf.betreff_b || "",
+                    inhalt: entwurf.inhalt,
+                    signatur: entwurf.baustein_signatur !== false,
+                    abstand: String(entwurf.mindestabstand_tage ?? 4),
+                  }
+                : LEERER_ENTWURF
+            }
           />
         </>
       )}

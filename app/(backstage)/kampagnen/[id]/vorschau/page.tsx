@@ -16,6 +16,7 @@ import {
 import { ermittleKampagnenEmpfaenger } from "@/lib/kampagnen";
 import { formatDatumZeit } from "@/lib/format";
 import BestaetigenButton from "./BestaetigenButton";
+import EntwurfAufraeumen from "./EntwurfAufraeumen";
 import LinkChecker from "../../../LinkChecker";
 import { ladeBausteine } from "@/lib/mail-bausteine";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -40,17 +41,31 @@ export default async function KampagnenVorschauPage({
 
   return (
     <main>
+      <EntwurfAufraeumen id={kampagne.id} />
       <header className="au-dash-kopf">
         <div>
           <p className="au-dash-datum">
             <Link href="/kampagnen" className="au-panel-link">← Kampagnen</Link>
           </p>
           <h1>{kampagne.name}</h1>
-          <p style={{ margin: 0 }}>So würde die Kampagne jetzt verschickt – der Filter wurde gerade live gegen den aktuellen Bestand ausgewertet.</p>
+          <p style={{ margin: 0 }}>
+            So würde die Kampagne jetzt verschickt – der Filter wurde gerade live gegen den aktuellen Bestand ausgewertet.
+            {kampagne.status === "entwurf" && (
+              <>
+                {" "}
+                <Link href={`/kampagnen/neu?kampagne=${kampagne.id}`} className="au-panel-link">Empfänger ändern</Link> ·{" "}
+                <Link href={`/kampagnen/neu?kampagne=${kampagne.id}&schritt=inhalt`} className="au-panel-link">Text bearbeiten</Link>
+              </>
+            )}
+          </p>
         </div>
         <ol className="au-schritte au-schritte-gross" aria-label="Ablauf">
-          <li className="erledigt">1 · Empfänger</li>
-          <li className="erledigt">2 · Inhalt</li>
+          <li className="erledigt">
+            {kampagne.status === "entwurf" ? <Link href={`/kampagnen/neu?kampagne=${kampagne.id}`}>1 · Empfänger</Link> : "1 · Empfänger"}
+          </li>
+          <li className="erledigt">
+            {kampagne.status === "entwurf" ? <Link href={`/kampagnen/neu?kampagne=${kampagne.id}&schritt=inhalt`}>2 · Inhalt</Link> : "2 · Inhalt"}
+          </li>
           <li className="aktiv">3 · Vorschau &amp; Versand</li>
         </ol>
       </header>

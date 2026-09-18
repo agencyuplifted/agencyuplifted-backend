@@ -27,6 +27,7 @@ export default function RegelBuilder({
   optionen: optionsTitel,
   zaehlen,
   angewendetAnzahl,
+  zusatzQuery = "",
 }: {
   start: Regeln;
   seminartypen: string[];
@@ -36,6 +37,8 @@ export default function RegelBuilder({
   optionen: string[];
   zaehlen: (regelnJson: string) => Promise<{ fehler: string | null; anzahl?: number }>;
   angewendetAnzahl: number;
+  /** z. B. "&kampagne=<id>" beim Bearbeiten eines Entwurfs */
+  zusatzQuery?: string;
 }) {
   const router = useRouter();
   const [regeln, setRegeln] = useState<Regeln>(start.gruppen.length ? start : { verknuepfung: "oder", gruppen: [LEERE_GRUPPE] });
@@ -210,7 +213,7 @@ export default function RegelBuilder({
           <button
             type="button"
             className="au-btn au-btn-secondary au-btn-sm"
-            onClick={() => router.push(`/kampagnen/neu?regeln=${encodeURIComponent(json)}`, { scroll: false })}
+            onClick={() => router.push(`/kampagnen/neu?regeln=${encodeURIComponent(json)}${zusatzQuery}`, { scroll: false })}
             title="Zeigt rechts die Personen zu den geänderten Regeln"
           >
             Liste aktualisieren
@@ -220,7 +223,7 @@ export default function RegelBuilder({
           type="button"
           className="au-btn au-btn-primary au-btn-sm"
           disabled={zaehlt || anzahl === 0}
-          onClick={() => router.push(`/kampagnen/neu?regeln=${encodeURIComponent(json)}&schritt=inhalt`)}
+          onClick={() => router.push(`/kampagnen/neu?regeln=${encodeURIComponent(json)}&schritt=inhalt${zusatzQuery}`)}
         >
           Weiter: Inhalt →
         </button>

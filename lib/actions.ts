@@ -3385,32 +3385,45 @@ export async function setzeKampagnenMindestabstand(formData: FormData) {
   redirect(`/kampagnen/${id}/vorschau`);
 }
 
+// Legt eine Kampagne an -- oder aktualisiert einen bestehenden Entwurf, wenn
+// kampagne_id mitkommt (Zurueck aus der Vorschau zu Empfaengern/Inhalt).
 export async function erstelleKampagne(formData: FormData) {
   await requireBackstageLogin();
   const name = String(formData.get("name") || "").trim();
   const betreff = String(formData.get("betreff") || "").trim();
   const inhalt = String(formData.get("inhalt") || "").trim();
   const segmentId = String(formData.get("segment_id") || "") || null;
+  const kampagneId = String(formData.get("kampagne_id") || "") || null;
   if (!name || !betreff || !inhalt) throw new Error("Bitte Name, Betreff und Inhalt ausfuellen.");
 
+  const felder = {
+    name,
+    betreff,
+    inhalt,
+    filter_kriterien: leseFilterAusFormData(formData),
+    segment_id: segmentId,
+    mindestabstand_tage: leseMindestabstand(formData),
+    baustein_signatur: formData.get("baustein_signatur") === "on",
+    betreff_b: String(formData.get("betreff_b") || "").trim() || null,
+  };
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("kampagnen")
-    .insert({
-      name,
-      betreff,
-      inhalt,
-      filter_kriterien: leseFilterAusFormData(formData),
-      segment_id: segmentId,
-      mindestabstand_tage: leseMindestabstand(formData),
-      baustein_signatur: formData.get("baustein_signatur") === "on",
-      betreff_b: String(formData.get("betreff_b") || "").trim() || null,
-    })
-    .select("id")
-    .single();
-  if (error) throw new Error(error.message);
+  let id = kampagneId;
+  if (kampagneId) {
+    const { data, error } = await supabase
+      .from("kampagnen")
+      .update({ ...felder, aktualisiert_am: new Date().toISOString() })
+      .eq("id", kampagneId)
+      .eq("status", "entwurf")
+      .select("id");
+    if (error) throw new Error(error.message);
+    if (!data?.length) throw new Error("Diese Kampagne ist kein Entwurf mehr (geplant oder versendet) und kann nicht mehr geändert werden.");
+  } else {
+    const { data, error } = await supabase.from("kampagnen").insert(felder).select("id").single();
+    if (error) throw new Error(error.message);
+    id = data.id;
+  }
   revalidatePath("/kampagnen");
-  redirect(`/kampagnen/${data.id}/vorschau`);
+  redirect(`/kampagnen/${id}/vorschau`);
 }
 
 // datetime-local ("2026-09-22T09:00") ist Berliner Ortszeit -> UTC-ISO

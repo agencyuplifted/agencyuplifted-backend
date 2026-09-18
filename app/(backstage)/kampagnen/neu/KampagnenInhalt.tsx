@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { baueMailHtml, type MailBausteine } from "@/lib/mail-html";
 import LinkChecker from "../../LinkChecker";
@@ -21,6 +21,8 @@ export default function KampagnenInhalt({
   anzahl,
   beispiel,
   bausteine,
+  kampagneId,
+  start,
 }: {
   speichernAction: (fd: FormData) => Promise<void>;
   regelnJson: string;
@@ -28,14 +30,51 @@ export default function KampagnenInhalt({
   anzahl: number;
   beispiel: { vorname: string; nachname: string } | null;
   bausteine: MailBausteine;
+  /** gesetzt = bestehender Entwurf wird bearbeitet */
+  kampagneId: string | null;
+  start: Entwurf;
 }) {
-  const [name, setName] = useState("");
-  const [betreff, setBetreff] = useState("");
-  const [abTest, setAbTest] = useState(false);
-  const [betreffB, setBetreffB] = useState("");
-  const [inhalt, setInhalt] = useState("");
-  const [signatur, setSignatur] = useState(true);
-  const [abstand, setAbstand] = useState("4");
+  const [name, setName] = useState(start.name);
+  const [betreff, setBetreff] = useState(start.betreff);
+  const [betreffB, setBetreffB] = useState(start.betreffB);
+  const [abTest, setAbTest] = useState(!!start.betreffB);
+  const [inhalt, setInhalt] = useState(start.inhalt);
+  const [signatur, setSignatur] = useState(start.signatur);
+  const [abstand, setAbstand] = useState(start.abstand);
+  const [wiederhergestellt, setWiederhergestellt] = useState(false);
+  const geladen = useRef(false);
+
+  // Zwischenspeicher im Browser: wer zu den Empfaengern zurueckgeht und wieder
+  // vor kommt, findet seinen Text unveraendert vor. Pro Entwurf ein eigener
+  // Schluessel; nach dem Speichern wird er geloescht.
+  const schluessel = `au-kampagne-entwurf-${kampagneId || "neu"}`;
+  useEffect(() => {
+    try {
+      const roh = localStorage.getItem(schluessel);
+      const e = roh ? (JSON.parse(roh) as Entwurf) : null;
+      if (e && JSON.stringify(e) !== JSON.stringify(start)) {
+        setName(e.name); setBetreff(e.betreff); setBetreffB(e.betreffB); setAbTest(!!e.betreffB);
+        setInhalt(e.inhalt); setSignatur(e.signatur); setAbstand(e.abstand);
+        setWiederhergestellt(true);
+      }
+    } catch {}
+    geladen.current = true;
+    // nur beim ersten Anzeigen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!geladen.current) return;
+    try {
+      localStorage.setItem(schluessel, JSON.stringify({ name, betreff, betreffB, inhalt, signatur, abstand } satisfies Entwurf));
+    } catch {}
+  }, [schluessel, name, betreff, betreffB, inhalt, signatur, abstand]);
+
+  function verwerfen() {
+    setName(start.name); setBetreff(start.betreff); setBetreffB(start.betreffB); setAbTest(!!start.betreffB);
+    setInhalt(start.inhalt); setSignatur(start.signatur); setAbstand(start.abstand);
+    setWiederhergestellt(false);
+    try { localStorage.removeItem(schluessel); } catch {}
+  }
   const [vorschauB, setVorschauB] = useState(false);
   const betreffRef = useRef<HTMLInputElement>(null);
   const inhaltRef = useRef<HTMLTextAreaElement>(null);
@@ -60,11 +99,20 @@ export default function KampagnenInhalt({
   const vorschauBetreff = ersetze(vorschauB && betreffB ? betreffB : betreff);
 
   return (
+    // Zwischenspeicher wird erst auf der Vorschau-Seite geloescht (EntwurfAufraeumen),
+    // damit bei einem Fehler beim Speichern nichts verloren geht.
     <form action={speichernAction} className="au-kinhalt">
       <input type="hidden" name="regeln" value={regelnJson} />
+      {kampagneId && <input type="hidden" name="kampagne_id" value={kampagneId} />}
       {segmentId && <input type="hidden" name="segment_id" value={segmentId} />}
 
       <div className="au-kinhalt-editor">
+        {wiederhergestellt && (
+          <div className="au-banner au-banner-success au-sperrfrist-kopf" style={{ marginTop: 0 }}>
+            <span>Dein zuletzt geschriebener Text ist wieder da.</span>
+            <button type="button" className="au-link" onClick={verwerfen}>{kampagneId ? "Gespeicherte Fassung laden" : "Verwerfen und leer beginnen"}</button>
+          </div>
+        )}
         <section className="au-panel">
           <div className="au-kampagne-panel-inhalt">
             <label className="au-label" htmlFor="k-name">Name der Kampagne <span className="au-klein">(nur intern)</span></label>
@@ -178,6 +226,10 @@ export default function KampagnenInhalt({
     </form>
   );
 }
+
+export type Entwurf = { name: string; betreff: string; betreffB: string; inhalt: string; signatur: boolean; abstand: string };
+
+export const LEERER_ENTWURF: Entwurf = { name: "", betreff: "", betreffB: "", inhalt: "", signatur: true, abstand: "4" };
 
 function Weiter({ anzahl }: { anzahl: number }) {
   const { pending } = useFormStatus();
