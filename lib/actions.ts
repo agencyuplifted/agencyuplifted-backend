@@ -3444,9 +3444,16 @@ export async function kampagneVersandJetzt(formData: FormData) {
   if (formData.get("zeitpunkt") === "geplant") {
     const geplantFuer = berlinZuIso(String(formData.get("geplant_fuer") || ""));
     if (Date.parse(geplantFuer) < Date.now() + 60_000) throw new Error("Der geplante Zeitpunkt muss in der Zukunft liegen.");
+    // A/B-Test der Versandzeit: Haelfte B zu einem zweiten Zeitpunkt
+    let geplantFuerB: string | null = null;
+    if (formData.get("zeit_test") === "on") {
+      geplantFuerB = berlinZuIso(String(formData.get("geplant_fuer_b") || ""));
+      if (Date.parse(geplantFuerB) < Date.now() + 60_000) throw new Error("Zeitpunkt B muss in der Zukunft liegen.");
+      if (Math.abs(Date.parse(geplantFuerB) - Date.parse(geplantFuer)) < 30 * 60_000) throw new Error("Die beiden Versandzeiten sollten mindestens 30 Minuten auseinander liegen.");
+    }
     const { error } = await supabase
       .from("kampagnen")
-      .update({ status: "geplant", geplant_fuer: geplantFuer, trotz_sperrfrist: trotzSperrfrist })
+      .update({ status: "geplant", geplant_fuer: geplantFuer, geplant_fuer_b: geplantFuerB, versendet_a_am: null, versendet_b_am: null, trotz_sperrfrist: trotzSperrfrist })
       .eq("id", id)
       .eq("status", "entwurf");
     if (error) throw new Error(error.message);
@@ -3465,7 +3472,7 @@ export async function kampagnePlanungAufheben(formData: FormData) {
   const id = String(formData.get("id"));
   const { error } = await getSupabaseAdmin()
     .from("kampagnen")
-    .update({ status: "entwurf", geplant_fuer: null })
+    .update({ status: "entwurf", geplant_fuer: null, geplant_fuer_b: null })
     .eq("id", id)
     .eq("status", "geplant");
   if (error) throw new Error(error.message);
@@ -3475,8 +3482,12 @@ export async function kampagnePlanungAufheben(formData: FormData) {
 
 export async function kampagneVersandFortsetzen(formData: FormData) {
   await requireBackstageLogin();
+  const id = String(formData.get("id"));
+  const { data: k } = await getSupabaseAdmin().from("kampagnen").select("geplant_fuer_b, versendet_a_am").eq("id", id).maybeSingle();
+  // Beim Zeit-Test nur die Haelfte fortsetzen, die gerade dran war
+  const nurVariante = k?.geplant_fuer_b ? (k.versendet_a_am ? "B" : "A") : undefined;
   const { sendeKampagneJetzt } = await import("./kampagnen");
-  const ergebnis = await sendeKampagneJetzt(String(formData.get("id")), { fortsetzen: true });
+  const ergebnis = await sendeKampagneJetzt(id, { fortsetzen: true, nurVariante });
   revalidatePath("/kampagnen");
   redirect(`/kampagnen?versendet=1&gesendet=${ergebnis.gesendet}&fehler=${ergebnis.fehler}&uebersprungen=${ergebnis.uebersprungen}`);
 }

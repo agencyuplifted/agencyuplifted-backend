@@ -37,6 +37,18 @@ const BEREICHE: NavBereich[] = [
     ],
   },
   {
+    key: "kommunikation",
+    titel: "Kommunikation",
+    icon: "mail",
+    links: [
+      { href: "/kampagnen", label: "Kampagnen", stichworte: "newsletter mailing a/b test" },
+      { href: "/funnel", label: "Funnel-Mails", stichworte: "automatisch erinnerung lebenszyklus signatur fusszeile" },
+      { href: "/tags", label: "Tags", stichworte: "merkmale segmente etiketten" },
+      { href: "/geburtstage", label: "Geburtstage" },
+      { href: "/community", label: "Community" },
+    ],
+  },
+  {
     key: "netzwerk",
     titel: "Netzwerk",
     icon: "network",
@@ -58,23 +70,11 @@ const BEREICHE: NavBereich[] = [
     ],
   },
   {
-    key: "kommunikation",
-    titel: "Kommunikation",
-    icon: "mail",
-    links: [
-      { href: "/funnel", label: "Funnel-Mails" },
-      { href: "/kampagnen", label: "Kampagnen", stichworte: "newsletter mailing" },
-      { href: "/geburtstage", label: "Geburtstage" },
-      { href: "/community", label: "Community" },
-    ],
-  },
-  {
     key: "verwaltung",
     titel: "Verwaltung",
     icon: "settings",
     links: [
       { href: "/seminartypen", label: "Seminarkategorien & Farben" },
-      { href: "/tags", label: "Tags", stichworte: "merkmale segmente etiketten" },
       { href: "/preisstaffel-vorlagen", label: "Preisstaffel-Vorlagen" },
       { href: "/trainer", label: "Trainer" },
       { href: "/orte", label: "Orte", stichworte: "hotels veranstaltungsorte" },

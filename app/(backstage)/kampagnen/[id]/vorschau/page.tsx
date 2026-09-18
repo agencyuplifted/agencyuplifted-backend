@@ -75,7 +75,17 @@ export default async function KampagnenVorschauPage({
       {kampagne.status === "geplant" && (
         <div className="au-banner au-banner-warning au-sperrfrist-kopf">
           <span>
-            Geplant für <strong>{formatDatumZeit(kampagne.geplant_fuer!)}</strong>
+            {kampagne.geplant_fuer_b ? (
+              <>
+                Zeit-Test geplant: Hälfte A <strong>{formatDatumZeit(kampagne.geplant_fuer!)}</strong>
+                {kampagne.versendet_a_am ? " (verschickt)" : ""}, Hälfte B <strong>{formatDatumZeit(kampagne.geplant_fuer_b)}</strong>
+                {kampagne.versendet_b_am ? " (verschickt)" : ""}
+              </>
+            ) : (
+              <>
+                Geplant für <strong>{formatDatumZeit(kampagne.geplant_fuer!)}</strong>
+              </>
+            )}
             {kampagne.trotz_sperrfrist ? " – inklusive Empfänger in der Sperrfrist" : " – Empfänger in der Sperrfrist werden ausgelassen"}. Die Empfänger werden erst zum Versandzeitpunkt endgültig bestimmt.
           </span>
           <form action={kampagnePlanungAufheben}>
@@ -117,7 +127,8 @@ export default async function KampagnenVorschauPage({
             {kampagne.mindestabstand_tage > 0
               ? `Sperrfrist: ${kampagne.mindestabstand_tage} Tage seit der letzten Funnel- oder Kampagnen-Mail`
               : "Keine Sperrfrist (Mindestabstand 0)"}
-            {kampagne.betreff_b && ` · A/B-Test: ${empfaenger.length - variantenB} bekommen Betreff A, ${variantenB} Betreff B`}
+            {(kampagne.betreff_b || kampagne.geplant_fuer_b) &&
+              ` · A/B-Test: ${empfaenger.length - variantenB} in Hälfte A, ${variantenB} in Hälfte B${kampagne.betreff_b ? " (unterschiedlicher Betreff)" : ""}`}
           </div>
         </div>
         {kampagne.status === "entwurf" && (
@@ -185,7 +196,7 @@ export default async function KampagnenVorschauPage({
                     {e.vorname} {e.nachname} <span className="au-klein">· {e.email}</span>
                   </span>
                   <span className="au-kampagne-empfaenger-badges">
-                    {kampagne.betreff_b && <span className="au-badge au-badge-neutral">{e.variante}</span>}
+                    {(kampagne.betreff_b || kampagne.geplant_fuer_b) && <span className="au-badge au-badge-neutral">{e.variante}</span>}
                     {e.vermutlichRuhend && <span className="au-badge au-badge-neutral" title="Grobe Heuristik: letzte Mail über 180 Tage her oder nie – nur zur Orientierung">vermutlich ruhend</span>}
                     {e.inSperrfrist && <span className="au-badge au-badge-warning">innerhalb Sperrfrist, zuletzt am {tagMonat(e.letzteMarketingMailAm!)}</span>}
                   </span>

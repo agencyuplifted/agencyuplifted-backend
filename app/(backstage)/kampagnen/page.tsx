@@ -125,7 +125,9 @@ export default async function KampagnenPage({
                       {k.status === "wird_versendet" ? (
                         <span className="au-badge au-badge-warning">Versand läuft / unterbrochen</span>
                       ) : (
-                        <span className="au-badge au-badge-neutral">{formatDatumZeit(k.geplant_fuer)}</span>
+                        <span className="au-badge au-badge-neutral">
+                          {k.geplant_fuer_b ? `A ${formatDatumZeit(k.geplant_fuer)} · B ${formatDatumZeit(k.geplant_fuer_b)}` : formatDatumZeit(k.geplant_fuer)}
+                        </span>
                       )}
                       <Link href={`/kampagnen/${k.id}/vorschau`} className="au-panel-link">öffnen →</Link>
                     </div>

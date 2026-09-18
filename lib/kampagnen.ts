@@ -297,6 +297,9 @@ type Kampagne = {
   name: string;
   betreff: string;
   betreff_b: string | null;
+  geplant_fuer_b: string | null;
+  versendet_a_am: string | null;
+  versendet_b_am: string | null;
   inhalt: string;
   status: string;
   mindestabstand_tage: number;
@@ -305,6 +308,11 @@ type Kampagne = {
   geplant_fuer: string | null;
   filter_kriterien: FilterKriterien;
 };
+
+/** A/B-Test aktiv, wenn es einen zweiten Betreff und/oder eine zweite Versandzeit gibt */
+export function abAktiv(k: { betreff_b?: string | null; geplant_fuer_b?: string | null }) {
+  return !!(k.betreff_b || k.geplant_fuer_b);
+}
 
 // A/B-Variante stabil aus Kampagne + Person ableiten: Vorschau und Versand
 // zeigen dieselbe Aufteilung, ohne sie speichern zu muessen.
@@ -355,14 +363,14 @@ export async function ermittleKampagnenEmpfaenger(kampagneId: string): Promise<{
 
   const empfaenger: KampagnenEmpfaenger[] = offen.map((t) => {
     const letzte = letzteMails.get(t.email.trim().toLowerCase()) || null;
-    const variante = kampagne.betreff_b ? varianteFuer(kampagne.id, t.id) : "A";
+    const variante = abAktiv(kampagne) ? varianteFuer(kampagne.id, t.id) : "A";
     const werte = { vorname: t.vorname, nachname: t.nachname };
     return {
       ...t,
       letzteMarketingMailAm: letzte,
       inSperrfrist: !!letzte && abstandMs > 0 && jetzt - Date.parse(letzte) < abstandMs,
       variante,
-      betreff: renderPlatzhalter(variante === "B" ? kampagne.betreff_b : kampagne.betreff, werte),
+      betreff: renderPlatzhalter(variante === "B" && kampagne.betreff_b ? kampagne.betreff_b : kampagne.betreff, werte),
       inhaltHtml: baueMailHtml(
         renderPlatzhalter(kampagne.inhalt, werte),
         bausteine,
@@ -415,7 +423,7 @@ const BATCH_GROESSE = 100; // Maximum der Resend-Batch-API
  */
 export async function sendeKampagneJetzt(
   kampagneId: string,
-  optionen: { trotzSperrfrist?: boolean; fortsetzen?: boolean } = {}
+  optionen: { trotzSperrfrist?: boolean; fortsetzen?: boolean; nurVariante?: "A" | "B" } = {}
 ): Promise<{ gesendet: number; fehler: number; uebersprungen: number }> {
   const supabase = getSupabaseAdmin();
   const erlaubt = optionen.fortsetzen ? ["wird_versendet"] : ["entwurf", "geplant"];
@@ -428,7 +436,10 @@ export async function sendeKampagneJetzt(
   if (!gesperrt?.length) throw new Error("Diese Kampagne wird bereits versendet oder wurde schon versendet.");
   const trotzSperrfrist = optionen.trotzSperrfrist ?? gesperrt[0].trotz_sperrfrist;
 
-  const { kampagne, empfaenger } = await ermittleKampagnenEmpfaenger(kampagneId);
+  const ermittelt = await ermittleKampagnenEmpfaenger(kampagneId);
+  const kampagne = ermittelt.kampagne;
+  // Zeit-A/B-Test: pro Lauf nur die faellige Haelfte
+  const empfaenger = optionen.nurVariante ? ermittelt.empfaenger.filter((e) => e.variante === optionen.nurVariante) : ermittelt.empfaenger;
 
   let gesendet = 0;
   let fehler = 0;
@@ -483,7 +494,7 @@ export async function sendeKampagneJetzt(
         status: paketFehler ? "fehler" : "gesendet",
         fehlermeldung: paketFehler,
         resend_email_id: ids[n],
-        variante: kampagne.betreff_b ? e.variante : null,
+        variante: abAktiv(kampagne) ? e.variante : null,
       }))
     );
     if (logFehler) console.error("Kampagnen-Log:", logFehler.message);
@@ -491,10 +502,21 @@ export async function sendeKampagneJetzt(
     else gesendet += paket.length;
   }
 
-  await supabase
-    .from("kampagnen")
-    .update({ status: "versendet", versendet_am: new Date().toISOString() })
-    .eq("id", kampagneId);
+  const jetzt = new Date().toISOString();
+  if (optionen.nurVariante) {
+    // Zeit-Test: Haelfte erledigt; solange die andere noch aussteht, bleibt die Kampagne "geplant"
+    const aErledigt = optionen.nurVariante === "A" || !!kampagne.versendet_a_am;
+    const bErledigt = optionen.nurVariante === "B" || !!kampagne.versendet_b_am;
+    await supabase
+      .from("kampagnen")
+      .update({
+        [optionen.nurVariante === "A" ? "versendet_a_am" : "versendet_b_am"]: jetzt,
+        ...(aErledigt && bErledigt ? { status: "versendet", versendet_am: jetzt } : { status: "geplant" }),
+      })
+      .eq("id", kampagneId);
+  } else {
+    await supabase.from("kampagnen").update({ status: "versendet", versendet_am: jetzt }).eq("id", kampagneId);
+  }
 
   return { gesendet, fehler, uebersprungen };
 }
@@ -502,20 +524,30 @@ export async function sendeKampagneJetzt(
 /** Planungs-Cron: faellige geplante Kampagnen verschicken. */
 export async function sendeGeplanteKampagnen(): Promise<{ kampagnen: number; gesendet: number; fehler: number }> {
   const supabase = getSupabaseAdmin();
+  const jetzt = new Date().toISOString();
   const { data: faellig } = await supabase
     .from("kampagnen")
-    .select("id")
+    .select("id, geplant_fuer, geplant_fuer_b, versendet_a_am, versendet_b_am")
     .eq("status", "geplant")
-    .lte("geplant_fuer", new Date().toISOString());
+    .or(`geplant_fuer.lte.${jetzt},geplant_fuer_b.lte.${jetzt}`);
   let gesendet = 0;
   let fehler = 0;
   for (const k of faellig || []) {
-    try {
-      const r = await sendeKampagneJetzt(k.id);
-      gesendet += r.gesendet;
-      fehler += r.fehler;
-    } catch (e: any) {
-      console.error("Geplante Kampagne", k.id, e?.message);
+    // Ohne Zeit-Test: alles auf einmal; mit Zeit-Test: jede Haelfte zu ihrer Zeit
+    const laeufe: ("A" | "B" | undefined)[] = !k.geplant_fuer_b
+      ? [undefined]
+      : [
+          ...(k.geplant_fuer && k.geplant_fuer <= jetzt && !k.versendet_a_am ? (["A"] as const) : []),
+          ...(k.geplant_fuer_b <= jetzt && !k.versendet_b_am ? (["B"] as const) : []),
+        ];
+    for (const nurVariante of laeufe) {
+      try {
+        const r = await sendeKampagneJetzt(k.id, { nurVariante });
+        gesendet += r.gesendet;
+        fehler += r.fehler;
+      } catch (e: any) {
+        console.error("Geplante Kampagne", k.id, nurVariante || "", e?.message);
+      }
     }
   }
   return { kampagnen: (faellig || []).length, gesendet, fehler };

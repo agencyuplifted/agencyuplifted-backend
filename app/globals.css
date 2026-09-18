@@ -4654,3 +4654,24 @@ a.au-kliste-name:hover {
   font-size: 0.78rem;
   color: var(--color-text-muted);
 }
+
+.au-zeittest {
+  display: flex !important;
+  gap: 0.5rem;
+  align-items: flex-start !important;
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--color-border);
+}
+
+.au-zeittest input {
+  margin-top: 0.2rem;
+}
+
+.au-zeittest-b {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center !important;
+  padding-left: 1.5rem;
+}

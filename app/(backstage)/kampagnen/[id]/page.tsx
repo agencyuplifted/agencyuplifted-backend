@@ -172,16 +172,21 @@ export default async function KampagnenAuswertung({ params, searchParams }: { pa
         </div>
 
         <aside className="au-dash-seite">
-          {k.betreff_b && (
+          {(k.betreff_b || k.geplant_fuer_b) && (
             <section className="au-panel">
-              <div className="au-panel-kopf"><h2 style={{ margin: 0 }}>A/B-Test Betreff</h2></div>
+              <div className="au-panel-kopf">
+                <h2 style={{ margin: 0 }}>
+                  A/B-Test {[k.betreff_b && "Betreff", k.geplant_fuer_b && "Versandzeit"].filter(Boolean).join(" + ")}
+                </h2>
+              </div>
               <div className="au-ab">
-                {([["A", k.betreff, a], ["B", k.betreff_b, b]] as const).map(([v, betreff, s]) => {
+                {([["A", k.betreff, a, k.versendet_a_am || k.geplant_fuer], ["B", k.betreff_b || k.betreff, b, k.versendet_b_am || k.geplant_fuer_b]] as const).map(([v, betreff, s, zeit]) => {
                   const gewinner = v === "A" ? prozent(a.geoeffnet, a.anzahl) > prozent(b.geoeffnet, b.anzahl) : prozent(b.geoeffnet, b.anzahl) > prozent(a.geoeffnet, a.anzahl);
                   return (
                     <div key={v} className={`au-ab-variante${gewinner ? " gewinner" : ""}`}>
                       <div className="au-klein">Variante {v}{gewinner ? " · vorne" : ""}</div>
                       <strong>{betreff}</strong>
+                      {k.geplant_fuer_b && zeit && <div className="au-klein">verschickt {formatDatumZeit(zeit)}</div>}
                       <div className="au-ab-werte">
                         <span><b>{prozent(s.geoeffnet, s.anzahl)} %</b> geöffnet</span>
                         <span><b>{prozent(s.geklickt, s.anzahl)} %</b> geklickt</span>
@@ -190,7 +195,9 @@ export default async function KampagnenAuswertung({ params, searchParams }: { pa
                     </div>
                   );
                 })}
-                <p className="au-klein" style={{ margin: 0 }}>Bei kleinen Gruppen (unter ~100 je Variante) sind Unterschiede von wenigen Prozent eher Zufall.</p>
+                <p className="au-klein" style={{ margin: 0 }}>
+                  Bei kleinen Gruppen (unter ~100 je Variante) sind Unterschiede von wenigen Prozent eher Zufall. Aussagekräftiger als Öffnungen sind Klicks; ein Muster zählt erst, wenn es sich über mehrere Kampagnen wiederholt.
+                </p>
               </div>
             </section>
           )}
