@@ -24,7 +24,7 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 
 **Auth & session.** Custom cookie-based session, not a third-party auth provider. `lib/session.ts` implements HMAC signing/verification using the Web Crypto API (Edge-compatible, no `next/headers` import — required so it also works inside `middleware.ts`). `lib/auth.ts` wraps that with `next/headers` cookie access for use in Server Components/Actions (`getAktuellerBenutzer()`); do not import `lib/auth.ts` from the middleware. Login sets the `au_session` cookie (`SESSION_COOKIE_NAME`) via `signSession()` in `lib/actions.ts`.
 
-**Route protection (`middleware.ts`).** Everything requires a valid session cookie *except*: `/api/cron/*`, `/api/public/*`, `/api/webhooks/*`, `/api/shopify/*`, `/wissen*`, `/sitemap.xml`, `/robots.txt`, and `/login`. New public-facing API routes belong under `app/api/public/`. The middleware also applies `X-Robots-Tag: noindex, nofollow` on any host not listed in `PUBLIC_HOST` (so the Vercel/Backstage domain never gets indexed, even for the public Wissen pages), and resolves legacy-URL redirects (table `insights_redirects`) on `PUBLIC_HOST` requests.
+**Route protection (`middleware.ts`).** Everything requires a valid session cookie *except*: `/api/cron/*`, `/api/public/*`, `/api/webhooks/*`, `/api/shopify/*`, `/api/inbox` (Apple-Kurzbefehl, schützt sich selbst per `INBOX_API_TOKEN` + Rate Limit), `/wissen*`, `/sitemap.xml`, `/robots.txt`, and `/login`. New public-facing API routes belong under `app/api/public/`. The middleware also applies `X-Robots-Tag: noindex, nofollow` on any host not listed in `PUBLIC_HOST` (so the Vercel/Backstage domain never gets indexed, even for the public Wissen pages), and resolves legacy-URL redirects (table `insights_redirects`) on `PUBLIC_HOST` requests.
 
 **Data access.** `lib/supabase.ts`'s `getSupabaseAdmin()` returns a Supabase client using the **service role key** — server-only, must never reach the client bundle. There is no client-side Supabase usage; all reads/writes go through Server Components, Server Actions, or API routes.
 
@@ -42,6 +42,7 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 - `lib/webinargeek.ts` — server-only client for the WebinarGeek REST API v2 (registrations + broadcast/title/schedule lookups); API key never reaches the client.
 - `lib/shopify.ts` — direct Shopify Admin GraphQL access (OAuth token stored in Supabase table `shopify_verbindung` after the one-time connect flow in `app/api/shopify/callback`, since Shopify no longer issues static app tokens post-2026-01-01).
 - `lib/email.ts` — Resend client/sender address (`agencyuplifted.de` verified domain).
+- `lib/inbox.ts` — Modul "Ideen & Wiedervorlage" (Phase 1: Ideen-Inbox, Tabellen `inbox_eintraege`/`themencluster`/`inbox_eintrag_cluster`): Werte-Listen passend zu den CHECK-Constraints. Kein Hard-Delete (DB-Trigger `kein_hartes_loeschen`), nur Status verworfen/archiviert. Übergabe an den Themen-Radar statt doppelter Themenpflege.
 
 **API routes (`app/api/`)** follow one of these patterns:
 - `public/*` — CORS-enabled (`Access-Control-Allow-Origin: *`), no auth, meant to be called from the separate Onepage marketing/landing-page site. Existing ones return/accept JSON for seminar dates, bookings, webinar registration/info.

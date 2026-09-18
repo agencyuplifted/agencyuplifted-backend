@@ -69,6 +69,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/public/") ||
     pathname.startsWith("/api/webhooks/") ||
     pathname.startsWith("/api/shopify/") ||
+    // Apple-Kurzbefehl ohne Session -- schuetzt sich selbst per INBOX_API_TOKEN
+    pathname === "/api/inbox" ||
     pathname.startsWith("/wissen") ||
     pathname === "/sitemap.xml" ||
     pathname === "/robots.txt" ||

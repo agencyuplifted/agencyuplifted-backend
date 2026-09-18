@@ -10,6 +10,7 @@ import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter } from "./funnel";
+import { INBOX_TEXT_MAX, INBOX_TYPEN, INBOX_STATUS, INBOX_BEREICHE, INBOX_FORMATE, nurErlaubte } from "./inbox";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
@@ -3904,4 +3905,129 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
   revalidatePath("/teilnehmer");
   revalidatePath("/termine");
   revalidatePath(`/termine/${seminarterminId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Modul "Ideen & Wiedervorlage" -- Phase 1: Inbox (siehe lib/inbox.ts).
+// Kein Hard-Delete (DB-Trigger kein_hartes_loeschen), nur Status verworfen/
+// archiviert. Aktionen geben { fehler } zurueck statt zu werfen, weil sie aus
+// Client-Komponenten kommen (siehe VorlagenAktionsErgebnis).
+
+export async function erfasseInboxEintrag(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const text = String(formData.get("text") || "").trim();
+  if (!text) return { fehler: "Bitte etwas eintragen." };
+  if (text.length > INBOX_TEXT_MAX) return { fehler: `Text zu lang (max. ${INBOX_TEXT_MAX} Zeichen).` };
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("inbox_eintraege").insert({ text, quelle: "backstage", status: "neu" });
+  if (error) return { fehler: error.message };
+  revalidatePath("/inbox");
+  return { fehler: null };
+}
+
+// Speichert den kompletten bearbeitbaren Zustand eines Eintrags auf einmal --
+// die Karte im UI schickt nach jeder Aenderung ihren ganzen Stand, statt
+// einzelne Feld-Actions zu brauchen. Cluster werden als Differenz
+// synchronisiert (Verknuepfungstabelle darf geloescht werden).
+export async function speichereInboxEintrag(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  if (!id) return { fehler: "Eintrag nicht gefunden." };
+  const text = String(formData.get("text") || "").trim();
+  if (!text) return { fehler: "Der Text darf nicht leer sein." };
+  if (text.length > INBOX_TEXT_MAX) return { fehler: `Text zu lang (max. ${INBOX_TEXT_MAX} Zeichen).` };
+
+  const typRoh = String(formData.get("typ") || "");
+  const statusRoh = String(formData.get("status") || "neu");
+  const wiedervorlage = String(formData.get("wiedervorlage_am") || "").trim();
+  if (wiedervorlage && !/^\d{4}-\d{2}-\d{2}$/.test(wiedervorlage)) return { fehler: "Ungültiges Wiedervorlage-Datum." };
+
+  const felder = {
+    text,
+    titel: String(formData.get("titel") || "").trim() || null,
+    typ: (INBOX_TYPEN as readonly string[]).includes(typRoh) ? typRoh : null,
+    status: (INBOX_STATUS as readonly string[]).includes(statusRoh) ? statusRoh : "neu",
+    bereiche: nurErlaubte(formData.getAll("bereiche"), INBOX_BEREICHE),
+    formate: nurErlaubte(formData.getAll("formate"), INBOX_FORMATE),
+    ist_fokus: formData.get("ist_fokus") === "true",
+    wiedervorlage_am: wiedervorlage || null,
+    notizen: String(formData.get("notizen") || "").trim() || null,
+  };
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("inbox_eintraege").update(felder).eq("id", id);
+  if (error) return { fehler: error.message };
+
+  const clusterNeu = new Set(formData.getAll("cluster_ids").map(String).filter(Boolean));
+  const { data: bisher, error: ladeFehler } = await supabase
+    .from("inbox_eintrag_cluster")
+    .select("themencluster_id")
+    .eq("inbox_eintrag_id", id);
+  if (ladeFehler) return { fehler: ladeFehler.message };
+  const clusterBisher = new Set((bisher || []).map((z) => z.themencluster_id as string));
+  const entfernen = [...clusterBisher].filter((c) => !clusterNeu.has(c));
+  const hinzufuegen = [...clusterNeu].filter((c) => !clusterBisher.has(c));
+  if (entfernen.length) {
+    const { error: e } = await supabase.from("inbox_eintrag_cluster").delete().eq("inbox_eintrag_id", id).in("themencluster_id", entfernen);
+    if (e) return { fehler: e.message };
+  }
+  if (hinzufuegen.length) {
+    const { error: e } = await supabase
+      .from("inbox_eintrag_cluster")
+      .insert(hinzufuegen.map((c) => ({ inbox_eintrag_id: id, themencluster_id: c })));
+    if (e) return { fehler: e.message };
+  }
+
+  revalidatePath("/inbox");
+  return { fehler: null };
+}
+
+export async function legeThemenclusterAn(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const name = String(formData.get("name") || "").trim();
+  if (!name) return { fehler: "Bitte einen Namen angeben." };
+  const supabase = getSupabaseAdmin();
+  const { data: letzter } = await supabase.from("themencluster").select("sortierung").order("sortierung", { ascending: false }).limit(1);
+  const { error } = await supabase
+    .from("themencluster")
+    .insert({ name, beschreibung: String(formData.get("beschreibung") || "").trim() || null, sortierung: (letzter?.[0]?.sortierung ?? 0) + 1 });
+  if (error) return { fehler: error.code === "23505" ? `Cluster „${name}“ gibt es schon.` : error.message };
+  revalidatePath("/inbox");
+  return { fehler: null };
+}
+
+// Uebergibt einen Inbox-Eintrag an den bestehenden Themen-Radar
+// (Content-Pipeline fuer Insights/LinkedIn), statt Themen doppelt zu pflegen.
+// Themenfeld nur grob abgeleitet -- im Themen-Radar jederzeit aenderbar.
+export async function uebergebeInboxAnThemenRadar(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const supabase = getSupabaseAdmin();
+  const { data: eintrag, error: ladeFehler } = await supabase
+    .from("inbox_eintraege")
+    .select("id, text, titel, notizen, themen_radar_idee_id, formate, inbox_eintrag_cluster(themencluster(name))")
+    .eq("id", id)
+    .maybeSingle();
+  if (ladeFehler) return { fehler: ladeFehler.message };
+  if (!eintrag) return { fehler: "Eintrag nicht gefunden." };
+  if (eintrag.themen_radar_idee_id) return { fehler: "Bereits an den Themen-Radar übergeben." };
+
+  const clusterNamen = ((eintrag as any).inbox_eintrag_cluster || []).map((z: any) => String(z.themencluster?.name || "")).join(" ");
+  const themenfeld = /vertrieb|kundengewinnung|akquise/i.test(clusterNamen) ? "Vertrieb" : /bestandskunden/i.test(clusterNamen) ? "Kundengespräche" : "Sonstige";
+
+  const { data: idee, error } = await supabase
+    .from("themen_radar_ideen")
+    .insert({
+      thema: eintrag.titel || eintrag.text,
+      cluster: themenfeld,
+      notiz: [eintrag.titel ? eintrag.text : null, eintrag.notizen, "Aus der Ideen-Inbox übernommen."].filter(Boolean).join("\n\n"),
+      fuer_linkedin: (eintrag.formate || []).includes("linkedin_post"),
+      quelle: "manuell",
+      status: "neu",
+    })
+    .select("id")
+    .single();
+  if (error) return { fehler: error.message };
+
+  const { error: e2 } = await supabase.from("inbox_eintraege").update({ themen_radar_idee_id: idee.id, status: "geplant" }).eq("id", id);
+  if (e2) return { fehler: e2.message };
+  revalidatePath("/inbox");
+  revalidatePath("/content-creation");
+  return { fehler: null };
 }

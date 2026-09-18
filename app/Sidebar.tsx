@@ -9,7 +9,7 @@ type NavLink = { href: string; label: string };
 type NavGroup = { title?: string; links: NavLink[] };
 
 const GROUPS: NavGroup[] = [
-  { links: [{ href: "/dashboard", label: "Dashboard" }] },
+  { links: [{ href: "/dashboard", label: "Dashboard" }, { href: "/inbox", label: "Ideen-Inbox" }] },
   { links: [{ href: "/insights", label: "Insights" }] },
   {
     title: "Verwaltung",
