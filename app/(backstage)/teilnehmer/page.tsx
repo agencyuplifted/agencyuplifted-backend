@@ -3,12 +3,13 @@ export const dynamic = "force-dynamic";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createTeilnehmer } from "@/lib/actions";
 import TeilnehmerTable from "./TeilnehmerTable";
+import AufklappBereich from "../AufklappBereich";
 
 export default async function TeilnehmerPage() {
   const supabase = getSupabaseAdmin();
   const { data: teilnehmer } = await supabase
     .from("teilnehmer")
-    .select("*, buchungspositionen(seminartermine(seminartypen(name))), legacy_buchungen(seminartypen(name))")
+    .select("*, buchungspositionen(seminartermine(seminartypen(name))), legacy_buchungen(seminartypen(name)), teilnehmer_organisationen(ist_hauptorganisation, organisationen(name))")
     .order("erstellt_am", { ascending: false });
   const { data: segmente } = await supabase
     .from("teilnehmer_segmente")
@@ -33,18 +34,34 @@ export default async function TeilnehmerPage() {
       rolle: t.rolle || "teilnehmer",
       unternehmer_status: t.unternehmer_status || "unbekannt",
       seminare,
+      position: t.position || null,
+      agentur:
+        ((t.teilnehmer_organisationen || []).find((z: any) => z.ist_hauptorganisation) || (t.teilnehmer_organisationen || [])[0])?.organisationen?.name ||
+        t.firma_freitext ||
+        null,
+      consent: t.marketing_consent_status || "unbekannt",
+      deaktiviert: !!t.deaktiviert_am,
     };
   });
 
+  const aktiv = rows.filter((r) => !r.deaktiviert);
+  const unternehmer = aktiv.filter((r) => r.unternehmer_status === "unternehmer").length;
+  const abonniert = aktiv.filter((r) => r.consent === "abonniert").length;
+
   return (
     <main>
-      <h1>Teilnehmer</h1>
+      <header className="au-dash-kopf">
+        <div>
+          <p className="au-dash-datum">{aktiv.length} Personen · {unternehmer} Unternehmer:innen · {abonniert} mit Marketing-Einwilligung</p>
+          <h1>Teilnehmer</h1>
+        </div>
+        <div className="au-dash-aktionen">
+          <a href="#neu" className="au-btn au-btn-primary au-btn-sm">+ Neuer Teilnehmer</a>
+        </div>
+      </header>
 
-      <TeilnehmerTable teilnehmer={rows} segmente={segmente || []} />
-
-      <div className="au-card" style={{ maxWidth: 620 }}>
-        <h2>Neuer Teilnehmer</h2>
-        <form action={createTeilnehmer}>
+      <AufklappBereich merkSchluessel="teilnehmer-neu" oeffnenBeiHash="neu" className="au-aufklapp-panel au-neu-panel" zusammenfassung={<strong id="neu">Neuen Teilnehmer anlegen</strong>}>
+        <form action={createTeilnehmer} style={{ maxWidth: 640 }}>
           <div className="au-row-3">
             <div>
               <label className="au-label">Anrede</label>
@@ -120,7 +137,9 @@ export default async function TeilnehmerPage() {
 
           <button type="submit" className="au-btn au-btn-primary">Anlegen</button>
         </form>
-      </div>
+      </AufklappBereich>
+
+      <TeilnehmerTable teilnehmer={rows} segmente={segmente || []} />
     </main>
   );
 }

@@ -16,6 +16,10 @@ type Row = {
   rolle: string;
   unternehmer_status: string;
   seminare: string[];
+  position: string | null;
+  agentur: string | null;
+  consent: string;
+  deaktiviert: boolean;
 };
 
 type Segment = {
@@ -26,6 +30,11 @@ type Segment = {
 
 const ANREDE_LABEL: Record<string, string> = { Herr: "Männer", Frau: "Frauen", Divers: "Divers", keine_angabe: "Ohne Angabe" };
 const UNTERNEHMER_LABEL: Record<string, string> = { unternehmer: "Unternehmer:in", mitarbeiter: "Mitarbeiter:in", unbekannt: "—" };
+const ROLLE_LABEL: Record<string, string> = { mitarbeiter: "Mitarbeiter (Seminar)", gastreferent: "Gastreferent", organisator: "Organisator" };
+
+function initialen(vorname: string, nachname: string) {
+  return `${(vorname || "").trim().charAt(0)}${(nachname || "").trim().charAt(0)}`.toUpperCase() || "?";
+}
 
 type SortKey = "name" | "email" | "telefon" | "seminare" | "erstellt_am";
 
@@ -75,11 +84,13 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
   const gefiltert = useMemo(() => {
     const liste = teilnehmer.filter((t) => {
       const name = `${t.vorname} ${t.nachname}`.toLowerCase();
+      const q = search.toLowerCase();
       const matchSearch =
         !search ||
-        name.includes(search.toLowerCase()) ||
-        t.email.toLowerCase().includes(search.toLowerCase()) ||
-        (t.telefon || "").toLowerCase().includes(search.toLowerCase());
+        name.includes(q) ||
+        (t.email || "").toLowerCase().includes(q) ||
+        (t.telefon || "").toLowerCase().includes(q) ||
+        (t.agentur || "").toLowerCase().includes(q);
       const matchSeminar = !seminarFilter || t.seminare.includes(seminarFilter);
       const matchAnrede = !anredeFilter || t.anrede === anredeFilter;
       const matchRolle = !rolleFilter || t.rolle === rolleFilter;
@@ -95,8 +106,8 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
           bv = `${b.vorname} ${b.nachname}`;
           break;
         case "email":
-          av = a.email;
-          bv = b.email;
+          av = a.email || "";
+          bv = b.email || "";
           break;
         case "telefon":
           av = a.telefon || "";
@@ -123,113 +134,134 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
   }
 
   const filterAktiv = !!(anredeFilter || rolleFilter || seminarFilter || unternehmerFilter);
+  function filterZuruecksetzen() {
+    setAnredeFilter("");
+    setRolleFilter("");
+    setSeminarFilter("");
+    setUnternehmerFilter("");
+    setSearch("");
+  }
+
+  const sortierKopf = (key: SortKey, label: string) => (
+    <button type="button" className={`au-sortkopf${sortKey === key ? " aktiv" : ""}`} onClick={() => toggleSort(key)}>
+      {label}{pfeil(key)}
+    </button>
+  );
 
   return (
     <div>
-      <div className="au-toolbar" style={{ flexWrap: "wrap" }}>
-        <input
-          className="au-input"
-          placeholder="Suche nach Name, E-Mail oder Telefon..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {segmente.length > 0 && (
-          <select className="au-select" defaultValue="" onChange={(e) => e.target.value && wendeSegmentAn(e.target.value)}>
-            <option value="">Gespeicherte Filtergruppe...</option>
-            {segmente.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+      <section className="au-panel au-panel-breit">
+        <div className="au-filterleiste">
+          <div className="au-suchfeld">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input placeholder="Name, E-Mail, Telefon oder Agentur …" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Teilnehmer suchen" />
+          </div>
+          <select className="au-select" value={seminarFilter} onChange={(e) => setSeminarFilter(e.target.value)} aria-label="Seminar">
+            <option value="">Alle Seminare</option>
+            {alleSeminare.map((s) => (
+              <option key={s} value={s}>{s}</option>
             ))}
           </select>
-        )}
-        <span className="au-toolbar-count">{gefiltert.length} von {teilnehmer.length}</span>
-      </div>
-
-      <div className="au-toolbar" style={{ flexWrap: "wrap", marginTop: "-0.5rem" }}>
-        <select className="au-select" value={anredeFilter} onChange={(e) => setAnredeFilter(e.target.value)}>
-          <option value="">Alle Geschlechter</option>
-          <option value="Frau">Frauen</option>
-          <option value="Herr">Männer</option>
-          <option value="Divers">Divers</option>
-          <option value="keine_angabe">Ohne Angabe</option>
-        </select>
-        <select className="au-select" value={unternehmerFilter} onChange={(e) => setUnternehmerFilter(e.target.value)}>
-          <option value="">Unternehmer:in / Mitarbeiter:in — alle</option>
-          <option value="unternehmer">Unternehmer:in</option>
-          <option value="mitarbeiter">Mitarbeiter:in</option>
-          <option value="unbekannt">Ohne Angabe</option>
-        </select>
-        <select className="au-select" value={rolleFilter} onChange={(e) => setRolleFilter(e.target.value)}>
-          <option value="">Alle Rollen (Event)</option>
-          <option value="teilnehmer">Teilnehmer</option>
-          <option value="mitarbeiter">Mitarbeiter</option>
-          <option value="gastreferent">Gastreferent</option>
-          <option value="organisator">Organisator</option>
-        </select>
-        <select className="au-select" value={seminarFilter} onChange={(e) => setSeminarFilter(e.target.value)}>
-          <option value="">Alle Seminare</option>
-          {alleSeminare.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </div>
-
-      {filterAktiv && (
-        <div className="au-card au-card-tint" style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", marginBottom: "1rem" }}>
-          <span>{gefiltert.length} Treffer mit aktivem Filter.</span>
-          <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={kampagneStarten}>
-            Kampagne aus dieser Auswahl starten
-          </button>
-          <form
-            action={speichereTeilnehmerSegment}
-            onSubmit={(e) => {
-              const name = window.prompt('Name für diese Filtergruppe (z.B. "Unternehmerinnen Preisfindung"):');
-              if (!name) {
-                e.preventDefault();
-                return;
-              }
-              (e.currentTarget.querySelector('input[name="segment_name"]') as HTMLInputElement).value = name;
-            }}
-            style={{ display: "inline" }}
-          >
-            <input type="hidden" name="segment_name" />
-            {anredeFilter && <input type="hidden" name="anrede" value={anredeFilter} />}
-            {rolleFilter && <input type="hidden" name="rolle" value={rolleFilter} />}
-            {seminarFilter && <input type="hidden" name="seminartypen" value={seminarFilter} />}
-            {unternehmerFilter && <input type="hidden" name="unternehmer_status" value={unternehmerFilter} />}
-            <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Als Filtergruppe speichern</button>
-          </form>
-        </div>
-      )}
-
-      <table className="au-table">
-        <thead>
-          <tr>
-            <th className="au-th-sortable" onClick={() => toggleSort("name")}>Name{pfeil("name")}</th>
-            <th>Geschlecht</th>
-            <th>Unternehmer:in / Mitarbeiter:in</th>
-            <th className="au-th-sortable" onClick={() => toggleSort("email")}>E-Mail{pfeil("email")}</th>
-            <th className="au-th-sortable" onClick={() => toggleSort("telefon")}>Telefon{pfeil("telefon")}</th>
-            <th className="au-th-sortable" onClick={() => toggleSort("seminare")}>Seminare{pfeil("seminare")}</th>
-            <th className="au-th-sortable" onClick={() => toggleSort("erstellt_am")}>Erfasst{pfeil("erstellt_am")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {gefiltert.map((t) => (
-            <tr key={t.id} className="au-table-row-link" onClick={() => router.push(`/teilnehmer/${t.id}`)}>
-              <td style={{ color: "#0B1B33", fontWeight: 600 }}>{t.vorname} {t.nachname}</td>
-              <td>{ANREDE_LABEL[t.anrede] || t.anrede}</td>
-              <td>{UNTERNEHMER_LABEL[t.unternehmer_status] || "—"}</td>
-              <td>{t.email}</td>
-              <td>{t.telefon || "—"}</td>
-              <td>{t.seminare.length ? t.seminare.join(", ") : "—"}</td>
-              <td>{formatDatum(t.erstellt_am)}</td>
-            </tr>
-          ))}
-          {!gefiltert.length && (
-            <tr className="au-table-empty"><td colSpan={7}>Keine Treffer.</td></tr>
+          <select className="au-select" value={unternehmerFilter} onChange={(e) => setUnternehmerFilter(e.target.value)} aria-label="Unternehmer:in oder Mitarbeiter:in">
+            <option value="">Unternehmer & Mitarbeiter</option>
+            <option value="unternehmer">Unternehmer:in</option>
+            <option value="mitarbeiter">Mitarbeiter:in</option>
+            <option value="unbekannt">Ohne Angabe</option>
+          </select>
+          <select className="au-select" value={rolleFilter} onChange={(e) => setRolleFilter(e.target.value)} aria-label="Rolle beim Seminar">
+            <option value="">Alle Rollen</option>
+            <option value="teilnehmer">Teilnehmer</option>
+            <option value="mitarbeiter">Mitarbeiter</option>
+            <option value="gastreferent">Gastreferent</option>
+            <option value="organisator">Organisator</option>
+          </select>
+          <select className="au-select" value={anredeFilter} onChange={(e) => setAnredeFilter(e.target.value)} aria-label="Geschlecht">
+            <option value="">Alle Geschlechter</option>
+            <option value="Frau">Frauen</option>
+            <option value="Herr">Männer</option>
+            <option value="Divers">Divers</option>
+            <option value="keine_angabe">Ohne Angabe</option>
+          </select>
+          {segmente.length > 0 && (
+            <select className="au-select" value="" onChange={(e) => e.target.value && wendeSegmentAn(e.target.value)} aria-label="Gespeicherte Filtergruppe">
+              <option value="">Filtergruppe laden …</option>
+              {segmente.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
           )}
-        </tbody>
-      </table>
+        </div>
+        <div className="au-filterleiste-fuss">
+          <span className="au-klein"><strong>{gefiltert.length}</strong> von {teilnehmer.length}</span>
+          {(filterAktiv || search) && <button type="button" className="au-link" onClick={filterZuruecksetzen}>Filter zurücksetzen</button>}
+          {filterAktiv && (
+            <span className="au-filterleiste-aktionen">
+              <button type="button" className="au-btn au-btn-secondary au-btn-sm" onClick={kampagneStarten}>
+                Kampagne aus Auswahl
+              </button>
+              <form
+                action={speichereTeilnehmerSegment}
+                onSubmit={(e) => {
+                  const name = window.prompt('Name für diese Filtergruppe (z.B. "Unternehmerinnen Preisfindung"):');
+                  if (!name) {
+                    e.preventDefault();
+                    return;
+                  }
+                  (e.currentTarget.querySelector('input[name="segment_name"]') as HTMLInputElement).value = name;
+                }}
+                style={{ display: "inline" }}
+              >
+                <input type="hidden" name="segment_name" />
+                {anredeFilter && <input type="hidden" name="anrede" value={anredeFilter} />}
+                {rolleFilter && <input type="hidden" name="rolle" value={rolleFilter} />}
+                {seminarFilter && <input type="hidden" name="seminartypen" value={seminarFilter} />}
+                {unternehmerFilter && <input type="hidden" name="unternehmer_status" value={unternehmerFilter} />}
+                <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Als Filtergruppe speichern</button>
+              </form>
+            </span>
+          )}
+        </div>
+
+        <div className="au-plist-kopf" aria-hidden="true">
+          {sortierKopf("name", "Person")}
+          {sortierKopf("email", "Kontakt")}
+          <span>Status</span>
+          {sortierKopf("seminare", "Seminare")}
+          {sortierKopf("erstellt_am", "Erfasst")}
+        </div>
+        <ul className="au-plist">
+          {gefiltert.map((t) => (
+            <li key={t.id} className={t.deaktiviert ? "deaktiviert" : undefined}>
+              <a href={`/teilnehmer/${t.id}`} className="au-plist-zeile" onClick={(e) => { if (!e.metaKey && !e.ctrlKey) { e.preventDefault(); router.push(`/teilnehmer/${t.id}`); } }}>
+                <span className="au-plist-person">
+                  <span className="au-initialen">{initialen(t.vorname, t.nachname)}</span>
+                  <span className="au-plist-name">
+                    <strong>{t.vorname} {t.nachname}</strong>
+                    <span className="au-klein">{[t.position, t.agentur].filter(Boolean).join(" · ") || "—"}</span>
+                  </span>
+                </span>
+                <span className="au-plist-kontakt">
+                  <span>{t.email || "—"}</span>
+                  {t.telefon && <span className="au-klein">{t.telefon}</span>}
+                </span>
+                <span className="au-plist-status">
+                  {t.deaktiviert && <span className="au-badge au-badge-neutral">deaktiviert</span>}
+                  {t.unternehmer_status !== "unbekannt" && <span className="au-badge au-badge-neutral">{UNTERNEHMER_LABEL[t.unternehmer_status]}</span>}
+                  {ROLLE_LABEL[t.rolle] && <span className="au-badge au-badge-gold">{ROLLE_LABEL[t.rolle]}</span>}
+                  {t.consent === "abgemeldet" && <span className="au-badge au-badge-danger" title="Marketing-Mails abgemeldet">abgemeldet</span>}
+                </span>
+                <span className="au-plist-seminare">
+                  {t.seminare.slice(0, 2).map((s) => <span key={s} className="au-etikett">{s}</span>)}
+                  {t.seminare.length > 2 && <span className="au-klein">+{t.seminare.length - 2}</span>}
+                  {!t.seminare.length && <span className="au-klein">—</span>}
+                </span>
+                <span className="au-plist-datum au-klein">{formatDatum(t.erstellt_am)}</span>
+              </a>
+            </li>
+          ))}
+          {!gefiltert.length && <li className="au-leer" style={{ padding: "1rem 1.15rem" }}>Keine Treffer.</li>}
+        </ul>
+      </section>
 
       {segmente.length > 0 && (
         <details style={{ marginTop: "1rem" }}>

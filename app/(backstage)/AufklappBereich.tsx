@@ -13,6 +13,7 @@ export default function AufklappBereich({
   className,
   style,
   standardOffen = false,
+  oeffnenBeiHash,
 }: {
   merkSchluessel: string;
   zusammenfassung: ReactNode;
@@ -20,6 +21,8 @@ export default function AufklappBereich({
   className?: string;
   style?: CSSProperties;
   standardOffen?: boolean;
+  /** Klappt auf, wenn die URL auf #<wert> zeigt (z. B. Button "+ Neu" mit href="#neu"). */
+  oeffnenBeiHash?: string;
 }) {
   const ref = useRef<HTMLDetailsElement>(null);
   const schluessel = `au-offen-${merkSchluessel}`;
@@ -30,6 +33,19 @@ export default function AufklappBereich({
       if (s !== null && ref.current) ref.current.open = s === "1";
     } catch {}
   }, [schluessel]);
+
+  useEffect(() => {
+    if (!oeffnenBeiHash) return;
+    const pruefe = () => {
+      if (window.location.hash === `#${oeffnenBeiHash}` && ref.current) {
+        ref.current.open = true;
+        ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    };
+    pruefe();
+    window.addEventListener("hashchange", pruefe);
+    return () => window.removeEventListener("hashchange", pruefe);
+  }, [oeffnenBeiHash]);
 
   return (
     <details

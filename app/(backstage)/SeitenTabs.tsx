@@ -2,17 +2,17 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
-export type TerminTab = { key: string; label: string; anzahl?: number | null; warnung?: boolean; inhalt: ReactNode };
+export type SeitenTab = { key: string; label: string; anzahl?: number | null; warnung?: boolean; inhalt: ReactNode };
 
-// Tabs der Termin-Detailseite. Alle Tab-Inhalte werden serverseitig gerendert
+// Tabs fuer Detailseiten (Termin, Teilnehmer, ...). Alle Tab-Inhalte werden serverseitig gerendert
 // und bleiben im DOM (nur versteckt) -- dadurch funktionieren die vielen
 // bestehenden Server-Action-Formulare unveraendert. Der aktive Tab steht im
-// URL-Hash und zusaetzlich pro Termin in der sessionStorage: viele Actions
-// leiten nach dem Speichern auf /termine/<id> ohne Hash um, und man soll dann
+// URL-Hash und zusaetzlich pro Seite in der sessionStorage: viele Actions
+// leiten nach dem Speichern auf dieselbe Seite ohne Hash um, und man soll dann
 // nicht jedes Mal wieder auf "Uebersicht" landen.
-export default function TerminTabs({ terminId, tabs }: { terminId: string; tabs: TerminTab[] }) {
+export default function SeitenTabs({ speicherSchluessel, tabs, ariaLabel = "Bereiche" }: { speicherSchluessel: string; tabs: SeitenTab[]; ariaLabel?: string }) {
   const [aktiv, setAktiv] = useState(tabs[0].key);
-  const speicher = `au-termin-tab-${terminId}`;
+  const speicher = `au-tab-${speicherSchluessel}`;
 
   useEffect(() => {
     const ausHash = () => {
@@ -47,7 +47,7 @@ export default function TerminTabs({ terminId, tabs }: { terminId: string; tabs:
 
   return (
     <>
-      <nav className="au-seitentabs au-termin-tabs" role="tablist" aria-label="Bereiche des Termins">
+      <nav className="au-seitentabs au-termin-tabs" role="tablist" aria-label={ariaLabel}>
         {tabs.map((t) => (
           <a
             key={t.key}

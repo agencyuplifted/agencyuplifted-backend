@@ -60,7 +60,7 @@ import {
 } from "@/lib/schnelleinfuegen";
 import { aktuellerPreisNetto, aktuellePreisstaffel, istPreisstaffelAktiv, letzterGueltigerTag, sortierteStaffeln, berlinKalendertag, berechneMonatlicheStichtageRueckwaerts, type PreisstaffelVorlage } from "@/lib/preisstaffeln";
 import Link from "next/link";
-import TerminTabs from "./TerminTabs";
+import SeitenTabs from "../../SeitenTabs";
 import AufklappBereich from "../../AufklappBereich";
 
 const badgeLabel: Record<string, string> = {
@@ -550,8 +550,9 @@ export default async function TerminDetailPage({
         </div>
       </div>
 
-      <TerminTabs
-        terminId={id}
+      <SeitenTabs
+        speicherSchluessel={`termin-${id}`}
+        ariaLabel="Bereiche des Termins"
         tabs={[
           { key: "uebersicht", label: "Übersicht", inhalt: uebersicht },
           {

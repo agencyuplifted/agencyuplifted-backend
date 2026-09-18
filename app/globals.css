@@ -2711,3 +2711,315 @@ a.au-kennzahl:hover {
     position: static;
   }
 }
+
+/* ---------- Personenliste & Personen-Detail (/teilnehmer) ---------- */
+
+.au-neu-panel {
+  margin-bottom: 1.25rem;
+}
+
+.au-filterleiste {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.85rem 1.15rem 0.6rem;
+}
+
+.au-filterleiste .au-select {
+  width: auto;
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.84rem;
+}
+
+.au-suchfeld {
+  flex: 1 1 260px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-faint);
+}
+
+.au-suchfeld:focus-within {
+  border-color: var(--color-accent);
+}
+
+.au-suchfeld input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  padding: 0.45rem 0;
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: transparent;
+}
+
+.au-filterleiste-fuss {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0 1.15rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.au-filterleiste-aktionen {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.au-sortkopf {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.au-sortkopf.aktiv,
+.au-sortkopf:hover {
+  color: var(--color-accent);
+}
+
+.au-plist-kopf,
+.au-plist-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1.5fr) 90px;
+  gap: 1rem;
+  align-items: center;
+  padding: 0 1.15rem;
+}
+
+.au-plist-kopf {
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+}
+
+.au-plist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.au-plist li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.au-plist li.deaktiviert {
+  opacity: 0.55;
+}
+
+.au-plist-zeile {
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.88rem;
+}
+
+.au-plist-zeile:hover {
+  background: #fcfcfd;
+}
+
+.au-plist-zeile:hover strong {
+  color: var(--color-accent);
+}
+
+.au-plist-person {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.au-plist-name,
+.au-plist-kontakt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.au-plist-name > *,
+.au-plist-kontakt > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.au-plist-status,
+.au-plist-seminare {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.au-initialen {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.au-initialen-gross {
+  width: 56px;
+  height: 56px;
+  font-size: 1.15rem;
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.au-etikett {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.08rem 0.45rem;
+  border-radius: 5px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.au-person-kopf {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.au-person-etiketten {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+.au-eckdaten-schmal {
+  grid-template-columns: 90px 1fr;
+}
+
+.au-zeitleiste {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.35rem;
+  border-left: 2px solid var(--color-border);
+}
+
+.au-zeitleiste li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 0.75rem;
+  padding: 0.45rem 0 0.45rem 0.9rem;
+}
+
+.au-zeitleiste li::before {
+  content: "";
+  position: absolute;
+  left: -0.5rem;
+  top: 0.8rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-surface);
+}
+
+.au-zeitleiste li.storniert {
+  opacity: 0.5;
+}
+
+.au-zeitleiste li.storniert::before {
+  background: var(--color-text-faint);
+}
+
+.au-zeitleiste-datum {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.au-zeitleiste-inhalt {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 860px) {
+  .au-plist-kopf {
+    display: none;
+  }
+
+  .au-plist-zeile {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.35rem 0.75rem;
+  }
+
+  .au-plist-person {
+    grid-column: 1 / -1;
+  }
+
+  .au-plist-kontakt,
+  .au-plist-seminare,
+  .au-plist-status {
+    grid-column: 1 / -1;
+    padding-left: calc(34px + 0.7rem);
+  }
+
+  .au-plist-status:empty {
+    display: none;
+  }
+
+  .au-plist-datum {
+    display: none;
+  }
+
+  .au-filterleiste .au-select {
+    flex: 1 1 40%;
+    min-width: 0;
+    font-size: 16px;
+  }
+
+  .au-suchfeld input {
+    font-size: 16px;
+  }
+
+  .au-filterleiste-aktionen {
+    margin-left: 0;
+  }
+
+  .au-person-kopf {
+    align-items: flex-start;
+  }
+
+  .au-zeitleiste li {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
