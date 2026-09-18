@@ -4574,3 +4574,83 @@ a.au-kliste-name:hover {
     align-items: stretch;
   }
 }
+
+.au-kliste-dup {
+  align-self: center;
+}
+
+/* Kampagnen: Aus Vorlage starten */
+.au-vorlagen-knopf {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-accent);
+  text-align: left;
+  cursor: pointer;
+}
+
+.au-vorlagen-knopf:hover {
+  border-color: var(--color-accent);
+}
+
+.au-vorlagen {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.au-vorlagen-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.au-vorlagen-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.au-vorlagen-liste button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.au-vorlagen-liste button:hover {
+  border-color: var(--color-accent);
+}
+
+.au-vorlagen-betreff {
+  font-size: 0.85rem;
+}
+
+.au-vorlagen-anriss {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}

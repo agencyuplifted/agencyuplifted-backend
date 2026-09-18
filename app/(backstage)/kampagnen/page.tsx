@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatDatumZeit } from "@/lib/format";
-import { loescheKampagnenEntwurf } from "@/lib/actions";
+import { loescheKampagnenEntwurf, dupliziereKampagne } from "@/lib/actions";
 import { beschreibeFilter, type FilterKriterien } from "@/lib/kampagnen";
 import { ladeBausteine } from "@/lib/mail-bausteine";
 
@@ -161,6 +161,10 @@ export default async function KampagnenPage({
                       <div className="au-kliste-aktionen">
                         <Link href={`/kampagnen/neu?kampagne=${k.id}&schritt=inhalt`} className="au-panel-link">bearbeiten</Link>
                         <Link href={`/kampagnen/${k.id}/vorschau`} className="au-btn au-btn-primary au-btn-sm">Vorschau &amp; Versand →</Link>
+                        <form action={dupliziereKampagne}>
+                          <input type="hidden" name="id" value={k.id} />
+                          <button type="submit" className="au-link">duplizieren</button>
+                        </form>
                         <form action={loescheKampagnenEntwurf}>
                           <input type="hidden" name="id" value={k.id} />
                           <button type="submit" className="au-link-danger">löschen</button>
@@ -210,6 +214,10 @@ export default async function KampagnenPage({
                           <span>geklickt</span>
                           <i className="au-kliste-balken"><b style={{ width: `${prozent(s.geklickt, s.gesendet)}%` }} /></i>
                         </div>
+                        <form action={dupliziereKampagne} className="au-kliste-dup">
+                          <input type="hidden" name="id" value={k.id} />
+                          <button type="submit" className="au-link" title="Als neuen Entwurf mit gleichem Text und gleichen Empfänger-Regeln anlegen">duplizieren</button>
+                        </form>
                         {(s.fehler > 0 || s.bounces > 0 || s.uebersprungen > 0) && (
                           <div className="au-kliste-hinweise">
                             {s.fehler > 0 && <span className="au-badge au-badge-danger">{s.fehler} Fehler</span>}

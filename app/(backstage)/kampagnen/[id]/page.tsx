@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatumZeit } from "@/lib/format";
-import { erstelleNachfassKampagne } from "@/lib/actions";
+import { erstelleNachfassKampagne, dupliziereKampagne } from "@/lib/actions";
 import { beschreibeFilter, type FilterKriterien } from "@/lib/kampagnen";
 
 const prozent = (teil: number, ganz: number) => (ganz ? Math.round((teil / ganz) * 100) : 0);
@@ -87,6 +87,10 @@ export default async function KampagnenAuswertung({ params, searchParams }: { pa
           </div>
         </div>
         <div className="au-dash-aktionen">
+          <form action={dupliziereKampagne}>
+            <input type="hidden" name="id" value={k.id} />
+            <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Duplizieren</button>
+          </form>
           {nichtGeoeffnet.length > 0 && (
             <form action={erstelleNachfassKampagne}>
               <input type="hidden" name="id" value={k.id} />

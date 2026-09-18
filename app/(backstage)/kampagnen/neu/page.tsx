@@ -74,6 +74,26 @@ export default async function NeueKampagnePage({
   const ruhend = empfaenger.filter((e) => e.vermutlichRuhend).length;
 
   const schrittInhalt = sp.schritt === "inhalt" && empfaenger.length > 0;
+  // Vorlagen fuer "Aus Vorlage starten" (nur im Inhalt-Schritt laden)
+  const [{ data: vorlageKampagnen }, { data: vorlageFunnel }] = schrittInhalt
+    ? await Promise.all([
+        supabase.from("kampagnen").select("id, name, betreff, inhalt, status, versendet_am, erstellt_am").order("erstellt_am", { ascending: false }).limit(40),
+        supabase.from("funnel_mails").select("id, name, betreff, inhalt, trigger_typ").is("geloescht_am", null).order("name"),
+      ])
+    : [{ data: [] as any[] }, { data: [] as any[] }];
+  const vorlagen = [
+    ...(vorlageKampagnen || [])
+      .filter((k: any) => k.id !== entwurf?.id)
+      .map((k: any) => ({
+        id: k.id,
+        art: "kampagne" as const,
+        titel: k.name,
+        untertitel: k.status === "versendet" && k.versendet_am ? `versendet ${formatDatum(k.versendet_am)}` : `Entwurf vom ${formatDatum(k.erstellt_am)}`,
+        betreff: k.betreff,
+        inhalt: k.inhalt,
+      })),
+    ...(vorlageFunnel || []).map((f: any) => ({ id: f.id, art: "funnel" as const, titel: f.name, untertitel: "Funnel-Mail", betreff: f.betreff, inhalt: f.inhalt })),
+  ];
   const tagLabel = new Map((tags || []).map((t: any) => [t.id, t.label]));
   const filterText = beschreibeFilter({ regeln }, tagLabel);
   const empfaengerHref = `/kampagnen/neu?regeln=${encodeURIComponent(regelnJson)}${zusatzQuery}`;
@@ -210,6 +230,7 @@ export default async function NeueKampagnePage({
             beispiel={empfaenger[0] ? { vorname: empfaenger[0].vorname, nachname: empfaenger[0].nachname } : null}
             bausteine={bausteine}
             kampagneId={entwurf?.id || null}
+            vorlagen={vorlagen}
             start={
               entwurf
                 ? {

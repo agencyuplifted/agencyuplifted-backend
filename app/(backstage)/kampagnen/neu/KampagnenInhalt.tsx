@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { baueMailHtml, type MailBausteine } from "@/lib/mail-html";
 import LinkChecker from "../../LinkChecker";
+import VorlagenWahl, { type Vorlage } from "./VorlagenWahl";
 
 const PLATZHALTER = [
   { key: "{{vorname}}", label: "Vorname" },
@@ -23,6 +24,7 @@ export default function KampagnenInhalt({
   bausteine,
   kampagneId,
   start,
+  vorlagen,
 }: {
   speichernAction: (fd: FormData) => Promise<void>;
   regelnJson: string;
@@ -33,6 +35,7 @@ export default function KampagnenInhalt({
   /** gesetzt = bestehender Entwurf wird bearbeitet */
   kampagneId: string | null;
   start: Entwurf;
+  vorlagen: Vorlage[];
 }) {
   const [name, setName] = useState(start.name);
   const [betreff, setBetreff] = useState(start.betreff);
@@ -97,6 +100,18 @@ export default function KampagnenInhalt({
   }
 
   const vorschauBetreff = ersetze(vorschauB && betreffB ? betreffB : betreff);
+  // Kampagnen kennen nur {{vorname}}/{{nachname}} -- alles andere (z. B. aus
+  // einer Funnel-Mail uebernommen) ginge woertlich raus.
+  const fremdePlatzhalter = Array.from(
+    new Set((`${betreff} ${betreffB} ${inhalt}`.match(/\{\{\s*\w+\s*\}\}/g) || []).filter((p) => !/\{\{\s*(vorname|nachname)\s*\}\}/.test(p)))
+  );
+
+  function vorlageUebernehmen(v: { betreff: string; inhalt: string; titel?: string }) {
+    if ((betreff.trim() || inhalt.trim()) && !window.confirm("Betreff und Text durch die Vorlage ersetzen?")) return;
+    setBetreff(v.betreff);
+    setInhalt(v.inhalt);
+    if (!name.trim() && v.titel) setName(`${v.titel} (Kopie)`);
+  }
 
   return (
     // Zwischenspeicher wird erst auf der Vorschau-Seite geloescht (EntwurfAufraeumen),
@@ -115,6 +130,7 @@ export default function KampagnenInhalt({
         )}
         <section className="au-panel">
           <div className="au-kampagne-panel-inhalt">
+            <VorlagenWahl vorlagen={vorlagen} onUebernehmen={vorlageUebernehmen} />
             <label className="au-label" htmlFor="k-name">Name der Kampagne <span className="au-klein">(nur intern)</span></label>
             <input id="k-name" className="au-input" name="name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Upgrade-Angebot Shift Herbst 2026" />
 
@@ -163,6 +179,11 @@ export default function KampagnenInhalt({
               onFocus={() => (zuletzt.current = "inhalt")}
               placeholder={"Hallo {{vorname}},\n\n…"}
             />
+            {fremdePlatzhalter.length > 0 && (
+              <p className="au-fe-warnung">
+                {fremdePlatzhalter.join(", ")} gibt es in Kampagnen nicht (nur Vorname und Nachname) – würde wörtlich so verschickt. Bitte ersetzen.
+              </p>
+            )}
             <LinkChecker
               text={`${betreff}\n${betreffB}\n${inhalt}`}
               zusatzLinks={[

@@ -3493,6 +3493,32 @@ export async function kampagneTestmail(formData: FormData) {
 
 // "Nochmal an alle, die nicht geoeffnet haben": neuer Entwurf mit gleichem
 // Inhalt, Filter = Nicht-Oeffner der Ursprungskampagne.
+// Kopie als neuer Entwurf (Text, Betreff, Regeln, Einstellungen) -- auch von
+// bereits versendeten Kampagnen, z. B. als Basis fuer die naechste Einladung.
+export async function dupliziereKampagne(formData: FormData) {
+  await requireBackstageLogin();
+  const supabase = getSupabaseAdmin();
+  const { data: k, error: e1 } = await supabase.from("kampagnen").select("*").eq("id", String(formData.get("id"))).single();
+  if (e1 || !k) throw new Error("Kampagne nicht gefunden.");
+  const { data, error } = await supabase
+    .from("kampagnen")
+    .insert({
+      name: `${k.name} (Kopie)`,
+      betreff: k.betreff,
+      betreff_b: k.betreff_b,
+      inhalt: k.inhalt,
+      filter_kriterien: k.filter_kriterien,
+      segment_id: k.segment_id,
+      mindestabstand_tage: k.mindestabstand_tage,
+      baustein_signatur: k.baustein_signatur,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/kampagnen");
+  redirect(`/kampagnen/neu?kampagne=${data.id}&schritt=inhalt`);
+}
+
 export async function erstelleNachfassKampagne(formData: FormData) {
   await requireBackstageLogin();
   const id = String(formData.get("id"));
