@@ -90,7 +90,20 @@ export async function middleware(request: NextRequest) {
   }
   const host = request.headers.get("host")?.toLowerCase() || "";
 
-  if (PUBLIC_HOSTS.includes(host) && pathname !== "/" && !pathname.startsWith("/_next")) {
+  // Weiterleitungen nur fuer Adressen pruefen, die zu keinem bekannten Bereich
+  // gehoeren (Alt-URLs der frueheren Seite) -- vorher lief bei JEDEM Aufruf der
+  // oeffentlichen Domain eine DB-Abfrage, auch fuer zwischengespeicherte
+  // Wissen-Seiten, Bilder und Crawler-Anfragen.
+  const bekannterPfad =
+    pathname === "/" ||
+    pathname.startsWith("/_next") ||
+    pathname === "/wissen" ||
+    pathname.startsWith("/wissen/") ||
+    pathname.startsWith("/api/") ||
+    pathname === "/sitemap.xml" ||
+    pathname === "/robots.txt" ||
+    pathname === "/llms.txt";
+  if (PUBLIC_HOSTS.includes(host) && !bekannterPfad) {
     const redirect = await findeAktivenRedirect(pathname);
     if (redirect) {
       return mitRobotsHeader(

@@ -1,7 +1,7 @@
 "use server";
 
 import { getSupabaseAdmin } from "./supabase";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getResend, ABSENDER } from "./email";
@@ -2479,7 +2479,7 @@ export async function setMitarbeiterBio(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/mitarbeiter");
-  revalidatePath("/wissen");
+  revalidiereWissen();
   redirect("/mitarbeiter");
 }
 
@@ -3228,6 +3228,18 @@ export async function loescheKampagnenEntwurf(formData: FormData) {
 
 // ---- Insights (Wissenshub v0.1) ----
 
+// Wissen-Seiten sind zwischengespeichert (ISR bzw. Datencache Tag "wissen",
+// siehe app/(public)/wissen). Jede Aenderung, die oeffentlich sichtbar sein
+// kann -- Inhalt, Status/Veroeffentlichen, Kategorien, Autor-Bio,
+// Zusammenfuehren -- muss das hier aufrufen, sonst bleibt die alte Fassung
+// bis zu einen Tag lang online.
+function revalidiereWissen() {
+  revalidatePath("/wissen", "layout");
+  revalidateTag("wissen");
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/llms.txt");
+}
+
 export async function erstelleInsightsEintrag(formData: FormData) {
   await requireBackstageLogin();
   const typ = String(formData.get("typ") || "artikel");
@@ -3340,7 +3352,7 @@ export async function speichereInsightsEintrag(formData: FormData) {
 
   revalidatePath("/insights");
   revalidatePath(`/insights/${id}`);
-  revalidatePath("/wissen");
+  revalidiereWissen();
   if (bisher?.slug) revalidatePath(`/wissen/${bisher.slug}`);
   redirect(`/insights/${id}?gespeichert=1`);
 }
@@ -3361,6 +3373,7 @@ export async function setzeInsightsStatus(formData: FormData) {
   const { error } = await supabase.from("insights_eintraege").update(felder).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/insights");
+  revalidiereWissen();
   revalidatePath(`/insights/${id}`);
   redirect(`/insights/${id}?gespeichert=1`);
 }
@@ -3635,6 +3648,7 @@ export async function fuehreTriageClusterZusammen(formData: FormData) {
 
   revalidatePath("/content-creation");
   revalidatePath("/insights");
+  revalidiereWissen();
   redirect(`/insights/${neuerEintrag.id}`);
 }
 

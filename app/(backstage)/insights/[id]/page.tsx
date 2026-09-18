@@ -63,7 +63,7 @@ export default async function InsightsDetailPage({
           <>
             {" "}
             ·{" "}
-            <a href={`/wissen/${eintrag.slug}?vorschau=${eintrag.id}`} target="_blank" rel="noopener noreferrer">
+            <a href={`/wissen/vorschau/${eintrag.id}`} target="_blank" rel="noopener noreferrer">
               Vorschau ansehen ↗
             </a>
             <span style={{ color: "var(--color-text-faint)", fontSize: "0.8rem" }}>

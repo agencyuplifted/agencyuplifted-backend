@@ -1,7 +1,6 @@
-export const dynamic = "force-dynamic";
-
 import Link from "next/link";
 import type { Metadata } from "next";
+import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum } from "@/lib/format";
 
@@ -11,7 +10,15 @@ export const metadata: Metadata = {
     "Artikel, Glossar und FAQ rund um Pricing, Preisstrategie und Skalierung für Agenturen.",
 };
 
-async function ladeVeroeffentlichteEintraege(kategorieSlug?: string) {
+// Die Uebersicht bleibt dynamisch (Kategorie-Filter per ?kategorie=), ihre
+// DB-Abfragen kommen aber aus dem Next-Datencache (Tag "wissen") -- geleert
+// von revalidiereWissen() in lib/actions.ts, sobald sich etwas aendert.
+const cacheOptionen = { tags: ["wissen"], revalidate: 86400 };
+const ladeVeroeffentlichteEintraege = unstable_cache((kategorie?: string) => ladeVeroeffentlichteEintraegeRoh(kategorie), ["wissen-eintraege"], cacheOptionen);
+const ladeAlleKategorien = unstable_cache(() => ladeAlleKategorienRoh(), ["wissen-kategorien"], cacheOptionen);
+const ladeWissenAutor = unstable_cache(() => ladeWissenAutorRoh(), ["wissen-autor"], cacheOptionen);
+
+async function ladeVeroeffentlichteEintraegeRoh(kategorieSlug?: string) {
   const supabase = getSupabaseAdmin();
   let eintragIds: string[] | null = null;
   if (kategorieSlug) {
@@ -42,13 +49,13 @@ async function ladeVeroeffentlichteEintraege(kategorieSlug?: string) {
   return data || [];
 }
 
-async function ladeAlleKategorien() {
+async function ladeAlleKategorienRoh() {
   const supabase = getSupabaseAdmin();
   const { data } = await supabase.from("insights_kategorien").select("name, slug").order("name");
   return data || [];
 }
 
-async function ladeWissenAutor() {
+async function ladeWissenAutorRoh() {
   const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from("mitarbeiter")

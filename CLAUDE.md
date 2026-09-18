@@ -53,6 +53,8 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 - `webhooks/*` — inbound webhooks (e.g. Resend delivery/open/click tracking).
 - `shopify/*` — OAuth install/callback for the Shopify Admin API connection.
 
+**Wissen ist zwischengespeichert**: `/wissen/[slug]` ist ISR (Darstellung in `app/(public)/wissen/artikel.tsx`), die Übersicht nutzt den Datencache (Tag `wissen`). Jede Server Action, die Öffentliches ändert (Artikel, Status, Kategorien, Autor-Bio …), muss `revalidiereWissen()` in `lib/actions.ts` aufrufen. Entwurfsvorschau: `/wissen/vorschau/[id]` (dynamisch). Die Middleware prüft Weiterleitungen nur für unbekannte Pfade; `/wissen/*`-Weiterleitungen prüft die Artikelseite selbst, wenn ein Slug fehlt.
+
 **SEO/public-site infra**: `app/robots.txt/route.ts`, `app/sitemap.xml/route.ts` (built from published `insights_eintraege`), and `app/llms.txt/route.ts` (an [llms.txt](https://llmstxt.org/) for AI crawlers) are all gated to `PUBLIC_HOST` only, matching the middleware's indexing policy.
 
 ## Conventions worth following
