@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "./supabase";
 import { getResend, ABSENDER } from "./email";
 import { renderPlatzhalter } from "./funnel";
+import { ladeBausteine, baueMailHtml, abmeldeUrl, abmeldeHeader } from "./mail-bausteine";
 
 // Filterkriterien fuer Kampagnen & gespeicherte Filtergruppen (teilnehmer_segmente).
 // Werden bei jeder Nutzung live gegen den aktuellen Teilnehmerbestand ausgewertet
@@ -10,6 +11,19 @@ export type FilterKriterien = {
   rolle?: string[];
   seminartypen?: string[]; // Seminartyp-Namen, z.B. "Preisfindung"
   unternehmer_status?: string[]; // 'unternehmer' | 'mitarbeiter' | 'unbekannt' -- berufliche Position, unabhaengig von "rolle" (Event-Funktion)
+  // Zweites Seminar-Kriterium, z. B. "war in Preisfindung, aber noch NICHT in Fuehrung".
+  // Quelle: View teilnehmer_seminar_besuche, nur stand = 'besucht'.
+  kategorie2?: string;
+  kategorie2_modus?: "besucht" | "nicht_besucht";
+  teilnahme_stand?: string[]; // 'erstteilnehmer' | 'wiederholer' | 'kein_seminar_besucht' (View teilnehmer_lifecycle_stage)
+  netzwerk_mitglied?: "ja" | "nein";
+  tags?: string[]; // tags.id -- Person muss ALLE gewaehlten Tags haben
+};
+
+export const TEILNAHME_STAND_LABEL: Record<string, string> = {
+  erstteilnehmer: "Erstteilnehmer",
+  wiederholer: "Wiederholer",
+  kein_seminar_besucht: "Kein Seminar besucht",
 };
 
 export type GefilterterTeilnehmer = {
@@ -21,14 +35,37 @@ export type GefilterterTeilnehmer = {
   rolle: string;
   unternehmer_status: string;
   seminare: string[];
+  /** Grobe Heuristik aus teilnehmer_lifecycle_stage -- nur Info, kein Ausschluss */
+  vermutlichRuhend: boolean;
 };
+
+// PostgREST liefert standardmaessig hoechstens 1000 Zeilen -- Views/Tabellen,
+// die mit dem Teilnehmerbestand wachsen, deshalb seitenweise laden.
+async function ladeAlleZeilen(abfrage: (von: number, bis: number) => any): Promise<any[]> {
+  const alle: any[] = [];
+  for (let von = 0; ; von += 1000) {
+    const { data, error } = await abfrage(von, von + 999);
+    if (error) throw new Error(error.message);
+    alle.push(...(data || []));
+    if (!data || data.length < 1000) return alle;
+  }
+}
 
 export function leereFilterKriterien(): FilterKriterien {
   return { anrede: [], rolle: [], seminartypen: [] };
 }
 
 export function filterIstLeer(filter: FilterKriterien): boolean {
-  return !filter.anrede?.length && !filter.rolle?.length && !filter.seminartypen?.length;
+  return (
+    !filter.anrede?.length &&
+    !filter.rolle?.length &&
+    !filter.seminartypen?.length &&
+    !filter.unternehmer_status?.length &&
+    !filter.kategorie2 &&
+    !filter.teilnahme_stand?.length &&
+    !filter.netzwerk_mitglied &&
+    !filter.tags?.length
+  );
 }
 
 /**
@@ -44,6 +81,27 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
       "id, vorname, nachname, email, anrede, rolle, unternehmer_status, marketing_consent_status, deaktiviert_am, buchungspositionen(seminartermine(seminartypen(name))), legacy_buchungen(seminartypen(name))"
     )
     .order("nachname", { ascending: true });
+
+  const [lifecycle, besuche, tagZuordnungen] = await Promise.all([
+    ladeAlleZeilen((von, bis) =>
+      supabase.from("teilnehmer_lifecycle_stage").select("teilnehmer_id, teilnahme_stand, netzwerk_mitglied, vermutlich_ruhend").range(von, bis)
+    ),
+    filter.kategorie2
+      ? ladeAlleZeilen((von, bis) =>
+          supabase.from("teilnehmer_seminar_besuche").select("teilnehmer_id").eq("stand", "besucht").eq("seminarkategorie", filter.kategorie2).range(von, bis)
+        )
+      : Promise.resolve([]),
+    filter.tags?.length
+      ? ladeAlleZeilen((von, bis) => supabase.from("teilnehmer_tags").select("teilnehmer_id, tag_id").in("tag_id", filter.tags!).range(von, bis))
+      : Promise.resolve([]),
+  ]);
+  const lifecycleMap = new Map(lifecycle.map((l: any) => [l.teilnehmer_id, l]));
+  const besuchtKategorie2 = new Set(besuche.map((b: any) => b.teilnehmer_id));
+  const tagsProTeilnehmer = new Map<string, Set<string>>();
+  for (const z of tagZuordnungen) {
+    if (!tagsProTeilnehmer.has(z.teilnehmer_id)) tagsProTeilnehmer.set(z.teilnehmer_id, new Set());
+    tagsProTeilnehmer.get(z.teilnehmer_id)!.add(z.tag_id);
+  }
 
   const alle: GefilterterTeilnehmer[] = (data || [])
     .filter((t: any) => t.marketing_consent_status !== "abgemeldet" && !t.deaktiviert_am && t.email)
@@ -65,6 +123,7 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
         rolle: t.rolle || "teilnehmer",
         unternehmer_status: t.unternehmer_status || "unbekannt",
         seminare,
+        vermutlichRuhend: !!lifecycleMap.get(t.id)?.vermutlich_ruhend,
       };
     });
 
@@ -73,6 +132,17 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
     if (filter.rolle?.length && !filter.rolle.includes(t.rolle)) return false;
     if (filter.unternehmer_status?.length && !filter.unternehmer_status.includes(t.unternehmer_status)) return false;
     if (filter.seminartypen?.length && !t.seminare.some((s) => filter.seminartypen!.includes(s))) return false;
+    if (filter.kategorie2) {
+      const war = besuchtKategorie2.has(t.id);
+      if (filter.kategorie2_modus === "nicht_besucht" ? war : !war) return false;
+    }
+    const lc: any = lifecycleMap.get(t.id);
+    if (filter.teilnahme_stand?.length && !filter.teilnahme_stand.includes(lc?.teilnahme_stand || "kein_seminar_besucht")) return false;
+    if (filter.netzwerk_mitglied && (filter.netzwerk_mitglied === "ja") !== !!lc?.netzwerk_mitglied) return false;
+    if (filter.tags?.length) {
+      const hat = tagsProTeilnehmer.get(t.id);
+      if (!hat || !filter.tags.every((id) => hat.has(id))) return false;
+    }
     return true;
   });
 }
@@ -119,7 +189,7 @@ async function ladeLetzteMarketingMails(supabase: any, emails: string[]): Promis
 export async function ermittleKampagnenEmpfaenger(
   kampagneId: string
 ): Promise<{
-  kampagne: { id: string; name: string; betreff: string; inhalt: string; status: string; mindestabstand_tage: number };
+  kampagne: { id: string; name: string; betreff: string; inhalt: string; status: string; mindestabstand_tage: number; baustein_signatur: boolean };
   empfaenger: KampagnenEmpfaenger[];
 }> {
   const supabase = getSupabaseAdmin();
@@ -135,7 +205,12 @@ export async function ermittleKampagnenEmpfaenger(
     .eq("status", "gesendet");
   const bereitsVersendetSet = new Set((bereitsVersendet || []).map((r: any) => r.empfaenger_email));
 
-  const offen = teilnehmer.filter((t) => !bereitsVersendetSet.has(t.email));
+  // Per Abmeldelink abgemeldete Adressen (mail_abmeldungen) nie anschreiben --
+  // zusaetzlich zu marketing_consent_status, falls die Adresse nur dort steht.
+  const { data: abmeldungen } = await supabase.from("mail_abmeldungen").select("email");
+  const abgemeldet = new Set((abmeldungen || []).map((a: any) => a.email));
+  const offen = teilnehmer.filter((t) => !bereitsVersendetSet.has(t.email) && !abgemeldet.has(t.email.trim().toLowerCase()));
+  const bausteine = await ladeBausteine(supabase);
   const letzteMails = await ladeLetzteMarketingMails(supabase, offen.map((t) => t.email));
   const abstandMs = Math.max(0, Number(kampagne.mindestabstand_tage ?? 4)) * TAG_MS;
   const jetzt = Date.now();
@@ -152,7 +227,13 @@ export async function ermittleKampagnenEmpfaenger(
     .map((t) => ({
       ...t,
       betreff: renderPlatzhalter(kampagne.betreff, { vorname: t.vorname, nachname: t.nachname }),
-      inhaltHtml: renderPlatzhalter(kampagne.inhalt, { vorname: t.vorname, nachname: t.nachname }).replace(/\n/g, "<br/>"),
+      inhaltHtml: baueMailHtml(
+        renderPlatzhalter(kampagne.inhalt, { vorname: t.vorname, nachname: t.nachname }),
+        bausteine,
+        // Werbe-Mail: Impressum/Datenschutz und Abmeldelink sind Pflicht, nur die Signatur ist abwaehlbar
+        { signatur: kampagne.baustein_signatur !== false, rechtliches: true, abmelden: true },
+        abmeldeUrl("t", t.id)
+      ),
     }));
 
   return { kampagne, empfaenger };
@@ -200,6 +281,7 @@ export async function sendeKampagneJetzt(
         to: [e.email],
         subject: e.betreff,
         html: e.inhaltHtml,
+        headers: abmeldeHeader("t", e.id),
       });
       if (error) {
         status = "fehler";

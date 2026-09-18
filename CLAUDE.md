@@ -32,7 +32,8 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 
 **Topic-specific `lib/` modules** hold domain logic that's reused across actions/routes/pages rather than one-off form handling:
 - `lib/funnel.ts` — trigger-based lifecycle email funnels (`buchung_erstellt`, `vor_seminarstart`, `nach_seminarende`, `lead_erstellt`, `warteliste_eingetragen`), placeholder rendering (`{{vorname}}` etc. via `renderPlatzhalter`), and the due-mail check invoked by the cron route.
-- `lib/kampagnen.ts` — one-off email campaigns to filtered participant segments (live-evaluated filters, not stored snapshots).
+- `lib/kampagnen.ts` — one-off email campaigns to filtered participant segments (live-evaluated filters, not stored snapshots). Filter nutzen zusätzlich die Views `teilnehmer_seminar_besuche` (2. Seminar-Kriterium, nur `stand='besucht'`) und `teilnehmer_lifecycle_stage` (Teilnahme-Stand, Netzwerk-Mitglied, „vermutlich ruhend“ nur als Info) sowie `teilnehmer_tags`. Frequency-Capping über View `letzte_marketing_mail_pro_email` + `kampagnen.mindestabstand_tage`; Übersprungene werden als `uebersprungen_frequency_cap` geloggt, der Funnel ist bewusst ausgenommen. Kampagnen bekommen immer Impressum/Datenschutz + Abmeldelink (Werbe-Mail), nur die Signatur ist abwählbar. Die Views sind `security_invoker` und nur für `service_role` lesbar — neue Views immer genauso anlegen, sonst sind sie per Publishable Key öffentlich.
+- `lib/tags.ts` + `/tags` — Tag-Katalog `tags` (key fest, typ dem/beh/life/pref, nur deaktivieren, nie löschen) und Zuordnung `teilnehmer_tags` (quelle manuell/automatisch).
 - `lib/insights.ts` — the Wissen CMS: typed content blocks (`Block` union: `absatz`, `ueberschrift`, `liste`, `zitat`, `bild`, `faq`), slug generation.
 - `lib/themen-radar.ts` / `lib/triage.ts` — content-topic radar/triage tooling feeding `content-creation` pages.
 - `lib/geburtstage.ts` — birthday email feature.

@@ -3312,6 +3312,11 @@ function leseFilterAusFormData(formData: FormData): import("./kampagnen").Filter
     rolle: listeAus("rolle"),
     seminartypen: listeAus("seminartypen"),
     unternehmer_status: listeAus("unternehmer_status"),
+    kategorie2: String(formData.get("kategorie2") || "") || undefined,
+    kategorie2_modus: formData.get("kategorie2_modus") === "nicht_besucht" ? "nicht_besucht" : "besucht",
+    teilnahme_stand: listeAus("teilnahme_stand"),
+    netzwerk_mitglied: (["ja", "nein"].includes(String(formData.get("netzwerk_mitglied"))) ? String(formData.get("netzwerk_mitglied")) : undefined) as "ja" | "nein" | undefined,
+    tags: listeAus("tags"),
   };
 }
 
@@ -3376,6 +3381,7 @@ export async function erstelleKampagne(formData: FormData) {
       filter_kriterien: leseFilterAusFormData(formData),
       segment_id: segmentId,
       mindestabstand_tage: leseMindestabstand(formData),
+      baustein_signatur: formData.get("baustein_signatur") === "on",
     })
     .select("id")
     .single();
@@ -5023,4 +5029,83 @@ export async function setzeAgenturRolle(formData: FormData): Promise<VorlagenAkt
   if (error) return { fehler: error.message };
   revalidatePath("/netzwerk-einladen");
   return { fehler: null };
+}
+
+
+// ---- Tags (Katalog `tags`, Zuordnung `teilnehmer_tags`) ----
+// Tags werden nie geloescht, nur deaktiviert (aktiv = false): Zuordnungen und
+// spaetere Auswertungen bleiben so nachvollziehbar. `key` ist nach dem Anlegen
+// fest, weil Automatisierungen (z. B. Funnel) sich darauf beziehen sollen.
+
+const TAG_TYPEN = ["dem", "beh", "life", "pref"];
+
+function tagKeyAus(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60);
+}
+
+export async function legeTagAn(formData: FormData) {
+  await requireBackstageLogin();
+  const label = String(formData.get("label") || "").trim().slice(0, 80);
+  const typ = String(formData.get("typ") || "");
+  const key = tagKeyAus(String(formData.get("key") || "") || label);
+  if (!label || !key) throw new Error("Bitte eine Bezeichnung angeben.");
+  if (!TAG_TYPEN.includes(typ)) throw new Error("Bitte einen Typ wählen.");
+  const { error } = await getSupabaseAdmin()
+    .from("tags")
+    .insert({ key, label, typ, beschreibung: String(formData.get("beschreibung") || "").trim().slice(0, 500) || null });
+  if (error) throw new Error(error.code === "23505" ? `Den Schlüssel "${key}" gibt es schon.` : error.message);
+  revalidatePath("/tags");
+  redirect("/tags");
+}
+
+export async function aktualisiereTag(formData: FormData) {
+  await requireBackstageLogin();
+  const label = String(formData.get("label") || "").trim().slice(0, 80);
+  const typ = String(formData.get("typ") || "");
+  if (!label || !TAG_TYPEN.includes(typ)) throw new Error("Bezeichnung und Typ sind Pflicht.");
+  const { error } = await getSupabaseAdmin()
+    .from("tags")
+    .update({ label, typ, beschreibung: String(formData.get("beschreibung") || "").trim().slice(0, 500) || null })
+    .eq("id", String(formData.get("id")));
+  if (error) throw new Error(error.message);
+  revalidatePath("/tags");
+  redirect("/tags");
+}
+
+export async function setzeTagAktiv(formData: FormData) {
+  await requireBackstageLogin();
+  const { error } = await getSupabaseAdmin()
+    .from("tags")
+    .update({ aktiv: formData.get("aktiv") === "true" })
+    .eq("id", String(formData.get("id")));
+  if (error) throw new Error(error.message);
+  revalidatePath("/tags");
+  redirect("/tags");
+}
+
+export async function setzeTeilnehmerTags(formData: FormData) {
+  await requireBackstageLogin();
+  const teilnehmerId = String(formData.get("teilnehmer_id"));
+  const gewuenscht = new Set(formData.getAll("tags").map(String).filter(Boolean));
+  const supabase = getSupabaseAdmin();
+  const { data: vorhanden, error: e1 } = await supabase.from("teilnehmer_tags").select("tag_id").eq("teilnehmer_id", teilnehmerId);
+  if (e1) throw new Error(e1.message);
+  const bisher = new Set((vorhanden || []).map((v: any) => v.tag_id));
+  const neu = [...gewuenscht].filter((id) => !bisher.has(id));
+  const weg = [...bisher].filter((id) => !gewuenscht.has(id));
+  if (neu.length) {
+    const { error } = await supabase.from("teilnehmer_tags").insert(neu.map((tag_id) => ({ teilnehmer_id: teilnehmerId, tag_id, quelle: "manuell" })));
+    if (error) throw new Error(error.message);
+  }
+  if (weg.length) {
+    const { error } = await supabase.from("teilnehmer_tags").delete().eq("teilnehmer_id", teilnehmerId).in("tag_id", weg);
+    if (error) throw new Error(error.message);
+  }
+  revalidatePath(`/teilnehmer/${teilnehmerId}`);
+  redirect(`/teilnehmer/${teilnehmerId}`);
 }

@@ -13,9 +13,11 @@ import {
   createTeilnehmerReferenz,
   deleteTeilnehmerReferenz,
   toggleReferenzFreigabe,
+  setzeTeilnehmerTags,
 } from "@/lib/actions";
 import PasteImageField from "../PasteImageField";
 import SeitenTabs from "../../SeitenTabs";
+import TagAuswahl from "./TagAuswahl";
 
 const consentBadgeClass: Record<string, string> = {
   abonniert: "au-badge-success",
@@ -29,7 +31,7 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
   const supabase = getSupabaseAdmin();
 
   // Parallel statt nacheinander -- jede Abfrage ist ein eigener DB-Round-Trip.
-  const [{ data: t }, { data: positionen }, { data: legacyBuchungen }, { data: verknuepfteOrgs }, { data: alleOrganisationen }, { data: referenzen }] =
+  const [{ data: t }, { data: positionen }, { data: legacyBuchungen }, { data: verknuepfteOrgs }, { data: alleOrganisationen }, { data: referenzen }, { data: alleTags }, { data: meineTags }] =
     await Promise.all([
       supabase.from("teilnehmer").select("*").eq("id", id).single(),
       supabase
@@ -47,7 +49,10 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
         .order("ist_hauptorganisation", { ascending: false }),
       supabase.from("organisationen").select("id, name").order("name", { ascending: true }),
       supabase.from("teilnehmer_referenzen").select("*").eq("teilnehmer_id", id).order("erstellt_am", { ascending: false }),
+      supabase.from("tags").select("id, label, aktiv").order("label"),
+      supabase.from("teilnehmer_tags").select("tag_id, quelle, gesetzt_am").eq("teilnehmer_id", id),
     ]);
+  const tagLabel = new Map((alleTags || []).map((tg: any) => [tg.id, tg.label]));
   const verknuepfteOrgIds = new Set((verknuepfteOrgs || []).map((v: any) => v.organisationen?.id));
   const waehlbareOrganisationen = (alleOrganisationen || []).filter((o) => !verknuepfteOrgIds.has(o.id));
 
@@ -148,6 +153,9 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
             ))}
           </ul>
         </Bereich>
+        <Bereich titel="Tags" aktion={<Link href="/tags" className="au-panel-link">Tags verwalten →</Link>}>
+          <TagAuswahl teilnehmerId={id} tags={(alleTags || []) as any[]} gesetzt={(meineTags || []) as any[]} speichernAction={setzeTeilnehmerTags} />
+        </Bereich>
         {t.notizen && (
           <Bereich titel="Notizen (intern)">
             <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--color-text)", fontSize: "0.9rem" }}>{t.notizen}</p>
@@ -200,6 +208,9 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
               <span className={`au-badge ${consentBadgeClass[consentStatus]}`}>{consentLabel[consentStatus] || consentStatus}</span>
               {t.teilnehmerliste_opt_out && <span className="au-badge au-badge-warning">Listen-Opt-out</span>}
               {t.deaktiviert_am && <span className="au-badge au-badge-neutral">deaktiviert seit {formatDatum(t.deaktiviert_am)}</span>}
+              {(meineTags || []).map((mt: any) => tagLabel.get(mt.tag_id) && (
+                <span key={mt.tag_id} className="au-badge au-badge-neutral au-badge-tag">#{tagLabel.get(mt.tag_id)}</span>
+              ))}
             </div>
           </div>
         </div>

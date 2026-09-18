@@ -3604,3 +3604,54 @@ a.au-kennzahl:hover {
   gap: 0.45rem;
   align-items: flex-start;
 }
+
+/* Tags (/tags + Teilnehmerseite) */
+.au-tag-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.au-tag-form .au-input,
+.au-tag-form .au-select {
+  margin: 0;
+}
+
+details .au-tag-form {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.6fr) auto;
+  margin-top: 0.5rem;
+}
+
+.au-tag-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.au-tag-zeile {
+  padding: 0.75rem 1.15rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.au-tag-liste .au-tag-zeile:first-child {
+  border-top: 0;
+}
+
+.au-tag-zeile-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.au-badge-tag {
+  font-weight: 500;
+}
+
+@media (max-width: 860px) {
+  .au-tag-form,
+  details .au-tag-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

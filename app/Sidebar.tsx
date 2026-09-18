@@ -74,6 +74,7 @@ const BEREICHE: NavBereich[] = [
     icon: "settings",
     links: [
       { href: "/seminartypen", label: "Seminarkategorien & Farben" },
+      { href: "/tags", label: "Tags", stichworte: "merkmale segmente etiketten" },
       { href: "/preisstaffel-vorlagen", label: "Preisstaffel-Vorlagen" },
       { href: "/trainer", label: "Trainer" },
       { href: "/orte", label: "Orte", stichworte: "hotels veranstaltungsorte" },

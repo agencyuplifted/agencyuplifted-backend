@@ -82,6 +82,11 @@ export default async function KampagnenVorschauPage({ params }: { params: Promis
                   <tr key={e.id} className={e.inSperrfrist ? "au-zeile-sperrfrist" : undefined}>
                     <td>
                       {e.vorname} {e.nachname} — {e.email}
+                      {e.vermutlichRuhend && (
+                        <div>
+                          <span className="au-badge au-badge-neutral" title="Grobe Heuristik: letzte Mail über 180 Tage her oder nie – nur zur Orientierung">vermutlich ruhend</span>
+                        </div>
+                      )}
                       {e.inSperrfrist && (
                         <div>
                           <span className="au-badge au-badge-warning">innerhalb Sperrfrist, zuletzt am {tagMonat(e.letzteMarketingMailAm!)}</span>
