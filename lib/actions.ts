@@ -33,6 +33,28 @@ import {
 } from "./preisstaffeln";
 import { fetchFastbillInvoices, findePreisMatch } from "./fastbill";
 
+// Backstage-Login in JEDER exportierten Action (ausser loginAction) selbst
+// pruefen: Server Actions sind per Action-ID von jeder Route aus aufrufbar
+// (POST mit Next-Action-Header), auch von /login, /wissen, /netzwerk oder
+// /api/public, die die Middleware bewusst ohne Session durchlaesst -- und die
+// IDs stehen in den oeffentlichen JS-Chunks unter /_next/static. Der
+// Middleware-Schutz der Backstage-Seiten allein reicht deshalb nicht.
+// Zwei Varianten passend zu den zwei Rueckgabe-Mustern dieser Datei:
+
+// Fuer Actions mit redirect()/throw: ohne Session auf /login umleiten.
+// redirect() wirft intern, der Rest der Action laeuft also nie.
+async function requireBackstageLogin(): Promise<void> {
+  const benutzer = await getAktuellerBenutzer();
+  if (!benutzer) redirect("/login");
+}
+
+// Fuer Actions, die { fehler } zurueckgeben (AktionsFormular): der Hinweis
+// erscheint direkt am Formular statt einer Umleitung mitten in der Eingabe.
+async function pruefeBackstageLogin(): Promise<string | null> {
+  const benutzer = await getAktuellerBenutzer();
+  return benutzer ? null : "Nicht angemeldet.";
+}
+
 // Ermittelt Anrede + Quelle fuer ein Formularfeld: explizite Angabe (Herr/Frau/
 // Divers) gilt als 'manuell' und wird nie durch die Namens-Heuristik ersetzt.
 // Ist nichts angegeben, wird per Vornamen geschaetzt ('automatisch'); schlaegt
@@ -53,6 +75,7 @@ function ermittleAnredeUndQuelle(
 }
 
 export async function createOrganisation(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("organisationen").insert({
     name: String(formData.get("name")),
@@ -68,6 +91,7 @@ export async function createOrganisation(formData: FormData) {
 }
 
 export async function createTeilnehmer(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const vorname = String(formData.get("vorname"));
   const { anrede, anrede_quelle } = ermittleAnredeUndQuelle(formData.get("anrede"), vorname);
@@ -93,6 +117,7 @@ export async function createTeilnehmer(formData: FormData) {
 }
 
 export async function updateSeminartypFarbe(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("seminartyp_id"));
   const farbe = String(formData.get("farbe") || "#102A4C");
@@ -104,6 +129,7 @@ export async function updateSeminartypFarbe(formData: FormData) {
 }
 
 export async function createSeminartyp(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("seminartypen").insert({
     name: String(formData.get("name")),
@@ -116,6 +142,7 @@ export async function createSeminartyp(formData: FormData) {
 }
 
 export async function updateSeminartyp(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("seminartyp_id"));
   const { error } = await supabase
@@ -134,6 +161,7 @@ export async function updateSeminartyp(formData: FormData) {
 }
 
 export async function updateTeilnehmerStammdaten(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
@@ -172,6 +200,7 @@ export async function updateTeilnehmerStammdaten(formData: FormData) {
 // als "Hauptorganisation" markiert. Ist es die erste Verknuepfung, wird sie
 // automatisch zur Hauptorganisation.
 export async function verknuepfeTeilnehmerOrganisation(formData: FormData) {
+  await requireBackstageLogin();
   const teilnehmerId = String(formData.get("teilnehmer_id"));
   const organisationId = String(formData.get("organisation_id"));
   if (!organisationId) throw new Error("Bitte eine Organisation auswaehlen.");
@@ -198,6 +227,7 @@ export async function verknuepfeTeilnehmerOrganisation(formData: FormData) {
 }
 
 export async function entferneTeilnehmerOrganisation(formData: FormData) {
+  await requireBackstageLogin();
   const teilnehmerId = String(formData.get("teilnehmer_id"));
   const organisationId = String(formData.get("organisation_id"));
 
@@ -236,6 +266,7 @@ export async function entferneTeilnehmerOrganisation(formData: FormData) {
 }
 
 export async function setzeHauptorganisation(formData: FormData) {
+  await requireBackstageLogin();
   const teilnehmerId = String(formData.get("teilnehmer_id"));
   const organisationId = String(formData.get("organisation_id"));
 
@@ -261,6 +292,7 @@ export async function setzeHauptorganisation(formData: FormData) {
 }
 
 export async function setMarketingConsentStatus(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const status = String(formData.get("status"));
   const erlaubteStatus = ["abonniert", "keine_zustimmung", "abgemeldet", "unbekannt"];
@@ -309,6 +341,7 @@ async function ladeReferenzBildHoch(
 // "referenzen" (Pfad statt fertiger URL gespeichert, damit sich eine
 // Public-URL jederzeit frisch ableiten laesst und Loeschen sauber funktioniert).
 export async function createTeilnehmerReferenz(formData: FormData) {
+  await requireBackstageLogin();
   const teilnehmerId = String(formData.get("teilnehmer_id"));
   const redirectTo = String(formData.get("redirect_to") || `/teilnehmer/${teilnehmerId}`);
   const supabase = getSupabaseAdmin();
@@ -334,6 +367,7 @@ export async function createTeilnehmerReferenz(formData: FormData) {
 }
 
 export async function deleteTeilnehmerReferenz(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const teilnehmerId = String(formData.get("teilnehmer_id"));
   const redirectTo = String(formData.get("redirect_to") || `/teilnehmer/${teilnehmerId}`);
@@ -359,6 +393,7 @@ export async function deleteTeilnehmerReferenz(formData: FormData) {
 }
 
 export async function toggleReferenzFreigabe(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const teilnehmerId = String(formData.get("teilnehmer_id"));
   const neuerWert = formData.get("neuer_wert") === "true";
@@ -377,6 +412,7 @@ export async function toggleReferenzFreigabe(formData: FormData) {
 }
 
 export async function createTrainer(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("trainer").insert({
     name: String(formData.get("name")),
@@ -388,6 +424,7 @@ export async function createTrainer(formData: FormData) {
 }
 
 export async function createVeranstaltungsort(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("veranstaltungsorte").insert({
     name: String(formData.get("name")),
@@ -401,6 +438,7 @@ export async function createVeranstaltungsort(formData: FormData) {
 }
 
 export async function createSeminartermin(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const datumStart = String(formData.get("datum_start"));
   const datumEnde = formData.get("datum_ende") || datumStart;
@@ -444,6 +482,7 @@ export async function createSeminartermin(formData: FormData) {
 // Schreibt die eingereichten Formulardaten nicht in die DB, sondern leitet zur
 // Vorschau-/Bestätigungsseite weiter (doppelte Freigabe für Termin-Änderungen).
 export async function previewSeminarterminUpdate(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("seminartermin_id"));
   const params = new URLSearchParams();
   for (const [key, value] of formData.entries()) {
@@ -453,6 +492,7 @@ export async function previewSeminarterminUpdate(formData: FormData) {
 }
 
 export async function updateSeminartermin(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("seminartermin_id"));
   const datumStart = String(formData.get("datum_start"));
@@ -578,6 +618,7 @@ export async function updateSeminartermin(formData: FormData) {
 }
 
 export async function duplicateSeminartermin(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const sourceId = String(formData.get("seminartermin_id"));
 
@@ -711,6 +752,7 @@ function leseGeparsteFeatures(formData: FormData): { label: string | null; text:
 }
 
 export async function createSeminarOption(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
   const { data: neueOption, error } = await supabase
@@ -749,6 +791,7 @@ export async function createSeminarOption(formData: FormData) {
 // per revalidatePath sofort Titel-Feld, Beschreibungsfeld und Features-Liste
 // mit dem neuen Inhalt nachladen -- ohne das noch offene Formular zu verlassen.
 export async function uebernehmeOptionSchnelleinfuegen(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -790,6 +833,7 @@ export async function uebernehmeOptionSchnelleinfuegen(formData: FormData) {
 }
 
 export async function updateOptionBadge(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -803,6 +847,7 @@ export async function updateOptionBadge(formData: FormData) {
 }
 
 export async function duplicateSeminarOption(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const sourceOptionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -860,6 +905,7 @@ export async function duplicateSeminarOption(formData: FormData) {
 }
 
 export async function importSeminarOptions(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
   const optionIds = formData.getAll("option_ids").map(String).filter(Boolean);
@@ -947,6 +993,7 @@ export async function importSeminarOptions(formData: FormData) {
 }
 
 export async function createOptionFeature(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -975,6 +1022,7 @@ export async function createOptionFeature(formData: FormData) {
 }
 
 export async function updateOptionFeature(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const featureId = String(formData.get("feature_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -999,6 +1047,7 @@ export async function updateOptionFeature(formData: FormData) {
 // Deaktivierte Optionen zaehlen mit, damit sie nach dem Reaktivieren wieder
 // an ihrem Platz stehen.
 export async function moveSeminarOption(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -1039,6 +1088,7 @@ export async function moveSeminarOption(formData: FormData) {
 // vertauschen. Das repariert bestehende Daten beim ersten Verschieben
 // automatisch mit.
 export async function moveOptionFeature(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const featureId = String(formData.get("feature_id"));
   const optionId = String(formData.get("seminartermin_option_id"));
@@ -1074,6 +1124,7 @@ export async function moveOptionFeature(formData: FormData) {
 }
 
 export async function createBuchung(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const organisationId = formData.get("organisation_id") || null;
   const modus = String(formData.get("modus") || "seminar");
@@ -1166,6 +1217,7 @@ export async function createBuchung(formData: FormData) {
 }
 
 export async function stornoBuchung(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const buchungId = String(formData.get("buchung_id"));
   const grund = String(formData.get("grund") || "");
@@ -1193,6 +1245,7 @@ export async function stornoBuchung(formData: FormData) {
 const ZAHLUNGSBESTAETIGUNG_FUNNEL_MAIL_ID = "b8c1927c-c660-454c-bb02-e6db2d93e8c0";
 
 export async function bestaetigeBuchung(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const buchungId = String(formData.get("buchung_id"));
   const benutzer = await getAktuellerBenutzer();
@@ -1275,6 +1328,7 @@ export async function bestaetigeBuchung(formData: FormData) {
 }
 
 export async function umbuchenBuchung(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const buchungId = String(formData.get("buchung_id"));
   const positionId = String(formData.get("position_id"));
@@ -1320,6 +1374,7 @@ export async function umbuchenBuchung(formData: FormData) {
 }
 
 export async function createPreisstaffel(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -1346,6 +1401,7 @@ export async function createPreisstaffel(formData: FormData) {
 }
 
 export async function updatePreisstaffel(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const preisstaffelId = String(formData.get("preisstaffel_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -1384,6 +1440,7 @@ export async function updatePreisstaffel(formData: FormData) {
 // Quelloption passt nicht automatisch zum Starttermin der Zieloption und
 // muss von Hand geprueft/angepasst werden.
 export async function copyPreisstaffelnFromOption(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const zielOptionId = String(formData.get("ziel_option_id"));
   const quellOptionId = String(formData.get("quell_option_id"));
@@ -1433,6 +1490,7 @@ export async function copyPreisstaffelnFromOption(formData: FormData) {
 // (Normalpreis, kein eigener Stichtag noetig) wird immer angelegt. Danach
 // sind es normale Preisstaffeln, genau wie manuell angelegte.
 export async function wendePreisstaffelVorlageAn(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -1535,6 +1593,7 @@ function vorlagenDbFehler(error: { code?: string; message: string }, name: strin
 }
 
 export async function listePreisstaffelVorlagen(): Promise<PreisstaffelVorlage[]> {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.from("preisstaffel_vorlagen").select("*").order("name");
   if (error) throw new Error(error.message);
@@ -1542,6 +1601,8 @@ export async function listePreisstaffelVorlagen(): Promise<PreisstaffelVorlage[]
 }
 
 export async function createPreisstaffelVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const name = String(formData.get("name") || "").trim();
   const beschreibung = String(formData.get("beschreibung") || "").trim();
   if (!name) return { fehler: "Bitte einen Namen für die Vorlage angeben." };
@@ -1566,6 +1627,8 @@ export async function createPreisstaffelVorlage(formData: FormData): Promise<Vor
 }
 
 export async function updatePreisstaffelVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("vorlage_id") || "");
   const name = String(formData.get("name") || "").trim();
   const beschreibung = String(formData.get("beschreibung") || "").trim();
@@ -1604,6 +1667,8 @@ export async function updatePreisstaffelVorlage(formData: FormData): Promise<Vor
 // weil der Unique-Index case-insensitiv ist und sich ein ilike-Vergleich an
 // Sonderzeichen wie "%"/"_" im Namen verschlucken wuerde.
 export async function duplizierePreisstaffelVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("vorlage_id") || "");
   if (!id) return { fehler: "Vorlage nicht gefunden." };
   const supabase = getSupabaseAdmin();
@@ -1636,6 +1701,8 @@ export async function duplizierePreisstaffelVorlage(formData: FormData): Promise
 // Loeschen betrifft nur die Vorlage selbst -- bereits in Optionen geladene
 // Stufen sind eigenstaendige Kopien in preisstaffeln und bleiben erhalten.
 export async function deletePreisstaffelVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("vorlage_id") || "");
   if (!id) return { fehler: "Vorlage nicht gefunden." };
   const supabase = getSupabaseAdmin();
@@ -1656,6 +1723,8 @@ export async function deletePreisstaffelVorlage(formData: FormData): Promise<Vor
 // festes stichtag_datum gespeichert (siehe berechneStichtagMitRegel); die
 // Stufe "0 Tage" (Normalpreis) bleibt relativ.
 export async function ersetzePreisstaffelnDurchVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const optionId = String(formData.get("seminartermin_option_id") || "");
   const seminarterminId = String(formData.get("seminartermin_id") || "");
   if (!optionId) return { fehler: "Option nicht gefunden." };
@@ -1714,6 +1783,8 @@ export async function ersetzePreisstaffelnDurchVorlage(formData: FormData): Prom
 // gespeicherte Stand in der Vorlage, und die Nur-relativ-Regel wird auch dann
 // durchgesetzt, wenn das Frontend (ausgeblendeter Button) umgangen wird.
 export async function speicherePreisstaffelnAlsVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const optionId = String(formData.get("seminartermin_option_id") || "");
   const seminarterminId = String(formData.get("seminartermin_id") || "");
   const name = String(formData.get("name") || "").trim();
@@ -1759,6 +1830,7 @@ export async function speicherePreisstaffelnAlsVorlage(formData: FormData): Prom
 // schnell nachjustiert und brauchen deshalb keinen Bestaetigungs-Zwischenschritt
 // wie Datum/Ort/Kapazitaet. Ins Aenderungsprotokoll wandern sie trotzdem.
 export async function updateVerfuegbarkeitsAnzeige(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("seminartermin_id"));
 
@@ -1826,6 +1898,7 @@ function leseUrgencyStufeAusFormData(formData: FormData) {
 }
 
 export async function createUrgencyStufe(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
   const { error } = await supabase.from("urgency_stufen").insert({
@@ -1838,6 +1911,7 @@ export async function createUrgencyStufe(formData: FormData) {
 }
 
 export async function updateUrgencyStufe(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const stufeId = String(formData.get("urgency_stufe_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -1852,6 +1926,7 @@ export async function updateUrgencyStufe(formData: FormData) {
 }
 
 export async function deleteUrgencyStufe(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const stufeId = String(formData.get("urgency_stufe_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -1866,6 +1941,7 @@ export async function deleteUrgencyStufe(formData: FormData) {
 }
 
 export async function createLead(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("leads").insert({
     name: String(formData.get("name")),
@@ -1884,6 +1960,7 @@ export async function createLead(formData: FormData) {
 }
 
 export async function updateLeadStatus(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const leadId = String(formData.get("lead_id"));
   const status = String(formData.get("status"));
@@ -1894,6 +1971,7 @@ export async function updateLeadStatus(formData: FormData) {
 }
 
 export async function createWartelisteEintrag(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
   const { error } = await supabase.from("warteliste").insert({
@@ -1907,6 +1985,7 @@ export async function createWartelisteEintrag(formData: FormData) {
 }
 
 export async function benachrichtigeWarteliste(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const eintragId = String(formData.get("eintrag_id"));
   const { error } = await supabase
@@ -1919,6 +1998,7 @@ export async function benachrichtigeWarteliste(formData: FormData) {
 }
 
 export async function createCommunityGruppe(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("community_gruppen").insert({
     name: String(formData.get("name")),
@@ -1932,6 +2012,7 @@ export async function createCommunityGruppe(formData: FormData) {
 }
 
 export async function addTeilnehmerZuCommunity(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const gruppeId = String(formData.get("community_gruppe_id"));
   const teilnehmerId = String(formData.get("teilnehmer_id"));
@@ -1946,6 +2027,7 @@ export async function addTeilnehmerZuCommunity(formData: FormData) {
 }
 
 export async function createMitarbeiter(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("mitarbeiter").insert({
     name: String(formData.get("name")),
@@ -1958,6 +2040,7 @@ export async function createMitarbeiter(formData: FormData) {
 }
 
 export async function deaktiviereMitarbeiter(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const mitarbeiterId = String(formData.get("mitarbeiter_id"));
   const { error } = await supabase
@@ -1970,6 +2053,7 @@ export async function deaktiviereMitarbeiter(formData: FormData) {
 }
 
 export async function addMitarbeiterZuTermin(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
   const mitarbeiterId = String(formData.get("mitarbeiter_id"));
@@ -1984,6 +2068,7 @@ export async function addMitarbeiterZuTermin(formData: FormData) {
 }
 
 export async function removeMitarbeiterVonTermin(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
   const zuordnungId = String(formData.get("zuordnung_id"));
@@ -1996,6 +2081,7 @@ export async function removeMitarbeiterVonTermin(formData: FormData) {
 }
 
 export async function setzeZimmerpartner(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
   const teilnehmerA = String(formData.get("teilnehmer_id_a"));
@@ -2017,6 +2103,7 @@ export async function setzeZimmerpartner(formData: FormData) {
 }
 
 export async function entferneZimmerpartner(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
   const zuordnungId = String(formData.get("zuordnung_id"));
@@ -2029,6 +2116,7 @@ export async function entferneZimmerpartner(formData: FormData) {
 }
 
 export async function updateSeminarOption(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -2064,6 +2152,7 @@ export async function updateSeminarOption(formData: FormData) {
 // aber aus der oeffentlichen Auslieferung gefiltert (siehe
 // app/api/public/seminartermine/*) und in der Backstage-Liste ausgegraut.
 export async function deaktivierenSeminarOption(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -2100,6 +2189,8 @@ export async function deaktivierenSeminarOption(formData: FormData) {
 // Features gehen per CASCADE mit, das sagt die Bestaetigung im UI explizit.
 // Gibt { fehler } zurueck statt zu werfen (siehe VorlagenAktionsErgebnis).
 export async function loescheSeminarOption(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id") || "");
   const seminarterminId = String(formData.get("seminartermin_id") || "");
@@ -2145,6 +2236,7 @@ export async function loescheSeminarOption(formData: FormData): Promise<Vorlagen
 }
 
 export async function reaktiviereSeminarOption(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const optionId = String(formData.get("seminartermin_option_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -2174,6 +2266,7 @@ export async function reaktiviereSeminarOption(formData: FormData) {
 }
 
 export async function deleteOptionFeature(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const featureId = String(formData.get("feature_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -2183,6 +2276,7 @@ export async function deleteOptionFeature(formData: FormData) {
 }
 
 export async function deletePreisstaffel(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const preisstaffelId = String(formData.get("preisstaffel_id"));
   const seminarterminId = String(formData.get("seminartermin_id"));
@@ -2192,6 +2286,7 @@ export async function deletePreisstaffel(formData: FormData) {
 }
 
 export async function sendeTestMail(formData: FormData) {
+  await requireBackstageLogin();
   const an = String(formData.get("an") || "");
   const betreff = String(formData.get("betreff") || "Test-Mail von AgencyUplifted");
   const nachricht = String(formData.get("nachricht") || "Das ist eine Testmail aus der Seminarverwaltung.");
@@ -2217,6 +2312,7 @@ export async function sendeTestMail(formData: FormData) {
 }
 
 export async function createFunnelMail(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("funnel_mails").insert({
     name: String(formData.get("name")),
@@ -2231,6 +2327,7 @@ export async function createFunnelMail(formData: FormData) {
 }
 
 export async function updateFunnelMail(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("id"));
   const { error } = await supabase
@@ -2250,6 +2347,7 @@ export async function updateFunnelMail(formData: FormData) {
 }
 
 export async function toggleFunnelMailAktiv(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("id"));
   const aktivNeu = String(formData.get("aktiv_neu")) === "true";
@@ -2260,6 +2358,7 @@ export async function toggleFunnelMailAktiv(formData: FormData) {
 }
 
 export async function deleteFunnelMail(formData: FormData) {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("id"));
   const { error } = await supabase.from("funnel_mails").delete().eq("id", id);
@@ -2269,6 +2368,7 @@ export async function deleteFunnelMail(formData: FormData) {
 }
 
 export async function funnelVersandJetzt() {
+  await requireBackstageLogin();
   const { pruefeUndSendeFaelligeFunnelMails } = await import("./funnel");
   const ergebnis = await pruefeUndSendeFaelligeFunnelMails();
   revalidatePath("/funnel");
@@ -2317,12 +2417,14 @@ export async function loginAction(formData: FormData) {
 }
 
 export async function logoutAction() {
+  await requireBackstageLogin();
   const cookieStore = await cookies();
   cookieStore.delete(SESSION_COOKIE_NAME);
   redirect("/login");
 }
 
 export async function setMitarbeiterZugang(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const email = String(formData.get("email") || "").trim();
   const neuesPasswort = String(formData.get("neues_passwort") || "");
@@ -2349,6 +2451,7 @@ export async function setMitarbeiterZugang(formData: FormData) {
 // aendbar sind, ohne Code anzufassen. "ist_wissen_autor" markiert, wessen
 // Bio auf den oeffentlichen Wissen-Seiten als Autor-Box erscheint.
 export async function setMitarbeiterBio(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const bioRolle = String(formData.get("bio_rolle") || "").trim();
   const bioText = String(formData.get("bio_text") || "").trim();
@@ -2399,6 +2502,7 @@ const RESEND_WEBHOOK_EVENTS = [
 ] as const;
 
 export async function richteResendTrackingEin() {
+  await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const resend = getResend();
 
@@ -2484,6 +2588,7 @@ export async function richteResendTrackingEin() {
 // Seminartermin zu (Zuordnungsmaske). Erzeugt keine neue "echte" Buchung/Position,
 // ergänzt nur die Verknüpfung für Anzeige/Statistik der historischen Daten.
 export async function ordneLegacyBuchungZu(formData: FormData) {
+  await requireBackstageLogin();
   const legacyId = String(formData.get("legacy_buchung_id"));
   const seminarterminIdRaw = formData.get("seminartermin_id");
   const seminarterminId = seminarterminIdRaw ? String(seminarterminIdRaw) : null;
@@ -2503,6 +2608,7 @@ export async function ordneLegacyBuchungZu(formData: FormData) {
 // gesammelt einem Termin zu. Einzelne Zeilen lassen sich in der Maske danach
 // weiterhin individuell überschreiben (z. B. Aufteilung auf zwei Termine im Jahr).
 export async function ordneLegacyGruppeZu(formData: FormData) {
+  await requireBackstageLogin();
   const jahr = Number(formData.get("jahr"));
   const seminartypIdRaw = formData.get("seminartyp_id");
   const seminartypId = seminartypIdRaw ? String(seminartypIdRaw) : null;
@@ -2522,6 +2628,7 @@ export async function ordneLegacyGruppeZu(formData: FormData) {
 // Schritt 1 der doppelten Freigabe fürs Löschen eines Termins: leitet nur zur
 // Vorschauseite weiter, löscht noch nichts.
 export async function previewSeminarterminLoeschen(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("seminartermin_id"));
   redirect(`/termine/${id}/loeschen`);
 }
@@ -2530,6 +2637,7 @@ export async function previewSeminarterminLoeschen(formData: FormData) {
 // Buchungspositionen (auch keine stornierten) mehr daran hängen. Legacy-Zuordnungen
 // werden vorher automatisch gelöst (nur eine Anzeige-Verknüpfung, keine echte Buchung).
 export async function loescheSeminartermin(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("seminartermin_id"));
   const supabase = getSupabaseAdmin();
 
@@ -2572,6 +2680,7 @@ export async function loescheSeminartermin(formData: FormData) {
 // Loeschen) -- anders als loescheSeminartermin funktioniert das auch, wenn
 // bereits Buchungen/Teilnehmer an diesem Termin haengen.
 export async function previewSeminarterminStornieren(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("seminartermin_id"));
   redirect(`/termine/${id}/stornieren`);
 }
@@ -2584,6 +2693,7 @@ export async function previewSeminarterminStornieren(formData: FormData) {
 // einzeln ueber die "Umbuchen"-Funktion an der jeweiligen Buchung auf einen
 // anderen Termin verschoben werden.
 export async function stornierSeminartermin(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("seminartermin_id"));
   const grund = String(formData.get("grund") || "");
   const supabase = getSupabaseAdmin();
@@ -2618,6 +2728,7 @@ export async function stornierSeminartermin(formData: FormData) {
 // Termin erscheint danach wieder auf der Website und kann wieder gebucht
 // werden.
 export async function reaktiviereSeminartermin(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("seminartermin_id"));
   const supabase = getSupabaseAdmin();
 
@@ -2647,6 +2758,7 @@ export async function reaktiviereSeminartermin(formData: FormData) {
 }
 
 export async function updateFinanzKonfiguration(formData: FormData) {
+  await requireBackstageLogin();
   const fremdkosten = Number(formData.get("fremdkosten_pro_person_netto"));
   const supabase = getSupabaseAdmin();
   const benutzer = await getAktuellerBenutzer();
@@ -2669,6 +2781,7 @@ export async function updateFinanzKonfiguration(formData: FormData) {
 // ---------- Content Creation (Content-/GEO-Pflegeaufgaben) ----------
 
 export async function erledigtMarkierenContentAufgabe(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
@@ -2680,6 +2793,7 @@ export async function erledigtMarkierenContentAufgabe(formData: FormData) {
 }
 
 export async function wiederEroeffnenContentAufgabe(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("content_aufgaben").update({ status: "offen" }).eq("id", id);
@@ -2688,6 +2802,7 @@ export async function wiederEroeffnenContentAufgabe(formData: FormData) {
 }
 
 export async function neueContentAufgabe(formData: FormData) {
+  await requireBackstageLogin();
   const titel = String(formData.get("titel") || "").trim();
   if (!titel) throw new Error("Titel darf nicht leer sein.");
   const beschreibung = String(formData.get("beschreibung") || "").trim() || null;
@@ -2702,6 +2817,7 @@ export async function neueContentAufgabe(formData: FormData) {
 // ---------- Themen-Radar (Ideen-Pipeline fuer Insights/Blog + LinkedIn) ----------
 
 export async function erstelleThemenRadarIdee(formData: FormData) {
+  await requireBackstageLogin();
   const thema = String(formData.get("thema") || "").trim();
   if (!thema) throw new Error("Bitte ein Thema angeben.");
   const cluster = String(formData.get("cluster") || "Sonstige");
@@ -2726,6 +2842,7 @@ export async function erstelleThemenRadarIdee(formData: FormData) {
 // der Liste verworfen/geloescht werden. Bewusst ohne Vorab-Auswahl-UI, um v1 schlank zu
 // halten; GSC kommt als praezisere Quelle spaeter dazu.
 export async function holeAutocompleteIdeen(formData: FormData) {
+  await requireBackstageLogin();
   const seed = String(formData.get("seed") || "").trim();
   if (!seed) throw new Error("Bitte einen Startbegriff angeben.");
   const cluster = String(formData.get("cluster") || "Sonstige");
@@ -2752,6 +2869,7 @@ export async function holeAutocompleteIdeen(formData: FormData) {
 }
 
 export async function aktualisiereThemenRadarStatus(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const status = String(formData.get("status"));
   const supabase = getSupabaseAdmin();
@@ -2764,6 +2882,7 @@ export async function aktualisiereThemenRadarStatus(formData: FormData) {
 }
 
 export async function toggleThemenRadarLinkedin(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const neuerWert = formData.get("neuer_wert") === "true";
   const supabase = getSupabaseAdmin();
@@ -2776,6 +2895,7 @@ export async function toggleThemenRadarLinkedin(formData: FormData) {
 }
 
 export async function loescheThemenRadarIdee(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("themen_radar_ideen").delete().eq("id", id);
@@ -2788,6 +2908,7 @@ export async function loescheThemenRadarIdee(formData: FormData) {
 // Entwuerfe unter demselben Label buendeln und gemeinsam zusammenfuehren (siehe
 // fuehreTriageClusterZusammen).
 export async function aktualisiereThemenRadarClusterLabel(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const clusterLabel = String(formData.get("cluster_label") || "").trim() || null;
   const supabase = getSupabaseAdmin();
@@ -2802,6 +2923,7 @@ export async function aktualisiereThemenRadarClusterLabel(formData: FormData) {
 // Legt aus einer Themen-Radar-Idee direkt einen Insights-Entwurf an (Status "entwurf")
 // und verknuepft beide Datensaetze -- kein Copy-Paste zwischen den Bereichen noetig.
 export async function uebernehmeThemenRadarIdeeInInsights(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
 
@@ -2847,6 +2969,7 @@ export async function uebernehmeThemenRadarIdeeInInsights(formData: FormData) {
 // ---------- Buch-Versand (Rezensions-/Gratisexemplare) ----------
 
 export async function legeBuchVersandAn(formData: FormData) {
+  await requireBackstageLogin();
   const name = String(formData.get("name") || "").trim();
   const firma = String(formData.get("firma") || "").trim() || null;
   const strasse = String(formData.get("strasse") || "").trim();
@@ -2907,6 +3030,7 @@ export async function legeBuchVersandAn(formData: FormData) {
 // dupliziert, damit die Empfänger-Liste unabhängig von buch_versand lesbar
 // bleibt).
 export async function updateBuchVersand(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const name = String(formData.get("name") || "").trim();
   const firma = String(formData.get("firma") || "").trim() || null;
@@ -2945,6 +3069,7 @@ export async function updateBuchVersand(formData: FormData) {
 }
 
 export async function deleteBuchVersand(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
 
@@ -2962,6 +3087,7 @@ export async function deleteBuchVersand(formData: FormData) {
 // ---------- Buch-Kontakt-Kategorien (erweiterbare Liste statt fester Werte) ----------
 
 export async function createBuchKontaktKategorie(formData: FormData) {
+  await requireBackstageLogin();
   const name = String(formData.get("name") || "").trim();
   if (!name) throw new Error("Bitte einen Namen für die Kategorie angeben.");
 
@@ -2977,6 +3103,7 @@ export async function createBuchKontaktKategorie(formData: FormData) {
 }
 
 export async function deleteBuchKontaktKategorie(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("buch_kontakt_kategorien").delete().eq("id", id);
@@ -2987,6 +3114,7 @@ export async function deleteBuchKontaktKategorie(formData: FormData) {
 }
 
 export async function versendeBuchExemplarAction(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
 
@@ -3029,6 +3157,7 @@ function leseFilterAusFormData(formData: FormData): import("./kampagnen").Filter
 }
 
 export async function speichereTeilnehmerSegment(formData: FormData) {
+  await requireBackstageLogin();
   const name = String(formData.get("segment_name") || "").trim();
   if (!name) throw new Error("Bitte einen Namen fuer die Filtergruppe angeben.");
   const supabase = getSupabaseAdmin();
@@ -3042,6 +3171,7 @@ export async function speichereTeilnehmerSegment(formData: FormData) {
 }
 
 export async function loescheTeilnehmerSegment(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("teilnehmer_segmente").delete().eq("id", id);
@@ -3051,6 +3181,7 @@ export async function loescheTeilnehmerSegment(formData: FormData) {
 }
 
 export async function erstelleKampagne(formData: FormData) {
+  await requireBackstageLogin();
   const name = String(formData.get("name") || "").trim();
   const betreff = String(formData.get("betreff") || "").trim();
   const inhalt = String(formData.get("inhalt") || "").trim();
@@ -3075,6 +3206,7 @@ export async function erstelleKampagne(formData: FormData) {
 }
 
 export async function kampagneVersandJetzt(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const { sendeKampagneJetzt } = await import("./kampagnen");
   const ergebnis = await sendeKampagneJetzt(id);
@@ -3083,6 +3215,7 @@ export async function kampagneVersandJetzt(formData: FormData) {
 }
 
 export async function loescheKampagnenEntwurf(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { data: kampagne } = await supabase.from("kampagnen").select("status").eq("id", id).single();
@@ -3096,6 +3229,7 @@ export async function loescheKampagnenEntwurf(formData: FormData) {
 // ---- Insights (Wissenshub v0.1) ----
 
 export async function erstelleInsightsEintrag(formData: FormData) {
+  await requireBackstageLogin();
   const typ = String(formData.get("typ") || "artikel");
   const titel = String(formData.get("titel") || "").trim();
   if (!titel) throw new Error("Bitte einen Titel angeben.");
@@ -3124,6 +3258,7 @@ export async function erstelleInsightsEintrag(formData: FormData) {
 }
 
 export async function speichereInsightsEintrag(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const titel = String(formData.get("titel") || "").trim();
   const kurzfassung = String(formData.get("kurzfassung") || "").trim() || null;
@@ -3211,6 +3346,7 @@ export async function speichereInsightsEintrag(formData: FormData) {
 }
 
 export async function setzeInsightsStatus(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const status = String(formData.get("status"));
   if (!["entwurf", "review", "veroeffentlicht", "archiviert"].includes(status)) {
@@ -3234,6 +3370,7 @@ export async function setzeInsightsStatus(formData: FormData) {
 // ---------------------------------------------------------------------------
 
 export async function createGeburtstagsVorlage(formData: FormData) {
+  await requireBackstageLogin();
   const name = String(formData.get("name") || "").trim();
   const betreff = String(formData.get("betreff") || "").trim();
   const inhalt = String(formData.get("inhalt") || "").trim();
@@ -3252,6 +3389,7 @@ export async function createGeburtstagsVorlage(formData: FormData) {
 }
 
 export async function updateGeburtstagsVorlage(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const name = String(formData.get("name") || "").trim();
   const betreff = String(formData.get("betreff") || "").trim();
@@ -3270,6 +3408,7 @@ export async function updateGeburtstagsVorlage(formData: FormData) {
 }
 
 export async function setGeburtstagsVorlageStandard(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   await supabase.from("geburtstags_vorlagen").update({ ist_standard: false }).eq("ist_standard", true);
@@ -3280,6 +3419,7 @@ export async function setGeburtstagsVorlageStandard(formData: FormData) {
 }
 
 export async function deleteGeburtstagsVorlage(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("geburtstags_vorlagen").delete().eq("id", id);
@@ -3293,6 +3433,7 @@ export async function deleteGeburtstagsVorlage(formData: FormData) {
 // damit dieselbe Person im selben Jahr nicht zweimal angeschrieben wird und
 // die Übersicht "bereits gratuliert" anzeigen kann.
 export async function sendeGeburtstagsMail(formData: FormData) {
+  await requireBackstageLogin();
   const quelle = String(formData.get("quelle"));
   const kontaktId = String(formData.get("kontakt_id"));
   const email = String(formData.get("email") || "").trim();
@@ -3351,6 +3492,7 @@ export async function sendeGeburtstagsMail(formData: FormData) {
 // ---- Phase-0-Triage der Alt-Entwuerfe -----------------------------------
 
 export async function aktualisiereTriageAktion(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const aktion = String(formData.get("triage_aktion"));
 
@@ -3365,6 +3507,7 @@ export async function aktualisiereTriageAktion(formData: FormData) {
 }
 
 export async function aktualisiereTriageClusterLabel(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const label = String(formData.get("triage_cluster_label") || "").trim() || null;
 
@@ -3384,6 +3527,7 @@ export async function aktualisiereTriageClusterLabel(formData: FormData) {
 // werden auf "archiviert" gesetzt und auf den neuen Entwurf verlinkt (kein Datenverlust,
 // jederzeit im Insights-Editor nachvollziehbar).
 export async function fuehreTriageClusterZusammen(formData: FormData) {
+  await requireBackstageLogin();
   const label = String(formData.get("triage_cluster_label") || "").trim();
   const neuerTitel = String(formData.get("neuer_titel") || "").trim();
   if (!label) throw new Error("Kein Cluster-Label angegeben.");
@@ -3516,6 +3660,7 @@ function normalisierePfad(wert: string): string {
 }
 
 export async function erstelleRedirect(formData: FormData) {
+  await requireBackstageLogin();
   const alteUrl = normalisierePfad(String(formData.get("alte_url") || ""));
   const neueUrl = String(formData.get("neue_url") || "").trim();
   const statusCode = Number(formData.get("status_code")) || 301;
@@ -3541,6 +3686,7 @@ export async function erstelleRedirect(formData: FormData) {
 // Tab, "->", "→" oder mehrere Leerzeichen. Zeilen ohne erkennbares Trennzeichen
 // werden übersprungen und als Fehler zurückgemeldet.
 export async function importiereRedirectsBulk(formData: FormData) {
+  await requireBackstageLogin();
   const rohtext = String(formData.get("bulk_text") || "");
   const zeilen = rohtext.split("\n").map((z) => z.trim()).filter(Boolean);
 
@@ -3577,6 +3723,7 @@ export async function importiereRedirectsBulk(formData: FormData) {
 }
 
 export async function toggleRedirectAktiv(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const aktiv = formData.get("aktiv") === "true";
   const supabase = getSupabaseAdmin();
@@ -3586,6 +3733,7 @@ export async function toggleRedirectAktiv(formData: FormData) {
 }
 
 export async function loescheRedirect(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("insights_redirects").delete().eq("id", id);
@@ -3598,6 +3746,7 @@ export async function loescheRedirect(formData: FormData) {
 // Konzeptdokument Abschnitt 14.4. Unabhängig von den Insights-Artikeln.
 
 export async function erstelleOffsitePlatzierung(formData: FormData) {
+  await requireBackstageLogin();
   const titel = String(formData.get("titel") || "").trim();
   const typ = String(formData.get("typ") || "sonstiges");
   const plattform = String(formData.get("plattform") || "").trim() || null;
@@ -3619,6 +3768,7 @@ export async function erstelleOffsitePlatzierung(formData: FormData) {
 }
 
 export async function aktualisiereOffsitePlatzierungStatus(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const status = String(formData.get("status"));
   if (!["idee", "angefragt", "geplant", "veroeffentlicht", "abgelehnt"].includes(status)) {
@@ -3633,6 +3783,7 @@ export async function aktualisiereOffsitePlatzierungStatus(formData: FormData) {
 }
 
 export async function aktualisiereOffsitePlatzierungZielUrl(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const zielUrl = String(formData.get("ziel_url") || "").trim() || null;
   const supabase = getSupabaseAdmin();
@@ -3645,6 +3796,7 @@ export async function aktualisiereOffsitePlatzierungZielUrl(formData: FormData) 
 }
 
 export async function loescheOffsitePlatzierung(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("content_offsite_platzierungen").delete().eq("id", id);
@@ -3664,6 +3816,7 @@ export async function loescheOffsitePlatzierung(formData: FormData) {
 // manuelle Zuordnungen/Notizen bei einem erneuten Import nie verloren; ein
 // erneuter Lauf ergaenzt nur wirklich neue Rechnungen.
 export async function importFastbillRechnungen(formData: FormData) {
+  await requireBackstageLogin();
   const jahr = Number(formData.get("jahr")) || new Date().getFullYear();
   const supabase = getSupabaseAdmin();
 
@@ -3728,6 +3881,7 @@ export async function importFastbillRechnungen(formData: FormData) {
 }
 
 export async function setzeFastbillKategorie(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const kategorie = String(formData.get("kategorie"));
   if (!["seminar", "projekt", "unklar"].includes(kategorie)) {
@@ -3759,6 +3913,7 @@ async function entferneFastbillBuchung(supabase: ReturnType<typeof getSupabaseAd
 }
 
 export async function ignoriereFastbillRechnung(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   await entferneFastbillBuchung(supabase, id);
@@ -3772,6 +3927,7 @@ export async function ignoriereFastbillRechnung(formData: FormData) {
 }
 
 export async function setzeFastbillOffen(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const supabase = getSupabaseAdmin();
   await entferneFastbillBuchung(supabase, id);
@@ -3797,6 +3953,7 @@ export async function setzeFastbillOffen(formData: FormData) {
 // Buchungspositionen komplett durch die neu eingereichten ersetzt (die
 // Buchung selbst bleibt erhalten) -- einfacher und robuster als ein Diff.
 export async function bestaetigeFastbillZuordnung(formData: FormData) {
+  await requireBackstageLogin();
   const id = String(formData.get("id"));
   const seminarterminId = String(formData.get("seminartermin_id") || "") || null;
   if (!seminarterminId) {
@@ -3918,6 +4075,8 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
 // Client-Komponenten kommen (siehe VorlagenAktionsErgebnis).
 
 export async function erfasseInboxEintrag(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const text = String(formData.get("text") || "").trim();
   if (!text) return { fehler: "Bitte etwas eintragen." };
   if (text.length > INBOX_TEXT_MAX) return { fehler: `Text zu lang (max. ${INBOX_TEXT_MAX} Zeichen).` };
@@ -3933,6 +4092,8 @@ export async function erfasseInboxEintrag(formData: FormData): Promise<VorlagenA
 // einzelne Feld-Actions zu brauchen. Cluster werden als Differenz
 // synchronisiert (Verknuepfungstabelle darf geloescht werden).
 export async function speichereInboxEintrag(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   if (!id) return { fehler: "Eintrag nicht gefunden." };
   const text = String(formData.get("text") || "").trim();
@@ -3985,6 +4146,8 @@ export async function speichereInboxEintrag(formData: FormData): Promise<Vorlage
 }
 
 export async function legeThemenclusterAn(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const name = String(formData.get("name") || "").trim();
   if (!name) return { fehler: "Bitte einen Namen angeben." };
   const supabase = getSupabaseAdmin();
@@ -4001,6 +4164,8 @@ export async function legeThemenclusterAn(formData: FormData): Promise<VorlagenA
 // (Content-Pipeline fuer Insights/LinkedIn), statt Themen doppelt zu pflegen.
 // Themenfeld nur grob abgeleitet -- im Themen-Radar jederzeit aenderbar.
 export async function uebergebeInboxAnThemenRadar(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const supabase = getSupabaseAdmin();
   const { data: eintrag, error: ladeFehler } = await supabase
@@ -4068,6 +4233,8 @@ function revalidiereWiedervorlage(reiheId?: string | null) {
 }
 
 export async function speichereEventReihe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = textOderNull(formData, "id");
   const name = textOderNull(formData, "name");
   if (!name) return { fehler: "Bitte einen Namen angeben." };
@@ -4090,6 +4257,8 @@ export async function speichereEventReihe(formData: FormData): Promise<VorlagenA
 }
 
 export async function archiviereEventReihe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const archivieren = formData.get("archivieren") === "true";
   const supabase = getSupabaseAdmin();
@@ -4100,6 +4269,8 @@ export async function archiviereEventReihe(formData: FormData): Promise<Vorlagen
 }
 
 export async function speichereEventAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = textOderNull(formData, "id");
   const reiheId = textOderNull(formData, "event_reihe_id");
   const jahr = Number(formData.get("jahr"));
@@ -4134,6 +4305,8 @@ export async function speichereEventAusgabe(formData: FormData): Promise<Vorlage
 // Datum/CfP leer, Teilnahme offen -- plus Recherche-Aufgabe, damit die
 // unbekannten Daten nicht vergessen werden.
 export async function legeNaechsteEventAusgabeAn(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const reiheId = String(formData.get("event_reihe_id") || "");
   const supabase = getSupabaseAdmin();
   const { data: letzte, error: ladeFehler } = await supabase
@@ -4161,6 +4334,8 @@ export async function legeNaechsteEventAusgabeAn(formData: FormData): Promise<Vo
 }
 
 export async function archiviereEventAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const archivieren = formData.get("archivieren") === "true";
   const supabase = getSupabaseAdmin();
@@ -4179,6 +4354,8 @@ export async function archiviereEventAusgabe(formData: FormData): Promise<Vorlag
 // Event-Ausgabe (event_ausgabe_id + rolle) wird er direkt verknuepft.
 // "quelle" ist Pflicht (Datenschutz: Herkunft jedes Kontakts dokumentieren).
 export async function speichereKontakt(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = textOderNull(formData, "id");
   const name = textOderNull(formData, "name");
   const quelle = textOderNull(formData, "quelle");
@@ -4222,6 +4399,8 @@ export async function speichereKontakt(formData: FormData): Promise<VorlagenAkti
 }
 
 export async function setzeKontaktStatus(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const status = nurErlaubterWert(formData.get("status"), KONTAKT_STATUS);
   if (!status) return { fehler: "Ungültiger Status." };
@@ -4233,6 +4412,8 @@ export async function setzeKontaktStatus(formData: FormData): Promise<VorlagenAk
 }
 
 export async function archiviereKontakt(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const archivieren = formData.get("archivieren") === "true";
   const supabase = getSupabaseAdmin();
@@ -4243,6 +4424,8 @@ export async function archiviereKontakt(formData: FormData): Promise<VorlagenAkt
 }
 
 export async function verknuepfeKontaktMitAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const ausgabeId = String(formData.get("event_ausgabe_id") || "");
   const kontaktId = String(formData.get("kontakt_id") || "");
   const rolle = nurErlaubterWert(formData.get("rolle"), EVENT_ROLLEN);
@@ -4258,6 +4441,8 @@ export async function verknuepfeKontaktMitAusgabe(formData: FormData): Promise<V
 }
 
 export async function entferneKontaktVonAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("event_ausgabe_kontakte")
@@ -4274,6 +4459,8 @@ export async function entferneKontaktVonAusgabe(formData: FormData): Promise<Vor
 // Seminar-Lead. Achtung, Leads koennen lead_erstellt-Funnel-Mails bekommen --
 // deshalb fragt das UI vorher nach und es passiert nie automatisch.
 export async function uebernehmeKontaktAlsLead(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const supabase = getSupabaseAdmin();
   const { data: k, error: ladeFehler } = await supabase.from("kontakte").select("*").eq("id", id).maybeSingle();
@@ -4294,6 +4481,8 @@ export async function uebernehmeKontaktAlsLead(formData: FormData): Promise<Vorl
 }
 
 export async function speichereAufgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = textOderNull(formData, "id");
   const titel = textOderNull(formData, "titel");
   if (!titel) return { fehler: "Bitte einen Titel angeben." };
@@ -4317,6 +4506,8 @@ export async function speichereAufgabe(formData: FormData): Promise<VorlagenAkti
 }
 
 export async function setzeAufgabeErledigt(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const erledigt = formData.get("erledigt") === "true";
   const supabase = getSupabaseAdmin();
@@ -4327,6 +4518,8 @@ export async function setzeAufgabeErledigt(formData: FormData): Promise<Vorlagen
 }
 
 export async function archiviereAufgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("aufgaben").update({ archiviert_am: new Date().toISOString() }).eq("id", id);
@@ -4336,6 +4529,8 @@ export async function archiviereAufgabe(formData: FormData): Promise<VorlagenAkt
 }
 
 export async function verknuepfeThemaMitAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const eintragId = String(formData.get("inbox_eintrag_id") || "");
   const ausgabeId = String(formData.get("event_ausgabe_id") || "");
   if (!eintragId) return { fehler: "Bitte ein Thema auswählen." };
@@ -4349,6 +4544,8 @@ export async function verknuepfeThemaMitAusgabe(formData: FormData): Promise<Vor
 }
 
 export async function entferneThemaVonAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("inbox_eintrag_event_ausgaben")
@@ -4365,6 +4562,8 @@ export async function entferneThemaVonAusgabe(formData: FormData): Promise<Vorla
 // (lib/erinnerungen.ts). Empfaenger nur interne Adressen, Versand per Cron.
 
 export async function speichereErinnerung(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = textOderNull(formData, "id");
   const name = textOderNull(formData, "name");
   if (!name) return { fehler: "Bitte einen Namen angeben." };
@@ -4414,6 +4613,8 @@ export async function speichereErinnerung(formData: FormData): Promise<VorlagenA
 // Schickt die Erinnerung sofort als Test (Betreff mit "[Test]"), unabhaengig
 // von Frequenz/aktiv -- an die gespeicherten Empfaenger.
 export async function sendeErinnerungTest(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const { data, error } = await getSupabaseAdmin().from("erinnerungen").select("*").eq("id", id).maybeSingle();
   if (error) return { fehler: error.message };
@@ -4426,6 +4627,8 @@ export async function sendeErinnerungTest(formData: FormData): Promise<VorlagenA
 }
 
 export async function speichereKalenderAbo(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = textOderNull(formData, "id");
   const felder = {
     name: textOderNull(formData, "name") || "Kalender",
@@ -4445,6 +4648,8 @@ export async function speichereKalenderAbo(formData: FormData): Promise<Vorlagen
 // Neuer Token = alter Abo-Link sofort ungueltig (z. B. wenn er versehentlich
 // geteilt wurde). Das Abo muss danach im Kalender neu eingerichtet werden.
 export async function erneuereKalenderToken(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
   const id = String(formData.get("id") || "");
   const token = randomBytes(24).toString("hex");
   const { error } = await getSupabaseAdmin().from("kalender_abos").update({ token }).eq("id", id);
@@ -4457,15 +4662,9 @@ export async function erneuereKalenderToken(formData: FormData): Promise<Vorlage
 // Netzwerk "Uplifted Agencies" -- Backstage-Seite /netzwerk-einladen.
 // Einladungen gehen NUR per ausdruecklichem Klick raus. Harte Regel ohne
 // Override: marketing_consent_status abgemeldet/keine_zustimmung kommt in
-// keine Liste. Jede Action prueft den Backstage-Login selbst (Server Actions
-// sind per ID auch von oeffentlichen Routen wie /netzwerk aus aufrufbar).
+// keine Liste. Login-Pruefung siehe pruefeBackstageLogin() oben.
 
 const NETZWERK_AUSGESCHLOSSEN = ["abgemeldet", "keine_zustimmung"];
-
-async function pruefeBackstageLogin(): Promise<string | null> {
-  const benutzer = await getAktuellerBenutzer();
-  return benutzer ? null : "Nicht angemeldet.";
-}
 
 export async function ladeInPilotkreisEin(formData: FormData): Promise<VorlagenAktionsErgebnis & { info?: string }> {
   const loginFehler = await pruefeBackstageLogin();
