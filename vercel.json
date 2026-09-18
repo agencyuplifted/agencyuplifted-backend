@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/funnel-versand",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/erinnerungen",
+      "schedule": "0 5 * * *"
     }
   ]
 }

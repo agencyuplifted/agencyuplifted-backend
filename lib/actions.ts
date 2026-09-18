@@ -12,6 +12,8 @@ import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter } from "./funnel";
 import { INBOX_TEXT_MAX, INBOX_TYPEN, INBOX_STATUS, INBOX_BEREICHE, INBOX_FORMATE, nurErlaubte } from "./inbox";
 import { TEILNAHME, TURNUS, EVENT_ROLLEN, KONTAKT_STATUS, nurErlaubterWert, berlinHeute, tagPlus } from "./events";
+import { FREQUENZEN, sendeErinnerung, type Erinnerung } from "./erinnerungen";
+import { randomBytes } from "crypto";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
@@ -4354,5 +4356,98 @@ export async function entferneThemaVonAusgabe(formData: FormData): Promise<Vorla
     .eq("event_ausgabe_id", String(formData.get("event_ausgabe_id") || ""));
   if (error) return { fehler: error.message };
   revalidiereWiedervorlage(textOderNull(formData, "event_reihe_id"));
+  return { fehler: null };
+}
+
+// ---------------------------------------------------------------------------
+// Modul "Ideen & Wiedervorlage" -- Phase 3: Erinnerungen & Kalender-Abo
+// (lib/erinnerungen.ts). Empfaenger nur interne Adressen, Versand per Cron.
+
+export async function speichereErinnerung(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = textOderNull(formData, "id");
+  const name = textOderNull(formData, "name");
+  if (!name) return { fehler: "Bitte einen Namen angeben." };
+  const empfaenger = Array.from(
+    new Set(
+      String(formData.get("empfaenger") || "")
+        .split(/[,;\s]+/)
+        .map((a) => a.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+  const ungueltig = empfaenger.filter((a) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a));
+  if (ungueltig.length) return { fehler: `Ungültige E-Mail-Adresse: ${ungueltig.join(", ")}` };
+  const aktiv = formData.get("aktiv") === "on";
+  if (aktiv && !empfaenger.length) return { fehler: "Zum Aktivieren bitte mindestens einen Empfänger eintragen." };
+
+  const frequenz = nurErlaubterWert(formData.get("frequenz"), FREQUENZEN) || "taeglich";
+  const wochentag = Number(formData.get("wochentag")) || 1;
+  const monatstag = Math.min(28, Math.max(1, Number(formData.get("monatstag")) || 1));
+  const zahl = (feld: string, max: number, standard: number) => {
+    const n = Number(formData.get(feld));
+    return Number.isInteger(n) && n >= 0 && n <= max ? n : standard;
+  };
+  const felder = {
+    name,
+    aktiv,
+    empfaenger,
+    frequenz,
+    wochentag: frequenz === "woechentlich" ? wochentag : null,
+    monatstag: frequenz === "monatlich" ? monatstag : null,
+    vorschau_tage: zahl("vorschau_tage", 60, 0),
+    cfp_vorschau_tage: zahl("cfp_vorschau_tage", 365, 90),
+    mit_aufgaben: formData.get("mit_aufgaben") === "on",
+    mit_wiedervorlagen: formData.get("mit_wiedervorlagen") === "on",
+    mit_events: formData.get("mit_events") === "on",
+    mit_cfp: formData.get("mit_cfp") === "on",
+    mit_unsortiert: formData.get("mit_unsortiert") === "on",
+    nur_wenn_inhalt: formData.get("nur_wenn_inhalt") === "on",
+  };
+  const supabase = getSupabaseAdmin();
+  const { error } = id ? await supabase.from("erinnerungen").update(felder).eq("id", id) : await supabase.from("erinnerungen").insert(felder);
+  if (error) return { fehler: error.message };
+  revalidatePath("/wiedervorlage/einstellungen");
+  return { fehler: null };
+}
+
+// Schickt die Erinnerung sofort als Test (Betreff mit "[Test]"), unabhaengig
+// von Frequenz/aktiv -- an die gespeicherten Empfaenger.
+export async function sendeErinnerungTest(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const { data, error } = await getSupabaseAdmin().from("erinnerungen").select("*").eq("id", id).maybeSingle();
+  if (error) return { fehler: error.message };
+  if (!data) return { fehler: "Erinnerung nicht gefunden." };
+  const r = await sendeErinnerung(data as Erinnerung, { erzwingen: true });
+  revalidatePath("/wiedervorlage/einstellungen");
+  if (r.status === "keine_empfaenger") return { fehler: "Bitte zuerst Empfänger eintragen und speichern." };
+  if (r.status === "fehler") return { fehler: `Versand fehlgeschlagen: ${r.info}` };
+  return { fehler: null };
+}
+
+export async function speichereKalenderAbo(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = textOderNull(formData, "id");
+  const felder = {
+    name: textOderNull(formData, "name") || "Kalender",
+    aktiv: formData.get("aktiv") === "on",
+    mit_aufgaben: formData.get("mit_aufgaben") === "on",
+    mit_wiedervorlagen: formData.get("mit_wiedervorlagen") === "on",
+    mit_events: formData.get("mit_events") === "on",
+    mit_cfp: formData.get("mit_cfp") === "on",
+  };
+  const supabase = getSupabaseAdmin();
+  const { error } = id ? await supabase.from("kalender_abos").update(felder).eq("id", id) : await supabase.from("kalender_abos").insert(felder);
+  if (error) return { fehler: error.message };
+  revalidatePath("/wiedervorlage/einstellungen");
+  return { fehler: null };
+}
+
+// Neuer Token = alter Abo-Link sofort ungueltig (z. B. wenn er versehentlich
+// geteilt wurde). Das Abo muss danach im Kalender neu eingerichtet werden.
+export async function erneuereKalenderToken(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const token = randomBytes(24).toString("hex");
+  const { error } = await getSupabaseAdmin().from("kalender_abos").update({ token }).eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidatePath("/wiedervorlage/einstellungen");
   return { fehler: null };
 }

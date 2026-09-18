@@ -44,7 +44,10 @@ export default async function WiedervorlagePage() {
 
   return (
     <main>
-      <h1>Wiedervorlage</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1rem", flexWrap: "wrap" }}>
+        <h1>Wiedervorlage</h1>
+        <Link href="/wiedervorlage/einstellungen" className="au-btn au-btn-secondary au-btn-sm">⚙︎ Erinnerungen &amp; Kalender</Link>
+      </div>
       <p style={{ color: "var(--color-text-muted)", marginTop: "-0.75rem" }}>
         Fällige Aufgaben, Inbox-Wiedervorlagen, Events und CfP-Deadlines (CfP 90 Tage im Voraus).
       </p>

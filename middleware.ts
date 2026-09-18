@@ -71,6 +71,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/shopify/") ||
     // Apple-Kurzbefehl ohne Session -- schuetzt sich selbst per INBOX_API_TOKEN
     pathname === "/api/inbox" ||
+    // Kalender-Abo: Kalender-Apps schicken keine Cookies, Token in der URL
+    pathname.startsWith("/api/kalender/") ||
     pathname.startsWith("/wissen") ||
     pathname === "/sitemap.xml" ||
     pathname === "/robots.txt" ||
