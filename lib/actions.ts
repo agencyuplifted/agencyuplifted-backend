@@ -11,6 +11,7 @@ import { getAktuellerBenutzer } from "./auth";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter } from "./funnel";
 import { INBOX_TEXT_MAX, INBOX_TYPEN, INBOX_STATUS, INBOX_BEREICHE, INBOX_FORMATE, nurErlaubte } from "./inbox";
+import { TEILNAHME, TURNUS, EVENT_ROLLEN, KONTAKT_STATUS, nurErlaubterWert, berlinHeute, tagPlus } from "./events";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
@@ -4029,5 +4030,329 @@ export async function uebergebeInboxAnThemenRadar(formData: FormData): Promise<V
   if (e2) return { fehler: e2.message };
   revalidatePath("/inbox");
   revalidatePath("/content-creation");
+  return { fehler: null };
+}
+
+// ---------------------------------------------------------------------------
+// Modul "Ideen & Wiedervorlage" -- Phase 2: Events, Kontakte, Aufgaben (siehe
+// lib/events.ts, lib/wiedervorlage.ts). Kein Hard-Delete (DB-Trigger), nur
+// archiviert_am; reine Verknuepfungstabellen duerfen geloescht werden.
+// Bewusst KEIN Mailversand an Kontakte -- das Modul dokumentiert nur.
+
+function textOderNull(formData: FormData, feld: string): string | null {
+  const wert = String(formData.get(feld) ?? "").trim();
+  return wert || null;
+}
+
+function datumOderNull(formData: FormData, feld: string): string | null {
+  const wert = String(formData.get(feld) ?? "").trim();
+  if (!wert) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(wert)) throw new Error(`Ungültiges Datum: ${wert}`);
+  return wert;
+}
+
+function skalaOderNull(formData: FormData, feld: string): number | null {
+  const n = Number(formData.get(feld));
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
+}
+
+function revalidiereWiedervorlage(reiheId?: string | null) {
+  revalidatePath("/events");
+  if (reiheId) revalidatePath(`/events/${reiheId}`);
+  revalidatePath("/kontakte");
+  revalidatePath("/wiedervorlage");
+  revalidatePath("/dashboard");
+}
+
+export async function speichereEventReihe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = textOderNull(formData, "id");
+  const name = textOderNull(formData, "name");
+  if (!name) return { fehler: "Bitte einen Namen angeben." };
+  const felder = {
+    name,
+    website_url: textOderNull(formData, "website_url"),
+    turnus: nurErlaubterWert(formData.get("turnus"), TURNUS) || "jaehrlich",
+    beschreibung: textOderNull(formData, "beschreibung"),
+    zielgruppen_fit: skalaOderNull(formData, "zielgruppen_fit"),
+    speaker_chance: skalaOderNull(formData, "speaker_chance"),
+    kosten_notiz: textOderNull(formData, "kosten_notiz"),
+  };
+  const supabase = getSupabaseAdmin();
+  const { error } = id
+    ? await supabase.from("event_reihen").update(felder).eq("id", id)
+    : await supabase.from("event_reihen").insert(felder);
+  if (error) return { fehler: error.code === "23505" ? `Es gibt bereits eine Event-Reihe „${name}“.` : error.message };
+  revalidiereWiedervorlage(id);
+  return { fehler: null };
+}
+
+export async function archiviereEventReihe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const archivieren = formData.get("archivieren") === "true";
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("event_reihen").update({ archiviert_am: archivieren ? new Date().toISOString() : null }).eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(id);
+  return { fehler: null };
+}
+
+export async function speichereEventAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = textOderNull(formData, "id");
+  const reiheId = textOderNull(formData, "event_reihe_id");
+  const jahr = Number(formData.get("jahr"));
+  if (!reiheId) return { fehler: "Event-Reihe fehlt." };
+  if (!Number.isInteger(jahr) || jahr < 2000 || jahr > 2100) return { fehler: "Bitte ein gültiges Jahr angeben." };
+  let felder;
+  try {
+    felder = {
+      event_reihe_id: reiheId,
+      jahr,
+      datum_start: datumOderNull(formData, "datum_start"),
+      datum_ende: datumOderNull(formData, "datum_ende"),
+      ort: textOderNull(formData, "ort"),
+      cfp_start: datumOderNull(formData, "cfp_start"),
+      cfp_ende: datumOderNull(formData, "cfp_ende"),
+      teilnahme: nurErlaubterWert(formData.get("teilnahme"), TEILNAHME) || "offen",
+      notizen: textOderNull(formData, "notizen"),
+    };
+  } catch (e: any) {
+    return { fehler: e.message };
+  }
+  const supabase = getSupabaseAdmin();
+  const { error } = id
+    ? await supabase.from("event_ausgaben").update(felder).eq("id", id)
+    : await supabase.from("event_ausgaben").insert(felder);
+  if (error) return { fehler: error.code === "23505" ? `Für ${jahr} gibt es bereits eine Ausgabe.` : error.message };
+  revalidiereWiedervorlage(reiheId);
+  return { fehler: null };
+}
+
+// "Naechste Ausgabe anlegen": Jahr +1, Ort uebernommen (meist gleich),
+// Datum/CfP leer, Teilnahme offen -- plus Recherche-Aufgabe, damit die
+// unbekannten Daten nicht vergessen werden.
+export async function legeNaechsteEventAusgabeAn(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const reiheId = String(formData.get("event_reihe_id") || "");
+  const supabase = getSupabaseAdmin();
+  const { data: letzte, error: ladeFehler } = await supabase
+    .from("event_ausgaben")
+    .select("jahr, ort")
+    .eq("event_reihe_id", reiheId)
+    .order("jahr", { ascending: false })
+    .limit(1);
+  if (ladeFehler) return { fehler: ladeFehler.message };
+  const jahr = (letzte?.[0]?.jahr ?? Number(berlinHeute().slice(0, 4)) - 1) + 1;
+  const { data: neu, error } = await supabase
+    .from("event_ausgaben")
+    .insert({ event_reihe_id: reiheId, jahr, ort: letzte?.[0]?.ort ?? null, teilnahme: "offen" })
+    .select("id")
+    .single();
+  if (error) return { fehler: error.code === "23505" ? `Für ${jahr} gibt es bereits eine Ausgabe.` : error.message };
+  const { error: aufgabeFehler } = await supabase.from("aufgaben").insert({
+    titel: `CfP-Termin & Datum ${jahr} recherchieren`,
+    faellig_am: tagPlus(berlinHeute(), 14),
+    event_ausgabe_id: neu.id,
+  });
+  if (aufgabeFehler) return { fehler: aufgabeFehler.message };
+  revalidiereWiedervorlage(reiheId);
+  return { fehler: null };
+}
+
+export async function archiviereEventAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const archivieren = formData.get("archivieren") === "true";
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("event_ausgaben")
+    .update({ archiviert_am: archivieren ? new Date().toISOString() : null })
+    .eq("id", id)
+    .select("event_reihe_id")
+    .single();
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(data.event_reihe_id);
+  return { fehler: null };
+}
+
+// Legt einen Kontakt an bzw. aktualisiert ihn. Beim Anlegen im Kontext einer
+// Event-Ausgabe (event_ausgabe_id + rolle) wird er direkt verknuepft.
+// "quelle" ist Pflicht (Datenschutz: Herkunft jedes Kontakts dokumentieren).
+export async function speichereKontakt(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = textOderNull(formData, "id");
+  const name = textOderNull(formData, "name");
+  const quelle = textOderNull(formData, "quelle");
+  if (!name) return { fehler: "Bitte einen Namen angeben." };
+  if (!quelle) return { fehler: "Bitte die Quelle angeben (woher stammt der Kontakt?)." };
+  const felder = {
+    name,
+    quelle,
+    firma: textOderNull(formData, "firma"),
+    position: textOderNull(formData, "position"),
+    linkedin_url: textOderNull(formData, "linkedin_url"),
+    email: textOderNull(formData, "email"),
+    status: nurErlaubterWert(formData.get("status"), KONTAKT_STATUS) || "recherchieren",
+    notizen: textOderNull(formData, "notizen"),
+    organisation_id: textOderNull(formData, "organisation_id"),
+  };
+  const supabase = getSupabaseAdmin();
+  let kontaktId = id;
+  if (id) {
+    const { error } = await supabase.from("kontakte").update(felder).eq("id", id);
+    if (error) return { fehler: error.message };
+  } else {
+    const { data, error } = await supabase.from("kontakte").insert(felder).select("id").single();
+    if (error) return { fehler: error.message };
+    kontaktId = data.id;
+  }
+
+  const ausgabeId = textOderNull(formData, "event_ausgabe_id");
+  const rolle = nurErlaubterWert(formData.get("rolle"), EVENT_ROLLEN);
+  let reiheId: string | null = null;
+  if (ausgabeId && rolle && kontaktId) {
+    const { error } = await supabase
+      .from("event_ausgabe_kontakte")
+      .upsert({ event_ausgabe_id: ausgabeId, kontakt_id: kontaktId, rolle }, { onConflict: "event_ausgabe_id,kontakt_id,rolle", ignoreDuplicates: true });
+    if (error) return { fehler: error.message };
+    const { data: a } = await supabase.from("event_ausgaben").select("event_reihe_id").eq("id", ausgabeId).single();
+    reiheId = a?.event_reihe_id ?? null;
+  }
+  revalidiereWiedervorlage(reiheId);
+  return { fehler: null };
+}
+
+export async function setzeKontaktStatus(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const status = nurErlaubterWert(formData.get("status"), KONTAKT_STATUS);
+  if (!status) return { fehler: "Ungültiger Status." };
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("kontakte").update({ status }).eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(textOderNull(formData, "event_reihe_id"));
+  return { fehler: null };
+}
+
+export async function archiviereKontakt(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const archivieren = formData.get("archivieren") === "true";
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("kontakte").update({ archiviert_am: archivieren ? new Date().toISOString() : null }).eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage();
+  return { fehler: null };
+}
+
+export async function verknuepfeKontaktMitAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const ausgabeId = String(formData.get("event_ausgabe_id") || "");
+  const kontaktId = String(formData.get("kontakt_id") || "");
+  const rolle = nurErlaubterWert(formData.get("rolle"), EVENT_ROLLEN);
+  if (!kontaktId) return { fehler: "Bitte einen Kontakt auswählen." };
+  if (!rolle) return { fehler: "Bitte eine Rolle auswählen." };
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("event_ausgabe_kontakte")
+    .upsert({ event_ausgabe_id: ausgabeId, kontakt_id: kontaktId, rolle }, { onConflict: "event_ausgabe_id,kontakt_id,rolle", ignoreDuplicates: true });
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(textOderNull(formData, "event_reihe_id"));
+  return { fehler: null };
+}
+
+export async function entferneKontaktVonAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("event_ausgabe_kontakte")
+    .delete()
+    .eq("event_ausgabe_id", String(formData.get("event_ausgabe_id") || ""))
+    .eq("kontakt_id", String(formData.get("kontakt_id") || ""))
+    .eq("rolle", String(formData.get("rolle") || ""));
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(textOderNull(formData, "event_reihe_id"));
+  return { fehler: null };
+}
+
+// Nur auf ausdruecklichen Klick: aus einem Netzwerk-Kontakt wird ein
+// Seminar-Lead. Achtung, Leads koennen lead_erstellt-Funnel-Mails bekommen --
+// deshalb fragt das UI vorher nach und es passiert nie automatisch.
+export async function uebernehmeKontaktAlsLead(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const supabase = getSupabaseAdmin();
+  const { data: k, error: ladeFehler } = await supabase.from("kontakte").select("*").eq("id", id).maybeSingle();
+  if (ladeFehler) return { fehler: ladeFehler.message };
+  if (!k) return { fehler: "Kontakt nicht gefunden." };
+  if (k.lead_id) return { fehler: "Ist bereits als Lead übernommen." };
+  const { data: lead, error } = await supabase
+    .from("leads")
+    .insert({ name: k.name, firma: k.firma, email: k.email, quelle: `Kontakt (${k.quelle})`, notizen: k.notizen, status: "neu" })
+    .select("id")
+    .single();
+  if (error) return { fehler: error.message };
+  const { error: e2 } = await supabase.from("kontakte").update({ lead_id: lead.id }).eq("id", id);
+  if (e2) return { fehler: e2.message };
+  revalidatePath("/leads");
+  revalidiereWiedervorlage();
+  return { fehler: null };
+}
+
+export async function speichereAufgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = textOderNull(formData, "id");
+  const titel = textOderNull(formData, "titel");
+  if (!titel) return { fehler: "Bitte einen Titel angeben." };
+  let faellig: string | null;
+  try {
+    faellig = datumOderNull(formData, "faellig_am");
+  } catch (e: any) {
+    return { fehler: e.message };
+  }
+  const felder: Record<string, unknown> = { titel, faellig_am: faellig, notizen: textOderNull(formData, "notizen") };
+  if (!id) {
+    felder.event_ausgabe_id = textOderNull(formData, "event_ausgabe_id");
+    felder.kontakt_id = textOderNull(formData, "kontakt_id");
+    felder.inbox_eintrag_id = textOderNull(formData, "inbox_eintrag_id");
+  }
+  const supabase = getSupabaseAdmin();
+  const { error } = id ? await supabase.from("aufgaben").update(felder).eq("id", id) : await supabase.from("aufgaben").insert(felder);
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(textOderNull(formData, "event_reihe_id"));
+  return { fehler: null };
+}
+
+export async function setzeAufgabeErledigt(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const erledigt = formData.get("erledigt") === "true";
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("aufgaben").update({ erledigt_am: erledigt ? new Date().toISOString() : null }).eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(textOderNull(formData, "event_reihe_id"));
+  return { fehler: null };
+}
+
+export async function archiviereAufgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const id = String(formData.get("id") || "");
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("aufgaben").update({ archiviert_am: new Date().toISOString() }).eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(textOderNull(formData, "event_reihe_id"));
+  return { fehler: null };
+}
+
+export async function verknuepfeThemaMitAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const eintragId = String(formData.get("inbox_eintrag_id") || "");
+  const ausgabeId = String(formData.get("event_ausgabe_id") || "");
+  if (!eintragId) return { fehler: "Bitte ein Thema auswählen." };
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("inbox_eintrag_event_ausgaben")
+    .upsert({ inbox_eintrag_id: eintragId, event_ausgabe_id: ausgabeId, notiz: textOderNull(formData, "notiz") }, { onConflict: "inbox_eintrag_id,event_ausgabe_id" });
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(textOderNull(formData, "event_reihe_id"));
+  return { fehler: null };
+}
+
+export async function entferneThemaVonAusgabe(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("inbox_eintrag_event_ausgaben")
+    .delete()
+    .eq("inbox_eintrag_id", String(formData.get("inbox_eintrag_id") || ""))
+    .eq("event_ausgabe_id", String(formData.get("event_ausgabe_id") || ""));
+  if (error) return { fehler: error.message };
+  revalidiereWiedervorlage(textOderNull(formData, "event_reihe_id"));
   return { fehler: null };
 }

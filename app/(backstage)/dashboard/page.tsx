@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatEURBrutto, formatDatum } from "@/lib/format";
 import { ladeAnstehendeGeburtstage } from "@/lib/geburtstage";
+import FaelligWidget from "../wiedervorlage/FaelligWidget";
 
 type Ansicht = "uebersicht" | "nachfrage" | "auslastung" | "kunden" | "vertrieb";
 
@@ -99,6 +100,7 @@ async function Uebersicht({
 
   return (
     <>
+      <FaelligWidget />
       <div className="au-kpi-grid">
         <div className="au-kpi-card">
           <div className="au-kpi-value">{teilnehmerCount ?? 0}</div>
