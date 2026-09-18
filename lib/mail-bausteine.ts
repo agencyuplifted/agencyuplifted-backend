@@ -70,3 +70,32 @@ export async function abgemeldeteAdressen(supabase: any, emails: string[]): Prom
   return new Set((data || []).map((d: any) => d.email));
 }
 
+
+/**
+ * Adressen, die keine Funnel-/Kampagnen-Mail mehr bekommen: per Link
+ * abgemeldet, hart gebounct oder als Spam gemeldet (Resend-Webhook). Vorher
+ * wurden Bounces/Beschwerden nur protokolliert und die naechste Mail ging
+ * trotzdem raus -- das kostet Zustellbarkeit der ganzen Absender-Domain.
+ */
+export async function ladeSperrliste(supabase: any): Promise<Map<string, "abgemeldet" | "bounce" | "beschwerde">> {
+  const liste = new Map<string, "abgemeldet" | "bounce" | "beschwerde">();
+  const alle = async (abfrage: (von: number, bis: number) => any) => {
+    const zeilen: any[] = [];
+    for (let von = 0; ; von += 1000) {
+      const { data } = await abfrage(von, von + 999);
+      zeilen.push(...(data || []));
+      if (!data || data.length < 1000) return zeilen;
+    }
+  };
+  const [abgemeldet, ...logs] = await Promise.all([
+    alle((v, b) => supabase.from("mail_abmeldungen").select("email").range(v, b)),
+    alle((v, b) => supabase.from("funnel_versand_log").select("empfaenger_email, bounced_am, beschwerde_am").or("bounced_am.not.is.null,beschwerde_am.not.is.null").range(v, b)),
+    alle((v, b) => supabase.from("kampagnen_versand_log").select("empfaenger_email, bounced_am, beschwerde_am").or("bounced_am.not.is.null,beschwerde_am.not.is.null").range(v, b)),
+  ]);
+  for (const z of logs.flat()) {
+    const key = String(z.empfaenger_email).trim().toLowerCase();
+    liste.set(key, z.beschwerde_am ? "beschwerde" : liste.get(key) || "bounce");
+  }
+  for (const z of abgemeldet) liste.set(String(z.email).trim().toLowerCase(), "abgemeldet");
+  return liste;
+}

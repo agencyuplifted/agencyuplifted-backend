@@ -1,7 +1,8 @@
+import { createHash } from "crypto";
 import { getSupabaseAdmin } from "./supabase";
 import { getResend, ABSENDER } from "./email";
 import { renderPlatzhalter } from "./funnel";
-import { ladeBausteine, baueMailHtml, abmeldeUrl, abmeldeHeader } from "./mail-bausteine";
+import { ladeBausteine, baueMailHtml, abmeldeUrl, abmeldeHeader, ladeSperrliste } from "./mail-bausteine";
 
 // Filterkriterien fuer Kampagnen & gespeicherte Filtergruppen (teilnehmer_segmente).
 // Werden bei jeder Nutzung live gegen den aktuellen Teilnehmerbestand ausgewertet
@@ -18,6 +19,8 @@ export type FilterKriterien = {
   teilnahme_stand?: string[]; // 'erstteilnehmer' | 'wiederholer' | 'kein_seminar_besucht' (View teilnehmer_lifecycle_stage)
   netzwerk_mitglied?: "ja" | "nein";
   tags?: string[]; // tags.id -- Person muss ALLE gewaehlten Tags haben
+  /** Nachfass-Kampagne: nur wer Kampagne X bekommen, aber nicht geoeffnet hat */
+  nicht_geoeffnet_kampagne_id?: string;
 };
 
 export const TEILNAHME_STAND_LABEL: Record<string, string> = {
@@ -64,14 +67,16 @@ export function filterIstLeer(filter: FilterKriterien): boolean {
     !filter.kategorie2 &&
     !filter.teilnahme_stand?.length &&
     !filter.netzwerk_mitglied &&
-    !filter.tags?.length
+    !filter.tags?.length &&
+    !filter.nicht_geoeffnet_kampagne_id
   );
 }
 
 /**
- * Laedt alle Teilnehmer, die zum Filter passen. Abgemeldete (marketing_consent_status
- * = 'abgemeldet') werden immer ausgeschlossen -- unabhaengig vom Filter, gleiche Regel
- * wie beim Funnel-Versand (siehe lib/funnel.ts).
+ * Laedt alle Teilnehmer, die zum Filter passen. Kampagnen sind Werbe-Mails: es kommen
+ * NUR Personen mit marketing_consent_status = 'abonniert' in Frage. "unbekannt" und
+ * "keine_zustimmung" sind bewusst ausgeschlossen (Markus prueft die Unbekannten
+ * spaeter von Hand) -- vorher wurde nur "abgemeldet" ausgefiltert.
  */
 export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise<GefilterterTeilnehmer[]> {
   const supabase = getSupabaseAdmin();
@@ -82,7 +87,7 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
     )
     .order("nachname", { ascending: true });
 
-  const [lifecycle, besuche, tagZuordnungen] = await Promise.all([
+  const [lifecycle, besuche, tagZuordnungen, nichtGeoeffnet] = await Promise.all([
     ladeAlleZeilen((von, bis) =>
       supabase.from("teilnehmer_lifecycle_stage").select("teilnehmer_id, teilnahme_stand, netzwerk_mitglied, vermutlich_ruhend").range(von, bis)
     ),
@@ -94,7 +99,19 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
     filter.tags?.length
       ? ladeAlleZeilen((von, bis) => supabase.from("teilnehmer_tags").select("teilnehmer_id, tag_id").in("tag_id", filter.tags!).range(von, bis))
       : Promise.resolve([]),
+    filter.nicht_geoeffnet_kampagne_id
+      ? ladeAlleZeilen((von, bis) =>
+          supabase
+            .from("kampagnen_versand_log")
+            .select("teilnehmer_id")
+            .eq("kampagne_id", filter.nicht_geoeffnet_kampagne_id)
+            .eq("status", "gesendet")
+            .is("geoeffnet_am", null)
+            .range(von, bis)
+        )
+      : Promise.resolve([]),
   ]);
+  const nichtGeoeffnetSet = new Set(nichtGeoeffnet.map((z: any) => z.teilnehmer_id));
   const lifecycleMap = new Map(lifecycle.map((l: any) => [l.teilnehmer_id, l]));
   const besuchtKategorie2 = new Set(besuche.map((b: any) => b.teilnehmer_id));
   const tagsProTeilnehmer = new Map<string, Set<string>>();
@@ -104,7 +121,7 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
   }
 
   const alle: GefilterterTeilnehmer[] = (data || [])
-    .filter((t: any) => t.marketing_consent_status !== "abgemeldet" && !t.deaktiviert_am && t.email)
+    .filter((t: any) => t.marketing_consent_status === "abonniert" && !t.deaktiviert_am && t.email)
     .map((t: any) => {
       const seminare = Array.from(
         new Set(
@@ -139,6 +156,7 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
     const lc: any = lifecycleMap.get(t.id);
     if (filter.teilnahme_stand?.length && !filter.teilnahme_stand.includes(lc?.teilnahme_stand || "kein_seminar_besucht")) return false;
     if (filter.netzwerk_mitglied && (filter.netzwerk_mitglied === "ja") !== !!lc?.netzwerk_mitglied) return false;
+    if (filter.nicht_geoeffnet_kampagne_id && !nichtGeoeffnetSet.has(t.id)) return false;
     if (filter.tags?.length) {
       const hat = tagsProTeilnehmer.get(t.id);
       if (!hat || !filter.tags.every((id) => hat.has(id))) return false;
@@ -154,6 +172,8 @@ export type KampagnenEmpfaenger = GefilterterTeilnehmer & {
   letzteMarketingMailAm: string | null;
   /** true = letzte Mail liegt weniger als kampagnen.mindestabstand_tage zurueck */
   inSperrfrist: boolean;
+  /** A/B-Test: welcher Betreff (ohne betreff_b immer "A") */
+  variante: "A" | "B";
 };
 
 const TAG_MS = 86_400_000;
@@ -171,6 +191,7 @@ export function beschreibeFilter(filter: FilterKriterien, tagLabel: Map<string, 
   filter.seminartypen?.forEach((k) => teile.push(k));
   if (filter.kategorie2) teile.push(filter.kategorie2_modus === "nicht_besucht" ? `nicht ${filter.kategorie2}` : `+ ${filter.kategorie2}`);
   filter.teilnahme_stand?.forEach((t) => teile.push(TEILNAHME_STAND_LABEL[t] || t));
+  if (filter.nicht_geoeffnet_kampagne_id) teile.push("Nicht-Öffner einer früheren Kampagne");
   if (filter.netzwerk_mitglied) teile.push(filter.netzwerk_mitglied === "ja" ? "Netzwerk-Mitglieder" : "keine Netzwerk-Mitglieder");
   filter.tags?.forEach((id) => teile.push(`#${tagLabel.get(id) || "Tag"}`));
   return teile;
@@ -198,17 +219,36 @@ async function ladeLetzteMarketingMails(supabase: any, emails: string[]): Promis
   return ergebnis;
 }
 
+type Kampagne = {
+  id: string;
+  name: string;
+  betreff: string;
+  betreff_b: string | null;
+  inhalt: string;
+  status: string;
+  mindestabstand_tage: number;
+  baustein_signatur: boolean;
+  trotz_sperrfrist: boolean;
+  geplant_fuer: string | null;
+  filter_kriterien: FilterKriterien;
+};
+
+// A/B-Variante stabil aus Kampagne + Person ableiten: Vorschau und Versand
+// zeigen dieselbe Aufteilung, ohne sie speichern zu muessen.
+function varianteFuer(kampagneId: string, teilnehmerId: string): "A" | "B" {
+  return createHash("sha256").update(`${kampagneId}:${teilnehmerId}`).digest()[0] % 2 === 0 ? "A" : "B";
+}
+
 /**
  * Ermittelt die tatsaechlichen Empfaenger einer Kampagne (Filter live ausgewertet)
- * und rendert Betreff/Inhalt mit den Platzhaltern. Bereits ueber diese Kampagne
- * verschickte Empfaenger werden nicht erneut aufgefuehrt (Dopplungsschutz, falls
- * die Vorschau-Seite mehrfach aufgerufen oder neu geladen wird).
+ * und rendert Betreff/Inhalt. Nicht aufgefuehrt werden: bereits ueber diese
+ * Kampagne Beschickte (Dopplungsschutz, auch beim Fortsetzen eines abgebrochenen
+ * Versands) und alle Adressen der Sperrliste (Abmeldung, Bounce, Beschwerde).
  */
-export async function ermittleKampagnenEmpfaenger(
-  kampagneId: string
-): Promise<{
-  kampagne: { id: string; name: string; betreff: string; inhalt: string; status: string; mindestabstand_tage: number; baustein_signatur: boolean };
+export async function ermittleKampagnenEmpfaenger(kampagneId: string): Promise<{
+  kampagne: Kampagne;
   empfaenger: KampagnenEmpfaenger[];
+  gesperrt: { abgemeldet: number; bounce: number; beschwerde: number };
 }> {
   const supabase = getSupabaseAdmin();
   const { data: kampagne } = await supabase.from("kampagnen").select("*").eq("id", kampagneId).single();
@@ -220,109 +260,162 @@ export async function ermittleKampagnenEmpfaenger(
     .from("kampagnen_versand_log")
     .select("empfaenger_email")
     .eq("kampagne_id", kampagneId)
-    .eq("status", "gesendet");
+    .in("status", ["gesendet", "uebersprungen_frequency_cap"]);
   const bereitsVersendetSet = new Set((bereitsVersendet || []).map((r: any) => r.empfaenger_email));
 
-  // Per Abmeldelink abgemeldete Adressen (mail_abmeldungen) nie anschreiben --
-  // zusaetzlich zu marketing_consent_status, falls die Adresse nur dort steht.
-  const { data: abmeldungen } = await supabase.from("mail_abmeldungen").select("email");
-  const abgemeldet = new Set((abmeldungen || []).map((a: any) => a.email));
-  const offen = teilnehmer.filter((t) => !bereitsVersendetSet.has(t.email) && !abgemeldet.has(t.email.trim().toLowerCase()));
-  const bausteine = await ladeBausteine(supabase);
+  const sperrliste = await ladeSperrliste(supabase);
+  const gesperrt = { abgemeldet: 0, bounce: 0, beschwerde: 0 };
+  const offen = teilnehmer.filter((t) => {
+    if (bereitsVersendetSet.has(t.email)) return false;
+    const grund = sperrliste.get(t.email.trim().toLowerCase());
+    if (grund) {
+      gesperrt[grund]++;
+      return false;
+    }
+    return true;
+  });
+
   const letzteMails = await ladeLetzteMarketingMails(supabase, offen.map((t) => t.email));
   const abstandMs = Math.max(0, Number(kampagne.mindestabstand_tage ?? 4)) * TAG_MS;
   const jetzt = Date.now();
+  const bausteine = await ladeBausteine(supabase);
 
-  const empfaenger: KampagnenEmpfaenger[] = offen
-    .map((t) => {
-      const letzte = letzteMails.get(t.email.trim().toLowerCase()) || null;
-      return {
-        ...t,
-        letzteMarketingMailAm: letzte,
-        inSperrfrist: !!letzte && abstandMs > 0 && jetzt - Date.parse(letzte) < abstandMs,
-      };
-    })
-    .map((t) => ({
+  const empfaenger: KampagnenEmpfaenger[] = offen.map((t) => {
+    const letzte = letzteMails.get(t.email.trim().toLowerCase()) || null;
+    const variante = kampagne.betreff_b ? varianteFuer(kampagne.id, t.id) : "A";
+    const werte = { vorname: t.vorname, nachname: t.nachname };
+    return {
       ...t,
-      betreff: renderPlatzhalter(kampagne.betreff, { vorname: t.vorname, nachname: t.nachname }),
+      letzteMarketingMailAm: letzte,
+      inSperrfrist: !!letzte && abstandMs > 0 && jetzt - Date.parse(letzte) < abstandMs,
+      variante,
+      betreff: renderPlatzhalter(variante === "B" ? kampagne.betreff_b : kampagne.betreff, werte),
       inhaltHtml: baueMailHtml(
-        renderPlatzhalter(kampagne.inhalt, { vorname: t.vorname, nachname: t.nachname }),
+        renderPlatzhalter(kampagne.inhalt, werte),
         bausteine,
         // Werbe-Mail: Impressum/Datenschutz und Abmeldelink sind Pflicht, nur die Signatur ist abwaehlbar
         { signatur: kampagne.baustein_signatur !== false, rechtliches: true, abmelden: true },
         abmeldeUrl("t", t.id)
       ),
-    }));
+    };
+  });
 
-  return { kampagne, empfaenger };
+  return { kampagne, empfaenger, gesperrt };
 }
 
+/** Eine Test-Mail (mit den Daten des ersten Empfaengers bzw. Beispieldaten) an eine beliebige Adresse -- nicht geloggt. */
+export async function sendeKampagnenTestmail(kampagneId: string, an: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { kampagne, empfaenger } = await ermittleKampagnenEmpfaenger(kampagneId);
+  const bausteine = await ladeBausteine(supabase);
+  const beispiel = empfaenger[0];
+  const werte = beispiel ? { vorname: beispiel.vorname, nachname: beispiel.nachname } : { vorname: "Anna", nachname: "Beispiel" };
+  const resend = getResend();
+  const varianten: [string, string][] = [["A", kampagne.betreff]];
+  if (kampagne.betreff_b) varianten.push(["B", kampagne.betreff_b]);
+  for (const [v, betreff] of varianten) {
+    const { error } = await resend.emails.send({
+      from: ABSENDER,
+      to: [an],
+      subject: `[TEST${kampagne.betreff_b ? ` ${v}` : ""}] ${renderPlatzhalter(betreff, werte)}`,
+      html: baueMailHtml(
+        renderPlatzhalter(kampagne.inhalt, werte),
+        bausteine,
+        { signatur: kampagne.baustein_signatur !== false, rechtliches: true, abmelden: true },
+        "#test-abmeldelink"
+      ),
+    });
+    if (error) throw new Error(error.message);
+  }
+}
+
+const BATCH_GROESSE = 100; // Maximum der Resend-Batch-API
+
 /**
- * Verschickt eine Kampagne jetzt tatsaechlich an alle aktuell fälligen Empfaenger
- * (siehe ermittleKampagnenEmpfaenger) und protokolliert jeden Versand in
- * kampagnen_versand_log -- Tracking (Zustellung/Oeffnung/Klick) laeuft ueber
- * denselben Resend-Webhook wie bei Funnel-Mails (app/api/webhooks/resend/route.ts).
+ * Verschickt eine Kampagne (jetzt oder aus dem Planungs-Cron). Sperrt die
+ * Kampagne vorher per Statuswechsel auf "wird_versendet" -- ein Doppelklick
+ * oder ein paralleler Cron-Lauf findet dann keinen passenden Status mehr.
+ * Versand in Paketen zu 100 ueber die Resend-Batch-API: Einzelmails liefen bei
+ * 200+ Empfaengern in das Resend-Ratenlimit und die Funktions-Zeitgrenze.
+ * Bricht der Lauf ab, bleibt "wird_versendet" stehen und `fortsetzen` schickt
+ * nur noch an die, die im Log fehlen.
  */
 export async function sendeKampagneJetzt(
   kampagneId: string,
-  trotzSperrfrist = false
+  optionen: { trotzSperrfrist?: boolean; fortsetzen?: boolean } = {}
 ): Promise<{ gesendet: number; fehler: number; uebersprungen: number }> {
   const supabase = getSupabaseAdmin();
+  const erlaubt = optionen.fortsetzen ? ["wird_versendet"] : ["entwurf", "geplant"];
+  const { data: gesperrt } = await supabase
+    .from("kampagnen")
+    .update({ status: "wird_versendet" })
+    .eq("id", kampagneId)
+    .in("status", erlaubt)
+    .select("id, trotz_sperrfrist");
+  if (!gesperrt?.length) throw new Error("Diese Kampagne wird bereits versendet oder wurde schon versendet.");
+  const trotzSperrfrist = optionen.trotzSperrfrist ?? gesperrt[0].trotz_sperrfrist;
+
   const { kampagne, empfaenger } = await ermittleKampagnenEmpfaenger(kampagneId);
 
   let gesendet = 0;
   let fehler = 0;
   let uebersprungen = 0;
 
-  for (const e of empfaenger) {
-    // Innerhalb der Sperrfrist: nicht schicken, aber protokollieren -- damit
-    // spaeter nachvollziehbar ist, wer warum diese Kampagne nicht bekommen hat.
-    if (e.inSperrfrist && !trotzSperrfrist) {
-      await supabase.from("kampagnen_versand_log").insert({
+  // Innerhalb der Sperrfrist: nicht schicken, aber protokollieren -- damit
+  // spaeter nachvollziehbar ist, wer warum diese Kampagne nicht bekommen hat.
+  const ausgelassen = trotzSperrfrist ? [] : empfaenger.filter((e) => e.inSperrfrist);
+  if (ausgelassen.length) {
+    const { error } = await supabase.from("kampagnen_versand_log").insert(
+      ausgelassen.map((e) => ({
         kampagne_id: kampagneId,
         teilnehmer_id: e.id,
         empfaenger_email: e.email,
         status: "uebersprungen_frequency_cap",
         fehlermeldung: `Letzte Marketing-Mail am ${new Date(e.letzteMarketingMailAm!).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}, Mindestabstand ${kampagne.mindestabstand_tage} Tage`,
-      });
-      uebersprungen++;
-      continue;
-    }
+      }))
+    );
+    if (error) throw new Error(error.message);
+    uebersprungen = ausgelassen.length;
+  }
 
-    let status: "gesendet" | "fehler" = "gesendet";
-    let fehlermeldung: string | null = null;
-    let resendEmailId: string | null = null;
+  const zuSenden = trotzSperrfrist ? empfaenger : empfaenger.filter((e) => !e.inSperrfrist);
+  const resend = getResend();
+  for (let i = 0; i < zuSenden.length; i += BATCH_GROESSE) {
+    const paket = zuSenden.slice(i, i + BATCH_GROESSE);
+    let ids: (string | null)[] = paket.map(() => null);
+    let paketFehler: string | null = null;
     try {
-      const resend = getResend();
-      const { data, error } = await resend.emails.send({
-        from: ABSENDER,
-        to: [e.email],
-        subject: e.betreff,
-        html: e.inhaltHtml,
-        headers: abmeldeHeader("t", e.id),
-      });
-      if (error) {
-        status = "fehler";
-        fehlermeldung = error.message;
-      } else {
-        resendEmailId = data?.id || null;
-      }
+      const { data, error } = await resend.batch.send(
+        paket.map((e) => ({
+          from: ABSENDER,
+          to: [e.email],
+          subject: e.betreff,
+          html: e.inhaltHtml,
+          headers: abmeldeHeader("t", e.id),
+        })),
+        // Gleiches Paket nie doppelt (z. B. Wiederholung nach Zeitueberschreitung)
+        { idempotencyKey: `kampagne-${kampagneId}-${createHash("sha256").update(paket.map((e) => e.email).join(",")).digest("hex").slice(0, 32)}` }
+      );
+      if (error) paketFehler = error.message;
+      else ids = paket.map((_, n) => data?.data?.[n]?.id || null);
     } catch (err: any) {
-      status = "fehler";
-      fehlermeldung = err?.message || "Unbekannter Fehler beim Versand.";
+      paketFehler = err?.message || "Unbekannter Fehler beim Versand.";
     }
 
-    await supabase.from("kampagnen_versand_log").insert({
-      kampagne_id: kampagneId,
-      teilnehmer_id: e.id,
-      empfaenger_email: e.email,
-      status,
-      fehlermeldung,
-      resend_email_id: resendEmailId,
-    });
-
-    if (status === "gesendet") gesendet++;
-    else fehler++;
+    const { error: logFehler } = await supabase.from("kampagnen_versand_log").insert(
+      paket.map((e, n) => ({
+        kampagne_id: kampagneId,
+        teilnehmer_id: e.id,
+        empfaenger_email: e.email,
+        status: paketFehler ? "fehler" : "gesendet",
+        fehlermeldung: paketFehler,
+        resend_email_id: ids[n],
+        variante: kampagne.betreff_b ? e.variante : null,
+      }))
+    );
+    if (logFehler) console.error("Kampagnen-Log:", logFehler.message);
+    if (paketFehler) fehler += paket.length;
+    else gesendet += paket.length;
   }
 
   await supabase
@@ -331,4 +424,26 @@ export async function sendeKampagneJetzt(
     .eq("id", kampagneId);
 
   return { gesendet, fehler, uebersprungen };
+}
+
+/** Planungs-Cron: faellige geplante Kampagnen verschicken. */
+export async function sendeGeplanteKampagnen(): Promise<{ kampagnen: number; gesendet: number; fehler: number }> {
+  const supabase = getSupabaseAdmin();
+  const { data: faellig } = await supabase
+    .from("kampagnen")
+    .select("id")
+    .eq("status", "geplant")
+    .lte("geplant_fuer", new Date().toISOString());
+  let gesendet = 0;
+  let fehler = 0;
+  for (const k of faellig || []) {
+    try {
+      const r = await sendeKampagneJetzt(k.id);
+      gesendet += r.gesendet;
+      fehler += r.fehler;
+    } catch (e: any) {
+      console.error("Geplante Kampagne", k.id, e?.message);
+    }
+  }
+  return { kampagnen: (faellig || []).length, gesendet, fehler };
 }

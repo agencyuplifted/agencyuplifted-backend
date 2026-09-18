@@ -100,7 +100,10 @@ export async function POST(request: NextRequest) {
         .eq("id", eintrag.id);
       break;
 
-    case "email.clicked":
+    case "email.clicked": {
+      // Jeden Klick mit Link festhalten (Link-Auswertung pro Kampagne)
+      const link = (event as any)?.data?.click?.link;
+      if (link) await supabase.from("mail_klicks").insert({ resend_email_id: emailId, link: String(link).slice(0, 2000) });
       await supabase
         .from(tabelle)
         .update({
@@ -110,6 +113,7 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", eintrag.id);
       break;
+    }
 
     case "email.bounced":
       await supabase
@@ -119,13 +123,22 @@ export async function POST(request: NextRequest) {
         .is("bounced_am", null);
       break;
 
-    case "email.complained":
+    case "email.complained": {
       await supabase
         .from(tabelle)
         .update({ beschwerde_am: jetzt })
         .eq("id", eintrag.id)
         .is("beschwerde_am", null);
+      // Spam-Beschwerde = eindeutiger Wunsch, nichts mehr zu bekommen: wie eine
+      // Abmeldung behandeln (gilt dann auch fuer Kampagnen, Geburtstage usw.).
+      const { data: logZeile } = await supabase.from(tabelle).select("empfaenger_email").eq("id", eintrag.id).maybeSingle();
+      const email = String(logZeile?.empfaenger_email || "").trim().toLowerCase();
+      if (email) {
+        await supabase.from("mail_abmeldungen").upsert({ email, quelle: "beschwerde" }, { onConflict: "email", ignoreDuplicates: true });
+        await supabase.from("teilnehmer").update({ marketing_consent_status: "abgemeldet" }).ilike("email", email.replace(/[%_\\]/g, "\\$&"));
+      }
       break;
+    }
 
     default:
       // Andere Event-Typen (sent, delivery_delayed, failed, ...) werden

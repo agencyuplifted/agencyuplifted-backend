@@ -197,7 +197,7 @@ export default async function NeueKampagnePage({
             <div>
               <strong className="au-kampagne-treffer-zahl">{empfaenger.length}</strong> Empfänger:innen
               <div className="au-klein">
-                Abgemeldete sind immer ausgeschlossen.
+                Nur Personen mit Marketing-Einwilligung („abonniert“); Bounces und Spam-Beschwerden werden vor dem Versand zusätzlich ausgefiltert.
                 {ruhend > 0 && ` ${ruhend} davon vermutlich ruhend (nur zur Orientierung).`}
               </div>
             </div>
@@ -241,6 +241,9 @@ export default async function NeueKampagnePage({
 
             <label className="au-label">Betreff</label>
             <input className="au-input" name="betreff" required placeholder="z. B. Einladung: Arbeitsgruppe Unternehmerinnen" />
+
+            <label className="au-label">Betreff B (optional, A/B-Test)</label>
+            <input className="au-input" name="betreff_b" placeholder="Zweite Betreffzeile – die Empfänger werden zufällig 50/50 aufgeteilt" />
 
             <label className="au-label">Inhalt ({"{{vorname}}"} / {"{{nachname}}"} verfügbar, Zeilenumbrüche werden übernommen)</label>
             <textarea className="au-textarea" name="inhalt" required placeholder={"Hallo {{vorname}},\n\n..."} />

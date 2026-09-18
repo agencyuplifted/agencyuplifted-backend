@@ -3909,3 +3909,105 @@ a.au-kliste-name:hover {
     align-items: flex-start;
   }
 }
+
+.au-kampagne-test {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.au-kampagne-test .au-input {
+  margin: 0;
+  flex: 1;
+}
+
+.au-kampagne-empfaengerliste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 520px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+
+.au-kampagne-empfaengerliste li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 1.15rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.au-kampagne-empfaengerliste li:first-child {
+  border-top: 0;
+}
+
+.au-kampagne-empfaengerliste li.au-zeile-sperrfrist {
+  background: var(--color-warning-soft);
+}
+
+.au-kampagne-empfaenger-badges {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.au-kampagne-versand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.au-zeitpunkt-wahl {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.au-zeitpunkt-wahl label {
+  align-items: center;
+}
+
+.au-kampagne-reiter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.75rem 1.15rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.au-ab {
+  padding: 0.9rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.au-ab-variante {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.au-ab-variante.gewinner {
+  border-color: var(--color-success-border);
+  background: var(--color-success-soft);
+}
+
+.au-ab-werte {
+  display: flex;
+  gap: 0.9rem;
+  align-items: baseline;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.au-link-bruch {
+  font-size: 0.8rem;
+  word-break: break-all;
+  color: var(--color-accent);
+}

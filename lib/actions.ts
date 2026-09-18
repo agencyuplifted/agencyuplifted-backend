@@ -3389,6 +3389,7 @@ export async function erstelleKampagne(formData: FormData) {
       segment_id: segmentId,
       mindestabstand_tage: leseMindestabstand(formData),
       baustein_signatur: formData.get("baustein_signatur") === "on",
+      betreff_b: String(formData.get("betreff_b") || "").trim() || null,
     })
     .select("id")
     .single();
@@ -3397,13 +3398,94 @@ export async function erstelleKampagne(formData: FormData) {
   redirect(`/kampagnen/${data.id}/vorschau`);
 }
 
+// datetime-local ("2026-09-22T09:00") ist Berliner Ortszeit -> UTC-ISO
+function berlinZuIso(lokal: string): string {
+  const alsUtc = new Date(`${lokal}:00Z`);
+  if (isNaN(alsUtc.getTime())) throw new Error("Ungültiger Zeitpunkt.");
+  const berlin = new Date(alsUtc.toLocaleString("en-US", { timeZone: "Europe/Berlin" }));
+  const utc = new Date(alsUtc.toLocaleString("en-US", { timeZone: "UTC" }));
+  return new Date(alsUtc.getTime() - (berlin.getTime() - utc.getTime())).toISOString();
+}
+
 export async function kampagneVersandJetzt(formData: FormData) {
   await requireBackstageLogin();
   const id = String(formData.get("id"));
+  const trotzSperrfrist = formData.get("trotz_sperrfrist") === "ja";
+  const supabase = getSupabaseAdmin();
+
+  if (formData.get("zeitpunkt") === "geplant") {
+    const geplantFuer = berlinZuIso(String(formData.get("geplant_fuer") || ""));
+    if (Date.parse(geplantFuer) < Date.now() + 60_000) throw new Error("Der geplante Zeitpunkt muss in der Zukunft liegen.");
+    const { error } = await supabase
+      .from("kampagnen")
+      .update({ status: "geplant", geplant_fuer: geplantFuer, trotz_sperrfrist: trotzSperrfrist })
+      .eq("id", id)
+      .eq("status", "entwurf");
+    if (error) throw new Error(error.message);
+    revalidatePath("/kampagnen");
+    redirect("/kampagnen?geplant=1");
+  }
+
   const { sendeKampagneJetzt } = await import("./kampagnen");
-  const ergebnis = await sendeKampagneJetzt(id, formData.get("trotz_sperrfrist") === "ja");
+  const ergebnis = await sendeKampagneJetzt(id, { trotzSperrfrist });
   revalidatePath("/kampagnen");
   redirect(`/kampagnen?versendet=1&gesendet=${ergebnis.gesendet}&fehler=${ergebnis.fehler}&uebersprungen=${ergebnis.uebersprungen}`);
+}
+
+export async function kampagnePlanungAufheben(formData: FormData) {
+  await requireBackstageLogin();
+  const id = String(formData.get("id"));
+  const { error } = await getSupabaseAdmin()
+    .from("kampagnen")
+    .update({ status: "entwurf", geplant_fuer: null })
+    .eq("id", id)
+    .eq("status", "geplant");
+  if (error) throw new Error(error.message);
+  revalidatePath("/kampagnen");
+  redirect("/kampagnen");
+}
+
+export async function kampagneVersandFortsetzen(formData: FormData) {
+  await requireBackstageLogin();
+  const { sendeKampagneJetzt } = await import("./kampagnen");
+  const ergebnis = await sendeKampagneJetzt(String(formData.get("id")), { fortsetzen: true });
+  revalidatePath("/kampagnen");
+  redirect(`/kampagnen?versendet=1&gesendet=${ergebnis.gesendet}&fehler=${ergebnis.fehler}&uebersprungen=${ergebnis.uebersprungen}`);
+}
+
+export async function kampagneTestmail(formData: FormData) {
+  await requireBackstageLogin();
+  const id = String(formData.get("id"));
+  const an = String(formData.get("an") || "").trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(an)) throw new Error("Bitte eine gültige Adresse für die Test-Mail angeben.");
+  const { sendeKampagnenTestmail } = await import("./kampagnen");
+  await sendeKampagnenTestmail(id, an);
+  redirect(`/kampagnen/${id}/vorschau?test=${encodeURIComponent(an)}`);
+}
+
+// "Nochmal an alle, die nicht geoeffnet haben": neuer Entwurf mit gleichem
+// Inhalt, Filter = Nicht-Oeffner der Ursprungskampagne.
+export async function erstelleNachfassKampagne(formData: FormData) {
+  await requireBackstageLogin();
+  const id = String(formData.get("id"));
+  const supabase = getSupabaseAdmin();
+  const { data: k, error: e1 } = await supabase.from("kampagnen").select("*").eq("id", id).single();
+  if (e1 || !k) throw new Error("Kampagne nicht gefunden.");
+  const { data, error } = await supabase
+    .from("kampagnen")
+    .insert({
+      name: `${k.name} – Nachfass`,
+      betreff: k.betreff,
+      inhalt: k.inhalt,
+      filter_kriterien: { nicht_geoeffnet_kampagne_id: k.id },
+      mindestabstand_tage: k.mindestabstand_tage,
+      baustein_signatur: k.baustein_signatur,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/kampagnen");
+  redirect(`/kampagnen/${data.id}/vorschau`);
 }
 
 export async function loescheKampagnenEntwurf(formData: FormData) {

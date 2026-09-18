@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from "./supabase";
 import { getResend, ABSENDER } from "./email";
 import { formatDatum, splitName } from "./format";
 import { seminarLinks } from "./seminar-links";
-import { ladeBausteine, schalterAus, baueMailHtml, abmeldeUrl, abmeldeHeader, type AbmeldeTyp } from "./mail-bausteine";
+import { ladeBausteine, schalterAus, baueMailHtml, abmeldeUrl, abmeldeHeader, ladeSperrliste, type AbmeldeTyp } from "./mail-bausteine";
 
 // Diese beiden Mails verschickt der Code direkt (Buchungseingang in
 // app/api/public/buchungen, Zahlungsbestaetigung in bestaetigeBuchung) --
@@ -240,8 +240,8 @@ async function ermittleFaelligeEintraege(
   const bausteine = await ladeBausteine(supabase);
   // Wer sich per Abmeldelink abgemeldet hat, bekommt keine Funnel-Mail mehr --
   // gilt auch fuer Leads/Warteliste, die kein marketing_consent_status haben.
-  const { data: abmeldungen } = await supabase.from("mail_abmeldungen").select("email");
-  const abgemeldet = new Set((abmeldungen || []).map((a: any) => a.email));
+  // Dazu Bounces und Spam-Beschwerden (ladeSperrliste).
+  const abgemeldet = await ladeSperrliste(supabase);
 
   // Tag-Bedingungen: nur laden, wenn eine aktive Mail sie nutzt
   const tagsProTeilnehmer = new Map<string, Set<string>>();

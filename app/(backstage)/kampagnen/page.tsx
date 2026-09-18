@@ -15,9 +15,9 @@ const prozent = (teil: number, ganz: number) => (ganz ? Math.round((teil / ganz)
 export default async function KampagnenPage({
   searchParams,
 }: {
-  searchParams: Promise<{ versendet?: string; gesendet?: string; fehler?: string; uebersprungen?: string }>;
+  searchParams: Promise<{ versendet?: string; gesendet?: string; fehler?: string; uebersprungen?: string; geplant?: string }>;
 }) {
-  const { versendet, gesendet, fehler, uebersprungen } = await searchParams;
+  const { versendet, gesendet, fehler, uebersprungen, geplant } = await searchParams;
   const supabase = getSupabaseAdmin();
 
   const [{ data: kampagnen }, { data: logZeilen }, { data: segmente }, { data: tags }, { count: abmeldungen }, bausteine] = await Promise.all([
@@ -43,6 +43,9 @@ export default async function KampagnenPage({
   });
 
   const entwuerfe = (kampagnen || []).filter((k: any) => k.status === "entwurf");
+  const geplante = (kampagnen || [])
+    .filter((k: any) => k.status === "geplant" || k.status === "wird_versendet")
+    .sort((x: any, y: any) => String(x.geplant_fuer || "").localeCompare(String(y.geplant_fuer || "")));
   const versendetListe = (kampagnen || []).filter((k: any) => k.status === "versendet");
   const summe = versendetListe.reduce(
     (acc: Stats, k: any) => {
@@ -72,6 +75,7 @@ export default async function KampagnenPage({
           Kampagne versendet: {gesendet} E-Mail(s) verschickt, {fehler} Fehler{Number(uebersprungen) > 0 ? `, ${uebersprungen} wegen Sperrfrist ausgelassen` : ""}.
         </div>
       )}
+      {geplant && <div className="au-banner au-banner-success">Kampagne eingeplant – sie geht zum gewählten Zeitpunkt automatisch raus.</div>}
       {fussUnvollstaendig && (
         <div className="au-banner au-banner-warning">
           Die Firmenangaben für die Fußzeile fehlen noch – Werbe-Mails brauchen eine vollständige Anbieterkennzeichnung.{" "}
@@ -104,6 +108,33 @@ export default async function KampagnenPage({
 
       <div className="au-dash-raster">
         <div className="au-dash-haupt">
+          {geplante.length > 0 && (
+            <section className="au-panel">
+              <div className="au-panel-kopf">
+                <h2 style={{ margin: 0 }}>Geplant</h2>
+                <span className="au-klein">{geplante.length}</span>
+              </div>
+              <ul className="au-kliste">
+                {geplante.map((k: any) => (
+                  <li key={k.id}>
+                    <div className="au-kliste-haupt">
+                      <Link href={`/kampagnen/${k.id}/vorschau`} className="au-kliste-name">{k.name}</Link>
+                      <span className="au-kliste-betreff">{k.betreff}</span>
+                    </div>
+                    <div className="au-kliste-aktionen">
+                      {k.status === "wird_versendet" ? (
+                        <span className="au-badge au-badge-warning">Versand läuft / unterbrochen</span>
+                      ) : (
+                        <span className="au-badge au-badge-neutral">{formatDatumZeit(k.geplant_fuer)}</span>
+                      )}
+                      <Link href={`/kampagnen/${k.id}/vorschau`} className="au-panel-link">öffnen →</Link>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <section className="au-panel">
             <div className="au-panel-kopf">
               <h2 style={{ margin: 0 }}>Entwürfe</h2>
@@ -156,7 +187,7 @@ export default async function KampagnenPage({
                   return (
                     <li key={k.id}>
                       <div className="au-kliste-haupt">
-                        <span className="au-kliste-name">{k.name}</span>
+                        <Link href={`/kampagnen/${k.id}`} className="au-kliste-name">{k.name}</Link>
                         <span className="au-kliste-betreff">{k.betreff}</span>
                         <span className="au-kliste-filter">
                           {filter.map((f) => <span key={f} className="au-etikett">{f}</span>)}
@@ -228,7 +259,7 @@ export default async function KampagnenPage({
             <ul className="au-kampagne-regeln">
               <li><strong>Sperrfrist:</strong> Wer in den letzten Tagen schon eine Mail bekommen hat, wird standardmäßig ausgelassen und protokolliert.</li>
               <li><strong>Fußzeile:</strong> Impressum, Datenschutz und persönlicher Abmeldelink hängen immer dran. <Link href="/funnel?mail=bausteine">Bausteine bearbeiten</Link></li>
-              <li><strong>Abgemeldete</strong> werden nie angeschrieben – egal welcher Filter.</li>
+              <li><strong>Nur mit Einwilligung:</strong> Kampagnen gehen ausschließlich an „abonniert“. Abgemeldete, Bounces und Spam-Beschwerden sind gesperrt.</li>
               <li><strong>Automatische Mails</strong> (Erinnerungen, Anschluss-Angebote) laufen über die <Link href="/funnel">Funnel-Mails</Link>.</li>
             </ul>
           </section>
