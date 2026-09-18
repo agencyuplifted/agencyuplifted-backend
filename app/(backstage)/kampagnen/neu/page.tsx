@@ -4,6 +4,8 @@ import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { erstelleKampagne } from "@/lib/actions";
 import { ladeTeilnehmerFuerFilter, TEILNAHME_STAND_LABEL, type FilterKriterien } from "@/lib/kampagnen";
+import { ladeBausteine } from "@/lib/mail-bausteine";
+import InhaltMitLinkCheck from "./InhaltMitLinkCheck";
 
 export default async function NeueKampagnePage({
   searchParams,
@@ -53,7 +55,7 @@ export default async function NeueKampagnePage({
     };
   }
 
-  const empfaenger = await ladeTeilnehmerFuerFilter(filter);
+  const [empfaenger, bausteine] = await Promise.all([ladeTeilnehmerFuerFilter(filter), ladeBausteine(supabase)]);
 
   const anredeWert = filter.anrede?.[0] || "";
   const rolleWert = filter.rolle?.[0] || "";
@@ -246,7 +248,12 @@ export default async function NeueKampagnePage({
             <input className="au-input" name="betreff_b" placeholder="Zweite Betreffzeile – die Empfänger werden zufällig 50/50 aufgeteilt" />
 
             <label className="au-label">Inhalt ({"{{vorname}}"} / {"{{nachname}}"} verfügbar, Zeilenumbrüche werden übernommen)</label>
-            <textarea className="au-textarea" name="inhalt" required placeholder={"Hallo {{vorname}},\n\n..."} />
+            <InhaltMitLinkCheck
+              fusszeile={[
+                { label: "Impressum", url: bausteine.impressum_url },
+                { label: "Datenschutz", url: bausteine.datenschutz_url },
+              ]}
+            />
 
             <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontWeight: 400, marginBottom: "0.5rem", fontSize: "0.9rem" }}>
               <input type="checkbox" name="baustein_signatur" defaultChecked /> Signatur anhängen

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { baueMailHtml, schalterAus, BEISPIEL_WERTE, type MailBausteine } from "@/lib/mail-html";
+import LinkChecker from "../LinkChecker";
 
 type Platzhalter = { key: string; beschreibung: string; verfuegbarBei: string[] };
 
@@ -203,6 +204,18 @@ export default function FunnelEditor({
         onFocus={() => (zuletzt.current = "inhalt")}
         placeholder={"Hallo {{vorname}},\n\nnur noch wenige Tage bis {{seminartitel}} am {{datum_start}}.\n\nViele Grüße"}
       />
+      <LinkChecker
+        text={`${betreff}\n${inhalt}`}
+        zusatzLinks={
+          mitRechtlichem
+            ? [
+                { label: "Impressum", url: bausteine.impressum_url },
+                { label: "Datenschutz", url: bausteine.datenschutz_url },
+              ]
+            : []
+        }
+      />
+
       <div className="au-fe-bausteine">
         <span className="au-label" style={{ margin: 0 }}>Automatisch anhängen</span>
         <label><input type="checkbox" name="baustein_signatur" checked={mitSignatur} onChange={(e) => setMitSignatur(e.target.checked)} /> Signatur</label>

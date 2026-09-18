@@ -16,6 +16,9 @@ import {
 import { ermittleKampagnenEmpfaenger } from "@/lib/kampagnen";
 import { formatDatumZeit } from "@/lib/format";
 import BestaetigenButton from "./BestaetigenButton";
+import LinkChecker from "../../../LinkChecker";
+import { ladeBausteine } from "@/lib/mail-bausteine";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export default async function KampagnenVorschauPage({
   params,
@@ -26,7 +29,7 @@ export default async function KampagnenVorschauPage({
 }) {
   const { id } = await params;
   const { test } = await searchParams;
-  const { kampagne, empfaenger, gesperrt } = await ermittleKampagnenEmpfaenger(id);
+  const [{ kampagne, empfaenger, gesperrt }, bausteine] = await Promise.all([ermittleKampagnenEmpfaenger(id), ladeBausteine(getSupabaseAdmin())]);
   if (kampagne.status === "versendet") redirect(`/kampagnen/${id}`);
 
   const inSperrfrist = empfaenger.filter((e) => e.inSperrfrist).length;
@@ -135,6 +138,15 @@ export default async function KampagnenVorschauPage({
           ) : (
             <p className="au-leer" style={{ padding: "1rem 1.15rem", margin: 0 }}>Keine Empfänger – nichts zu zeigen.</p>
           )}
+          <div style={{ padding: "0 1.15rem 1rem" }}>
+            <LinkChecker
+              text={[kampagne.betreff, kampagne.betreff_b || "", kampagne.inhalt].join("\n")}
+              zusatzLinks={[
+                { label: "Impressum", url: bausteine.impressum_url },
+                { label: "Datenschutz", url: bausteine.datenschutz_url },
+              ]}
+            />
+          </div>
           <form action={kampagneTestmail} className="au-kampagne-test">
             <input type="hidden" name="id" value={kampagne.id} />
             <label className="au-klein" htmlFor="test-an">Test-Mail an</label>
