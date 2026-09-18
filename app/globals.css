@@ -1758,3 +1758,338 @@ details summary {
     font-size: 16px;
   }
 }
+
+/* ---------- Dashboard (Kopf, Kennzahlen, Panels) ---------- */
+
+.au-dash-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.au-dash-kopf h1 {
+  margin: 0;
+  font-size: 1.65rem;
+}
+
+.au-dash-datum {
+  margin: 0 0 0.2rem;
+  font-size: 0.82rem;
+  color: var(--color-text-faint);
+}
+
+.au-dash-aktionen {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.au-seitentabs {
+  display: flex;
+  gap: 1.4rem;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.au-seitentabs a {
+  padding: 0.55rem 0 0.7rem;
+  font-size: 0.87rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.au-seitentabs a:hover {
+  color: var(--color-text);
+}
+
+.au-seitentabs a.aktiv {
+  color: var(--color-accent);
+  font-weight: 600;
+  border-bottom-color: var(--color-accent);
+}
+
+.au-kennzahlen {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.au-kennzahl {
+  display: block;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.15rem;
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+a.au-kennzahl:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.au-kennzahl-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.au-kennzahl-wert {
+  font-size: 1.75rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  margin: 0.25rem 0 0.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-kennzahl-kontext {
+  font-size: 0.78rem;
+  color: var(--color-text-faint);
+}
+
+.au-dash-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-bottom: 1.25rem;
+}
+
+.au-dash-haupt,
+.au-dash-seite {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.au-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.au-panel-breit {
+  margin-bottom: 1.5rem;
+}
+
+.au-panel-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.15rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.au-panel-kopf h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.au-panel-inhalt {
+  padding: 0.85rem 1.15rem 1rem;
+}
+
+.au-panel-inhalt > .au-table:last-child,
+.au-panel-inhalt > div:last-child > .au-table {
+  margin-bottom: 0;
+}
+
+.au-panel-link {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.au-panel-link:hover {
+  text-decoration: underline;
+}
+
+.au-panel-filter {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.au-panel-filter .au-select {
+  width: auto;
+  margin: 0;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+}
+
+.au-terminliste,
+.au-kompaktliste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.au-terminliste li + li,
+.au-kompaktliste li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.au-terminzeile {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.6rem 0.25rem;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+}
+
+.au-terminzeile:hover {
+  background: var(--color-bg);
+}
+
+.au-termin-datum {
+  width: 44px;
+  flex-shrink: 0;
+  text-align: center;
+  border-left: 3px solid var(--color-accent);
+  padding-left: 0.25rem;
+  line-height: 1.1;
+}
+
+.au-termin-datum strong {
+  display: block;
+  font-size: 1.15rem;
+}
+
+.au-termin-datum span {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.au-termin-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.au-termin-text strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.au-termin-belegung {
+  width: 96px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.au-belegung-balken {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--color-border);
+  margin-top: 0.25rem;
+  overflow: hidden;
+}
+
+.au-belegung-balken > span {
+  display: block;
+  height: 100%;
+  background: var(--color-success);
+}
+
+.au-kompaktliste li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  font-size: 0.88rem;
+}
+
+.au-summenleiste {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--color-border);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.au-summenleiste > div {
+  background: var(--color-bg);
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.au-summenleiste span {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.au-summenleiste strong {
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-fussnote {
+  margin: 0.75rem 0 0;
+  font-size: 0.76rem;
+  color: var(--color-text-faint);
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .au-kennzahlen {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  /* minmax(0, ...) statt 1fr: sonst dehnen nicht umbrechende Termintitel
+     die Spalte ueber die Bildschirmbreite hinaus. */
+  .au-dash-raster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .au-termin-belegung {
+    width: 64px;
+  }
+
+  .au-summenleiste {
+    grid-template-columns: 1fr;
+  }
+
+  .au-kennzahl-wert {
+    font-size: 1.4rem;
+  }
+
+  .au-panel-filter .au-select {
+    font-size: 16px;
+  }
+}

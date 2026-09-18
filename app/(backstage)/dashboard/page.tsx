@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatEURBrutto, formatDatum } from "@/lib/format";
 import { ladeAnstehendeGeburtstage } from "@/lib/geburtstage";
 import FaelligWidget from "../wiedervorlage/FaelligWidget";
+import { getAktuellerBenutzer } from "@/lib/auth";
 
 type Ansicht = "uebersicht" | "nachfrage" | "auslastung" | "kunden" | "vertrieb";
 
@@ -39,16 +40,15 @@ export default async function DashboardPage({
 
   return (
     <main>
-      <h1>Dashboard</h1>
-      <p>Auswertungen über Teilnehmer, Buchungen, Nachfrage und Vertrieb — kombiniert aus Altdaten (Alt-System-Import) und dem neuen System.</p>
+      <DashboardKopf />
 
-      <div className="au-tabs">
+      <nav className="au-seitentabs" aria-label="Dashboard-Ansichten">
         {TABS.map((t) => (
-          <Link key={t.key} href={`/dashboard?ansicht=${t.key}`} className={`au-tab ${t.key === ansicht ? "au-tab-active" : ""}`}>
+          <Link key={t.key} href={`/dashboard?ansicht=${t.key}`} className={t.key === ansicht ? "aktiv" : ""} aria-current={t.key === ansicht ? "page" : undefined}>
             {t.label}
           </Link>
         ))}
-      </div>
+      </nav>
 
       {ansicht === "uebersicht" && <Uebersicht supabase={supabase} heute={heute} jahr={jahr} seminartypFilter={seminartyp} />}
       {ansicht === "nachfrage" && <Nachfrage supabase={supabase} />}
@@ -56,6 +56,57 @@ export default async function DashboardPage({
       {ansicht === "kunden" && <Kunden supabase={supabase} />}
       {ansicht === "vertrieb" && <Vertrieb supabase={supabase} />}
     </main>
+  );
+}
+
+// Begruessung + Datum + Schnellaktionen -- nach dem ueblichen Muster fuer
+// Admin-Dashboards: oben orientieren ("wo bin ich, was ist heute"), die
+// haeufigsten Aktionen direkt erreichbar.
+async function DashboardKopf() {
+  const benutzer = await getAktuellerBenutzer();
+  const jetzt = new Date();
+  const stunde = Number(new Intl.DateTimeFormat("de-DE", { hour: "numeric", hour12: false, timeZone: "Europe/Berlin" }).format(jetzt));
+  const gruss = stunde < 11 ? "Guten Morgen" : stunde < 18 ? "Hallo" : "Guten Abend";
+  const vorname = benutzer?.name?.split(" ")[0];
+  const datum = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Berlin" }).format(jetzt);
+  return (
+    <header className="au-dash-kopf">
+      <div>
+        <p className="au-dash-datum">{datum}</p>
+        <h1>{gruss}{vorname ? `, ${vorname}` : ""}</h1>
+      </div>
+      <div className="au-dash-aktionen">
+        <Link href="/buchungen/neu" className="au-btn au-btn-primary au-btn-sm" prefetch={false}>+ Neue Buchung</Link>
+        <Link href="/termine/neu" className="au-btn au-btn-secondary au-btn-sm" prefetch={false}>+ Neuer Termin</Link>
+      </div>
+    </header>
+  );
+}
+
+function Kennzahl({ label, wert, kontext, href }: { label: string; wert: React.ReactNode; kontext?: React.ReactNode; href?: string }) {
+  const inhalt = (
+    <>
+      <div className="au-kennzahl-label">{label}</div>
+      <div className="au-kennzahl-wert">{wert}</div>
+      {kontext && <div className="au-kennzahl-kontext">{kontext}</div>}
+    </>
+  );
+  return href ? (
+    <Link href={href} className="au-kennzahl" prefetch={false}>{inhalt}</Link>
+  ) : (
+    <div className="au-kennzahl">{inhalt}</div>
+  );
+}
+
+function Panel({ titel, aktion, children, className }: { titel: string; aktion?: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <section className={`au-panel ${className || ""}`}>
+      <div className="au-panel-kopf">
+        <h2>{titel}</h2>
+        {aktion}
+      </div>
+      <div className="au-panel-inhalt">{children}</div>
+    </section>
   );
 }
 
@@ -70,113 +121,105 @@ async function Uebersicht({
   jahr: number;
   seminartypFilter?: string;
 }) {
+  const in30Tagen = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
   const [
     { count: teilnehmerCount },
     { count: orgaCount },
     { count: terminCount },
+    { count: termine30 },
     { count: legacyCount },
     { count: leadsOffen },
     { count: wartelisteCount },
     { data: positionen },
+    { data: naechsteTermine },
   ] = await Promise.all([
     supabase.from("teilnehmer").select("*", { count: "exact", head: true }).is("deaktiviert_am", null),
     supabase.from("organisationen").select("*", { count: "exact", head: true }).is("deaktiviert_am", null),
     supabase.from("seminartermine").select("*", { count: "exact", head: true }).gte("datum_start", heute).in("status", ["geplant", "bestaetigt", "unterbesetzt"]),
+    supabase.from("seminartermine").select("*", { count: "exact", head: true }).gte("datum_start", heute).lte("datum_start", in30Tagen).in("status", ["geplant", "bestaetigt", "unterbesetzt"]),
     supabase.from("legacy_buchungen").select("*", { count: "exact", head: true }),
     supabase.from("leads").select("*", { count: "exact", head: true }).not("status", "in", "(gebucht,kein_interesse)"),
     supabase.from("warteliste").select("*", { count: "exact", head: true }),
     supabase.from("buchungspositionen").select("preis, buchungen!inner(status)").neq("buchungen.status", "storniert"),
+    supabase
+      .from("seminartermine")
+      .select("id, titel, kennung, datum_start, datum_ende, zeit_start, format, kapazitaet, seminartypen(name, farbe), veranstaltungsorte(name, ort)")
+      .gte("datum_start", heute)
+      .in("status", ["geplant", "bestaetigt", "unterbesetzt"])
+      .order("datum_start", { ascending: true })
+      .limit(5),
   ]);
 
   const umsatzNetto = (positionen || []).reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0);
 
-  const { data: naechsteTermine } = await supabase
-    .from("seminartermine")
-    .select("id, titel, datum_start, zeit_start, format, seminartypen(name), veranstaltungsorte(name)")
-    .gte("datum_start", heute)
-    .in("status", ["geplant", "bestaetigt", "unterbesetzt"])
-    .order("datum_start", { ascending: true })
-    .limit(5);
+  // Belegung der naechsten Termine: gebuchte Plaetze (ohne Stornos) plus
+  // zugeordnete Altdaten -- gleiche Quelle wie "Umsatz pro Seminar".
+  const terminIds = (naechsteTermine || []).map((t: any) => t.id);
+  const [{ data: belegtNeu }, { data: belegtAlt }] = await Promise.all([
+    terminIds.length
+      ? supabase.from("buchungspositionen").select("seminartermin_id, buchungen!inner(status)").in("seminartermin_id", terminIds).neq("buchungen.status", "storniert")
+      : Promise.resolve({ data: [] }),
+    terminIds.length ? supabase.from("legacy_buchungen").select("seminartermin_id").in("seminartermin_id", terminIds) : Promise.resolve({ data: [] }),
+  ]);
+  const belegt = new Map<string, number>();
+  [...(belegtNeu || []), ...(belegtAlt || [])].forEach((b: any) => belegt.set(b.seminartermin_id, (belegt.get(b.seminartermin_id) || 0) + 1));
 
   return (
     <>
-      <FaelligWidget />
-      <div className="au-kpi-grid">
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{teilnehmerCount ?? 0}</div>
-          <div className="au-kpi-label">Teilnehmer (aktiv)</div>
+      <div className="au-kennzahlen">
+        <Kennzahl label="Anstehende Seminare" wert={terminCount ?? 0} kontext={`${termine30 ?? 0} in den nächsten 30 Tagen`} href="/termine" />
+        <Kennzahl label="Offene Leads" wert={leadsOffen ?? 0} kontext={`${wartelisteCount ?? 0} auf der Warteliste`} href="/leads" />
+        <Kennzahl label="Umsatz netto" wert={formatEUR(umsatzNetto)} kontext={`brutto ${formatEURBrutto(umsatzNetto)} · neues System`} href="/buchungen" />
+        <Kennzahl label="Teilnehmer" wert={teilnehmerCount ?? 0} kontext={`${orgaCount ?? 0} Organisationen · ${legacyCount ?? 0} Alt-Teilnahmen`} href="/teilnehmer" />
+      </div>
+
+      <div className="au-dash-raster">
+        <div className="au-dash-haupt">
+          <FaelligWidget />
+
+          <Panel titel="Nächste Seminare" aktion={<Link href="/termine" className="au-panel-link" prefetch={false}>Alle Termine →</Link>}>
+            {!naechsteTermine?.length && <p className="au-leer">Keine anstehenden Termine.</p>}
+            <ul className="au-terminliste">
+              {(naechsteTermine || []).map((t: any) => {
+                const anzahl = belegt.get(t.id) || 0;
+                const kapazitaet = Number(t.kapazitaet) || 0;
+                const anteil = kapazitaet ? Math.min(1, anzahl / kapazitaet) : 0;
+                const d = new Date(t.datum_start);
+                return (
+                  <li key={t.id}>
+                    <Link href={`/termine/${t.id}`} className="au-terminzeile" prefetch={false}>
+                      <span className="au-termin-datum" style={t.seminartypen?.farbe ? { borderColor: t.seminartypen.farbe } : undefined}>
+                        <strong>{d.getUTCDate()}</strong>
+                        <span>{d.toLocaleDateString("de-DE", { month: "short", timeZone: "UTC" })}</span>
+                      </span>
+                      <span className="au-termin-text">
+                        <strong>{t.titel || t.seminartypen?.name}</strong>
+                        <span className="au-klein">
+                          {[t.kennung, t.veranstaltungsorte?.ort || t.veranstaltungsorte?.name, t.format === "online" ? "online" : null].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                      {kapazitaet > 0 && (
+                        <span className="au-termin-belegung" title={`${anzahl} von ${kapazitaet} Plätzen belegt`}>
+                          <span className="au-klein">{anzahl}/{kapazitaet}</span>
+                          <span className="au-belegung-balken"><span style={{ width: `${anteil * 100}%` }} /></span>
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </Panel>
         </div>
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{orgaCount ?? 0}</div>
-          <div className="au-kpi-label">Organisationen (aktiv)</div>
-        </div>
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{terminCount ?? 0}</div>
-          <div className="au-kpi-label">Anstehende Seminartermine</div>
-        </div>
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{formatEUR(umsatzNetto)}</div>
-          <div className="au-kpi-label">Umsatz netto (neues System, nicht storniert)</div>
-        </div>
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{leadsOffen ?? 0}</div>
-          <div className="au-kpi-label">Offene Leads</div>
-        </div>
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{wartelisteCount ?? 0}</div>
-          <div className="au-kpi-label">Wartelisten-Einträge</div>
-        </div>
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{legacyCount ?? 0}</div>
-          <div className="au-kpi-label">Historische Teilnahmen (Altdaten)</div>
+
+        <div className="au-dash-seite">
+          <Panel titel="Geburtstage" aktion={<Link href="/geburtstage" className="au-panel-link" prefetch={false}>Alle →</Link>}>
+            <NaechsteGeburtstage />
+          </Panel>
         </div>
       </div>
 
       <UmsatzProSeminar supabase={supabase} jahr={jahr} seminartypFilter={seminartypFilter} />
-
-      <div className="au-card">
-        <h2>Nächste Termine</h2>
-        {!naechsteTermine?.length && <p style={{ margin: 0 }}>Keine anstehenden Termine.</p>}
-        {!!naechsteTermine?.length && (
-          <table className="au-table">
-            <thead>
-              <tr>
-                <th>Titel</th>
-                <th>Datum</th>
-                <th>Ort</th>
-                <th>Format</th>
-              </tr>
-            </thead>
-            <tbody>
-              {naechsteTermine.map((t: any) => (
-                <tr key={t.id}>
-                  <td><Link href={`/termine/${t.id}`}>{t.titel || t.seminartypen?.name}</Link></td>
-                  <td>{formatDatum(t.datum_start)}{t.zeit_start ? `, ${t.zeit_start.slice(0, 5)} Uhr` : ""}</td>
-                  <td>{t.veranstaltungsorte?.name || "—"}</td>
-                  <td>{t.format}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <div style={{ marginTop: "0.75rem" }}>
-          <Link href="/termine" className="au-btn au-btn-secondary au-btn-sm">Alle Termine ansehen →</Link>
-        </div>
-      </div>
-      <div className="au-card">
-        <h2>Nächste Geburtstage (14 Tage)</h2>
-        <NaechsteGeburtstage />
-        <div style={{ marginTop: "0.75rem" }}>
-          <Link href="/geburtstage" className="au-btn au-btn-secondary au-btn-sm">Alle Geburtstage ansehen →</Link>
-        </div>
-      </div>
-      <div className="au-card">
-        <p style={{ fontSize: "0.85rem", margin: 0 }}>
-          Hinweis: Der Umsatz-Wert bezieht sich nur auf Buchungen, die im neuen System erfasst wurden — bei den
-          historischen Altdaten aus dem Alt-System wurden keine Preise übernommen. Alle Preise netto, zzgl. 19% USt. (brutto:{" "}
-          {formatEURBrutto(umsatzNetto)}).
-        </p>
-      </div>
     </>
   );
 }
@@ -184,27 +227,19 @@ async function Uebersicht({
 async function NaechsteGeburtstage() {
   const eintraege = await ladeAnstehendeGeburtstage(14);
   if (!eintraege.length) {
-    return <p style={{ margin: 0 }}>Keine Geburtstage in den nächsten 14 Tagen.</p>;
+    return <p className="au-leer">Keine Geburtstage in den nächsten 14 Tagen.</p>;
   }
   return (
-    <table className="au-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Geburtstag</th>
-          <th>Wann</th>
-        </tr>
-      </thead>
-      <tbody>
-        {eintraege.slice(0, 8).map((e) => (
-          <tr key={`${e.quelle}-${e.id}`}>
-            <td><Link href={e.detailHref}>{e.name}</Link></td>
-            <td>{formatDatum(e.geburtsdatum)}</td>
-            <td>{e.tageBis === 0 ? "Heute!" : e.tageBis === 1 ? "Morgen" : `in ${e.tageBis} Tagen`}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <ul className="au-kompaktliste">
+      {eintraege.slice(0, 8).map((e) => (
+        <li key={`${e.quelle}-${e.id}`}>
+          <Link href={e.detailHref} prefetch={false}>{e.name}</Link>
+          <span className={e.tageBis <= 1 ? "au-text-warning" : "au-klein"}>
+            {e.tageBis === 0 ? "heute" : e.tageBis === 1 ? "morgen" : `in ${e.tageBis} Tagen`}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -283,49 +318,31 @@ async function UmsatzProSeminar({
   const jahre = [jahr - 2, jahr - 1, jahr, jahr + 1];
 
   return (
-    <div className="au-card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-        <h2 style={{ margin: 0 }}>Umsatz pro Seminar</h2>
-        <Link href="/einstellungen" className="au-btn au-btn-secondary au-btn-sm" title="Fremdkosten-Pauschale einstellen">
-          ⚙ Einstellungen
-        </Link>
-      </div>
-
-      <form method="get" style={{ display: "flex", gap: "0.6rem", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1rem" }}>
-        <input type="hidden" name="ansicht" value="uebersicht" />
-        <div>
-          <label style={{ display: "block", fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Zeitraum</label>
-          <select name="jahr" defaultValue={jahr}>
+    <Panel
+      titel={`Umsatz pro Seminar ${jahr}`}
+      className="au-panel-breit"
+      aktion={
+        <form method="get" className="au-panel-filter">
+          <input type="hidden" name="ansicht" value="uebersicht" />
+          <select name="jahr" defaultValue={jahr} aria-label="Jahr" className="au-select">
             {jahre.map((j) => (
               <option key={j} value={j}>{j}</option>
             ))}
           </select>
-        </div>
-        <div>
-          <label style={{ display: "block", fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Seminar</label>
-          <select name="seminartyp" defaultValue={seminartypFilter || ""}>
+          <select name="seminartyp" defaultValue={seminartypFilter || ""} aria-label="Seminar" className="au-select">
             <option value="">Alle Seminare</option>
             {(seminartypen || []).map((s: any) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
-        </div>
-        <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Filtern</button>
-      </form>
-
-      <div className="au-kpi-grid">
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{formatEUR(gesamtUmsatz)}</div>
-          <div className="au-kpi-label">Gesamtumsatz netto ({jahr})</div>
-        </div>
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{formatEUR(gesamtFremdkosten)}</div>
-          <div className="au-kpi-label">Fremdkosten geschätzt (à {formatEUR(fremdkostenProPerson)}/Person)</div>
-        </div>
-        <div className="au-kpi-card">
-          <div className="au-kpi-value">{formatEUR(Math.round(gesamtDb))}</div>
-          <div className="au-kpi-label">Deckungsbeitrag geschätzt ({jahr})</div>
-        </div>
+          <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Anzeigen</button>
+        </form>
+      }
+    >
+      <div className="au-summenleiste">
+        <div><span>Umsatz netto</span><strong>{formatEUR(gesamtUmsatz)}</strong></div>
+        <div><span>Fremdkosten (geschätzt)</span><strong>{formatEUR(gesamtFremdkosten)}</strong></div>
+        <div><span>Deckungsbeitrag (geschätzt)</span><strong>{formatEUR(Math.round(gesamtDb))}</strong></div>
       </div>
 
       <div style={{ overflowX: "auto" }}>
@@ -343,11 +360,11 @@ async function UmsatzProSeminar({
           <tbody>
             {zeilen.map((z: any) => (
               <tr key={z.id}>
-                <td><Link href={`/termine/${z.id}`}>{z.titel || z.seminartypen?.name}{z.kennung ? ` (${z.kennung})` : ""}</Link></td>
-                <td>{formatDatum(z.datum_start)}</td>
+                <td><Link href={`/termine/${z.id}`} prefetch={false}>{z.titel || z.seminartypen?.name}{z.kennung ? ` (${z.kennung})` : ""}</Link></td>
+                <td style={{ whiteSpace: "nowrap" }}>{formatDatum(z.datum_start)}</td>
                 <td style={{ textAlign: "right" }}>{z.personen}</td>
                 <td style={{ textAlign: "right" }}>{formatEUR(z.umsatz)}</td>
-                <td style={{ textAlign: "right" }}>{formatEUR(z.fremdkosten)}</td>
+                <td style={{ textAlign: "right", color: "var(--color-text-muted)" }}>{formatEUR(z.fremdkosten)}</td>
                 <td style={{ textAlign: "right", fontWeight: 600 }}>{formatEUR(Math.round(z.db))}</td>
               </tr>
             ))}
@@ -358,13 +375,12 @@ async function UmsatzProSeminar({
         </table>
       </div>
 
-      <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: "0.75rem" }}>
-        Fremdkosten sind eine Schätzung: Personen (Teilnehmer + Mitarbeiter + Gastreferenten) × Pauschale pro Kopf
-        (aktuell {formatEUR(fremdkostenProPerson)} netto, einstellbar unter „Einstellungen"). Nur Buchungen aus dem
-        neuen System (mit hinterlegtem Preis) fließen in den Umsatz ein; stornierte Seminare und Buchungen sind
-        ausgeschlossen.
+      <p className="au-fussnote">
+        Fremdkosten = Personen (Teilnehmer, Mitarbeiter, Gastreferenten) × {formatEUR(fremdkostenProPerson)} netto pro Kopf,{" "}
+        <Link href="/einstellungen" prefetch={false}>einstellbar</Link>. Umsatz nur aus Buchungen des neuen Systems (Altdaten haben keine Preise);
+        Stornos ausgeschlossen. Alle Beträge netto zzgl. 19 % USt.
       </p>
-    </div>
+    </Panel>
   );
 }
 

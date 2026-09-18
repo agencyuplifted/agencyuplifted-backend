@@ -30,17 +30,18 @@ export default async function FaelligWidget() {
   const woche = punkte.filter((p) => p.datum > heute);
 
   return (
-    <div className="au-card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1rem", flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0 }}>Heute fällig / diese Woche</h2>
-        <span className="au-klein">
-          <Link href="/wiedervorlage">Alle Wiedervorlagen →</Link>
-          {unsortiert > 0 && <> · <Link href="/inbox?typ=unsortiert">{unsortiert} unsortierte Ideen</Link></>}
+    <section className="au-panel">
+      <div className="au-panel-kopf">
+        <h2>Heute fällig &amp; diese Woche</h2>
+        <span className="au-klein" style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          {unsortiert > 0 && <Link href="/inbox?typ=unsortiert" className="au-panel-link">{unsortiert} unsortierte Ideen</Link>}
+          <Link href="/wiedervorlage" className="au-panel-link">Alle →</Link>
         </span>
       </div>
+      <div className="au-panel-inhalt">
       {heuteOderFrueher.length > 0 && (
         <>
-          <h4 className="au-event-h4" style={{ marginTop: "0.75rem" }}>Heute & überfällig</h4>
+          <h4 className="au-event-h4">Heute &amp; überfällig</h4>
           {heuteOderFrueher.map((p) => <FaelligZeile key={p.art + p.id} p={p} heute={heute} />)}
         </>
       )}
@@ -50,7 +51,8 @@ export default async function FaelligWidget() {
           {woche.map((p) => <FaelligZeile key={p.art + p.id} p={p} heute={heute} />)}
         </>
       )}
-      {!punkte.length && <p className="au-leer" style={{ marginTop: "0.5rem" }}>Diese Woche ist nichts fällig.</p>}
-    </div>
+      {!punkte.length && <p className="au-leer">Diese Woche ist nichts fällig.</p>}
+      </div>
+    </section>
   );
 }
