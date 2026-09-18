@@ -26,15 +26,15 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
         <div className="wp-footer-inner">
           <span>
             © {new Date().getFullYear()} –{" "}
-            {/* Zeigt aktuell auf agencyuplifted.de, da www.agencyuplifted.com
-                noch nicht auf die Website geschaltet ist (siehe Backlog-Task
-                "Eigene Domain + Cloudflare-CDN vor Onepage-Seite schalten"). */}
-            <a href="https://www.agencyuplifted.de" className="wp-footer-brand">
+            <a href="https://agencyuplifted.com/" className="wp-footer-brand">
               AgencyUplifted
             </a>
           </span>
           <nav className="wp-footer-links">
-            <a href="https://www.agencyuplifted.de/impressum">Impressum</a>
+            <a href="https://agencyuplifted.com/impressum">Impressum</a>
+            {/* Datenschutz und AGB gibt es auf agencyuplifted.com (Onepage) noch
+                nicht als eigene Seite -- bis dahin bleiben die .de-Seiten das
+                Ziel, damit die Pflichtlinks nicht ins Leere laufen. */}
             <a href="https://www.agencyuplifted.de/datenschutz">Datenschutz</a>
             <a href="https://www.agencyuplifted.de/agb">AGB</a>
           </nav>

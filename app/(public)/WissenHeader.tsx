@@ -3,50 +3,38 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-// Spiegelt bewusst 1:1 den Header der Haupt-Marketingseite
-// (agencyuplifted.com, dahinter die Onepage-Seite), damit Wissen-Seiten und
-// Marketingseite wie aus einem Guss wirken -- gleiches Logo, gleiche
-// Nav-Punkte, gleiche Schrift (Archivo) und Farben. "Start"/"Preisfindung"/
-// "Blog" sind echte, funktionierende Links. "Leistungen" (Dropdown),
-// "Ueber uns", "Branchen", "Karriere" und der CTA-Button sind technisch 1:1
-// nachgebaut, zeigen auf der Onepage-Seite aber selbst noch auf onepage.io
-// (Platzhalter des Baukastens, noch nicht von Markus final verlinkt) -- hier
-// daher bewusst mit "#" als Platzhalter-Ziel, damit die Struktur steht und
-// nur noch die echten URLs eingetragen werden muessen, sobald sie feststehen.
-//
-// Hinweis: agencyuplifted.com zeigt aktuell komplett auf die Onepage-Seite;
-// /wissen ist dort (Stand jetzt) noch NICHT durchgereicht (liefert Onepages
-// eigene 404-Seite). Diese Links funktionieren trotzdem unabhaengig davon,
-// da sie extern auf agencyuplifted.com verweisen, nicht auf einen /wissen-Pfad.
+// Spiegelt optisch den Header der Haupt-Marketingseite (agencyuplifted.com,
+// dahinter Onepage), damit Wissen-Seiten und Marketingseite wie aus einem Guss
+// wirken -- gleiches Logo, gleiche Schrift (Archivo) und Farben. Die Nav-Punkte
+// waren urspruenglich 1:1 aus der Onepage-Vorlage kopiert ("Erster Service",
+// "Ueber uns", "Branchen", "Karriere", "Call-to-Action", alle mit "#") und
+// sind jetzt auf die tatsaechlich existierenden Onepage-Seiten verlinkt.
+// Neue Ziele immer gegen die veroeffentlichten Seiten der Onepage-Site
+// pruefen -- /seminare-preisfindung z.B. war ein falscher Slug.
 const NAV_LINKS = [
   { href: "https://agencyuplifted.com/", label: "Start", extern: true },
   {
-    href: "https://agencyuplifted.com/seminare-preisfindung",
+    href: "https://agencyuplifted.com/seminar-wertorientierte-preisfindung",
     label: "Preisfindung",
     extern: true,
   },
   { href: "/wissen", label: "Blog", extern: false },
 ];
 
-// 1:1 aus dem Leistungen-Dropdown auf onepage.me uebernommen (dort ebenfalls
-// noch mit Platzhalter-Titeln "Erster/Zweiter/Dritter/Vierter Service").
 const LEISTUNGEN_ITEMS = [
-  { href: "#", label: "Erster Service" },
-  { href: "#", label: "Zweiter Service" },
-  { href: "#", label: "Dritter Service" },
-  { href: "#", label: "Vierter Service" },
+  { href: "https://agencyuplifted.com/seminare", label: "Alle Seminare" },
+  { href: "https://agencyuplifted.com/seminar-wertorientierte-preisfindung", label: "Wertorientierte Preisfindung" },
+  { href: "https://agencyuplifted.com/seminar-fokussierung-kundengewinnung-und-vertrieb", label: "Fokussierung und Kundengewinnung" },
+  { href: "https://agencyuplifted.com/seminar-fuhrung-fur-agenturunternehmer", label: "Führung für Agenturunternehmer" },
 ];
 
-const PLATZHALTER_LINKS = [
-  { href: "#", label: "Über uns" },
-  { href: "#", label: "Branchen" },
-  { href: "#", label: "Karriere" },
+const ANGEBOT_LINKS = [
+  { href: "https://agencyuplifted.com/training", label: "Training" },
+  { href: "https://agencyuplifted.com/coaching", label: "Coaching" },
+  { href: "https://agencyuplifted.com/buch-preisfindung-in-agenturen", label: "Buch" },
 ];
 
-function PlatzhalterHinweis(e: React.MouseEvent<HTMLAnchorElement>) {
-  // Verhindert Sprung nach oben bei href="#" -- das Ziel ist noch nicht final.
-  e.preventDefault();
-}
+const KONTAKT_URL = "https://agencyuplifted.com/kontakt";
 
 export default function WissenHeader() {
   const [offen, setOffen] = useState(false);
@@ -103,8 +91,6 @@ export default function WissenHeader() {
                     href={item.href}
                     className="wp-nav-dropdown-item"
                     role="menuitem"
-                    title="Platzhalter – noch nicht final verlinkt"
-                    onClick={PlatzhalterHinweis}
                   >
                     {item.label}
                   </a>
@@ -113,13 +99,11 @@ export default function WissenHeader() {
             )}
           </div>
 
-          {PLATZHALTER_LINKS.map((item) => (
+          {ANGEBOT_LINKS.map((item) => (
             <a
               key={item.label}
               href={item.href}
               className="wp-nav-link"
-              title="Platzhalter – noch nicht final verlinkt"
-              onClick={PlatzhalterHinweis}
             >
               {item.label}
             </a>
@@ -140,12 +124,10 @@ export default function WissenHeader() {
 
         <div className="wp-header-actions">
           <a
-            href="#"
+            href={KONTAKT_URL}
             className="wp-cta-button"
-            title="Platzhalter – noch nicht final verlinkt"
-            onClick={PlatzhalterHinweis}
           >
-            Call-to-Action
+            Kontakt
           </a>
 
           <button
@@ -182,8 +164,6 @@ export default function WissenHeader() {
                   key={item.label}
                   href={item.href}
                   className="wp-nav-mobile-sub-link"
-                  title="Platzhalter – noch nicht final verlinkt"
-                  onClick={PlatzhalterHinweis}
                 >
                   {item.label}
                 </a>
@@ -191,13 +171,11 @@ export default function WissenHeader() {
             </div>
           )}
 
-          {PLATZHALTER_LINKS.map((item) => (
+          {ANGEBOT_LINKS.map((item) => (
             <a
               key={item.label}
               href={item.href}
               className="wp-nav-mobile-link"
-              title="Platzhalter – noch nicht final verlinkt"
-              onClick={PlatzhalterHinweis}
             >
               {item.label}
             </a>
@@ -221,12 +199,10 @@ export default function WissenHeader() {
           )}
 
           <a
-            href="#"
+            href={KONTAKT_URL}
             className="wp-cta-button wp-cta-button-mobile"
-            title="Platzhalter – noch nicht final verlinkt"
-            onClick={PlatzhalterHinweis}
           >
-            Call-to-Action
+            Kontakt
           </a>
         </nav>
       )}
