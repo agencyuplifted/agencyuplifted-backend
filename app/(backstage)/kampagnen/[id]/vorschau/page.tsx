@@ -48,9 +48,9 @@ export default async function KampagnenVorschauPage({
           <h1>{kampagne.name}</h1>
           <p style={{ margin: 0 }}>So würde die Kampagne jetzt verschickt – der Filter wurde gerade live gegen den aktuellen Bestand ausgewertet.</p>
         </div>
-        <ol className="au-schritte" aria-label="Ablauf">
-          <li className="aktiv">1 · Empfänger</li>
-          <li className="aktiv">2 · Inhalt</li>
+        <ol className="au-schritte au-schritte-gross" aria-label="Ablauf">
+          <li className="erledigt">1 · Empfänger</li>
+          <li className="erledigt">2 · Inhalt</li>
           <li className="aktiv">3 · Vorschau &amp; Versand</li>
         </ol>
       </header>

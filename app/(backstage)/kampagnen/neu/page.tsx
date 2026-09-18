@@ -3,12 +3,12 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { erstelleKampagne, zaehleKampagnenEmpfaenger, speichereTeilnehmerSegment } from "@/lib/actions";
-import { ladeTeilnehmerFuerFilter, normalisiereFilter, type FilterKriterien } from "@/lib/kampagnen";
+import { ladeTeilnehmerFuerFilter, normalisiereFilter, beschreibeFilter, type FilterKriterien } from "@/lib/kampagnen";
 import { parseRegeln, wirksameRegeln } from "@/lib/kampagnen-regeln";
 import { formatDatum } from "@/lib/format";
 import RegelBuilder from "./RegelBuilder";
 import { ladeBausteine } from "@/lib/mail-bausteine";
-import InhaltMitLinkCheck from "./InhaltMitLinkCheck";
+import KampagnenInhalt from "./KampagnenInhalt";
 
 export default async function NeueKampagnePage({
   searchParams,
@@ -16,6 +16,7 @@ export default async function NeueKampagnePage({
   searchParams: Promise<{
     regeln?: string;
     segment_id?: string;
+    schritt?: string;
     // Alte Einzelparameter (z. B. "Kampagne aus Auswahl" in der Teilnehmer-Liste)
     anrede?: string;
     rolle?: string;
@@ -62,6 +63,12 @@ export default async function NeueKampagnePage({
   const [empfaenger, bausteine] = await Promise.all([ladeTeilnehmerFuerFilter({ regeln }), ladeBausteine(supabase)]);
   const ruhend = empfaenger.filter((e) => e.vermutlichRuhend).length;
 
+  const schrittInhalt = sp.schritt === "inhalt" && empfaenger.length > 0;
+  const tagLabel = new Map((tags || []).map((t: any) => [t.id, t.label]));
+  const filterText = beschreibeFilter({ regeln }, tagLabel);
+  const empfaengerHref = `/kampagnen/neu?regeln=${encodeURIComponent(regelnJson)}`;
+  const fussUnvollstaendig = !bausteine.firmenangaben.trim();
+
   return (
     <main>
       <header className="au-dash-kopf">
@@ -71,124 +78,129 @@ export default async function NeueKampagnePage({
           </p>
           <h1>Neue Kampagne</h1>
         </div>
-        <ol className="au-schritte" aria-label="Ablauf">
-          <li className="aktiv">1 · Empfänger</li>
-          <li className="aktiv">2 · Inhalt</li>
+        <ol className="au-schritte au-schritte-gross" aria-label="Ablauf">
+          <li className={schrittInhalt ? "erledigt" : "aktiv"}>
+            {schrittInhalt ? <Link href={empfaengerHref}>1 · Empfänger</Link> : "1 · Empfänger"}
+          </li>
+          <li className={schrittInhalt ? "aktiv" : undefined}>2 · Inhalt</li>
           <li>3 · Vorschau &amp; Versand</li>
         </ol>
       </header>
 
-      <div className="au-kampagne-raster">
-        <section className="au-panel">
-          <div className="au-panel-kopf">
-            <h2 style={{ margin: 0 }}>1 · Empfänger auswählen</h2>
-            {aktivesSegment && <span className="au-badge au-badge-neutral">Filtergruppe „{aktivesSegment.name}“</span>}
-          </div>
-          <div className="au-kampagne-panel-inhalt">
-            {segmente && segmente.length > 0 && (
-              <div style={{ marginBottom: "1rem" }}>
-                <span className="au-klein">Gespeicherte Filtergruppen</span>
-                <div className="au-chips">
-                  {segmente.map((s: any) => (
-                    <Link key={s.id} href={`/kampagnen/neu?segment_id=${s.id}`} className={`au-chip${aktivesSegment?.id === s.id ? " aktiv" : ""}`}>
-                      {s.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-            <RegelBuilder
-              key={regelnJson}
-              start={regeln}
-              seminartypen={(seminartypen || []).map((t: any) => t.name)}
-              tags={(tags || []) as any[]}
-              termine={(termine || []).map((t: any) => ({ id: t.id, label: `${t.kennung || t.titel} · ${formatDatum(t.datum_start)}` }))}
-              kampagnen={(alteKampagnen || []).map((k: any) => ({ id: k.id, label: `${k.name}${k.versendet_am ? ` · ${formatDatum(k.versendet_am)}` : ""}` }))}
-              optionen={optionsTitel}
-              zaehlen={zaehleKampagnenEmpfaenger}
-              angewendetAnzahl={empfaenger.length}
-            />
-            <form action={speichereTeilnehmerSegment} className="au-regeln-speichern">
-              <input type="hidden" name="regeln" value={regelnJson} />
-              <input className="au-input" name="segment_name" required placeholder="Als Filtergruppe speichern, z. B. „Preisfindung ohne Führung“" />
-              <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
-            </form>
-          </div>
-          <div className="au-kampagne-treffer">
-            <div>
-              <strong className="au-kampagne-treffer-zahl">{empfaenger.length}</strong> Empfänger:innen
-              <div className="au-klein">
-                Nur Personen mit Marketing-Einwilligung („abonniert“); Bounces und Spam-Beschwerden werden vor dem Versand zusätzlich ausgefiltert.
-                {ruhend > 0 && ` ${ruhend} davon vermutlich ruhend (nur zur Orientierung).`}
-              </div>
+      {fussUnvollstaendig && (
+        <div className="au-banner au-banner-warning">
+          Die Firmenangaben für die Fußzeile fehlen noch – Werbe-Mails brauchen eine vollständige Anbieterkennzeichnung.{" "}
+          <Link href="/funnel?mail=bausteine">Jetzt eintragen →</Link>
+        </div>
+      )}
+
+      {!schrittInhalt ? (
+        <div className="au-kschritt-raster">
+          <section className="au-panel">
+            <div className="au-panel-kopf">
+              <h2 style={{ margin: 0 }}>Wer soll die Mail bekommen?</h2>
+              {aktivesSegment && <span className="au-badge au-badge-neutral">Filtergruppe „{aktivesSegment.name}“</span>}
             </div>
+            <div className="au-kampagne-panel-inhalt">
+              {segmente && segmente.length > 0 && (
+                <div className="au-kschnellstart">
+                  <span className="au-klein">Schnellstart mit gespeicherter Filtergruppe:</span>
+                  <div className="au-chips">
+                    {segmente.map((sg: any) => (
+                      <Link key={sg.id} href={`/kampagnen/neu?segment_id=${sg.id}`} className={`au-chip${aktivesSegment?.id === sg.id ? " aktiv" : ""}`}>
+                        {sg.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <RegelBuilder
+                key={regelnJson}
+                start={regeln}
+                seminartypen={(seminartypen || []).map((t: any) => t.name)}
+                tags={(tags || []) as any[]}
+                termine={(termine || []).map((t: any) => ({ id: t.id, label: `${t.kennung || t.titel} · ${formatDatum(t.datum_start)}` }))}
+                kampagnen={(alteKampagnen || []).map((k: any) => ({ id: k.id, label: `${k.name}${k.versendet_am ? ` · ${formatDatum(k.versendet_am)}` : ""}` }))}
+                optionen={optionsTitel}
+                zaehlen={zaehleKampagnenEmpfaenger}
+                angewendetAnzahl={empfaenger.length}
+              />
+            </div>
+          </section>
+
+          <aside className="au-kzusammenfassung">
+            <section className="au-panel">
+              <div className="au-kzusammenfassung-zahl">
+                <strong>{empfaenger.length}</strong>
+                <span>Empfänger:innen</span>
+              </div>
+              <p className="au-klein" style={{ margin: "0 1.15rem 0.75rem" }}>
+                Nur Personen mit Marketing-Einwilligung. Bounces, Spam-Beschwerden und Abmeldungen werden vor dem Versand zusätzlich gesperrt.
+                {ruhend > 0 && ` ${ruhend} davon vermutlich ruhend.`}
+              </p>
+              {empfaenger.length > 0 ? (
+                <ul className="au-kzusammenfassung-liste">
+                  {empfaenger.slice(0, 8).map((e) => (
+                    <li key={e.id}>
+                      <span className="au-initialen">{`${e.vorname?.[0] || ""}${e.nachname?.[0] || ""}`.toUpperCase()}</span>
+                      <span>
+                        {e.vorname} {e.nachname}
+                        <span className="au-klein" style={{ display: "block" }}>{e.email}</span>
+                      </span>
+                    </li>
+                  ))}
+                  {empfaenger.length > 8 && (
+                    <li>
+                      <details className="au-kzusammenfassung-alle">
+                        <summary className="au-klein">… und {empfaenger.length - 8} weitere anzeigen</summary>
+                        <ul>
+                          {empfaenger.slice(8).map((e) => (
+                            <li key={e.id} className="au-klein">{e.vorname} {e.nachname} · {e.email}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    </li>
+                  )}
+                </ul>
+              ) : (
+                <p className="au-leer" style={{ margin: "0 1.15rem 1rem" }}>Niemand passt auf diese Regeln.</p>
+              )}
+              <div className="au-kzusammenfassung-fuss">
+                {empfaenger.length > 0 ? (
+                  <Link href={`${empfaengerHref}&schritt=inhalt`} className="au-btn au-btn-primary" style={{ width: "100%", justifyContent: "center" }}>
+                    Weiter: Inhalt schreiben →
+                  </Link>
+                ) : null}
+                <form action={speichereTeilnehmerSegment} className="au-regeln-speichern">
+                  <input type="hidden" name="regeln" value={regelnJson} />
+                  <input className="au-input" name="segment_name" required placeholder="Als Filtergruppe speichern …" />
+                  <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
+                </form>
+              </div>
+            </section>
+          </aside>
+        </div>
+      ) : (
+        <>
+          <div className="au-kempfaenger-leiste">
+            <div>
+              <strong>{empfaenger.length} Empfänger:innen</strong>
+              <span className="au-kliste-filter" style={{ marginTop: "0.25rem" }}>
+                {filterText.length ? filterText.map((f, i) => <span key={i} className={f === "oder" || f === "und" ? "au-klein" : "au-etikett"}>{f}</span>) : <span className="au-klein">alle mit Marketing-Einwilligung</span>}
+              </span>
+            </div>
+            <Link href={empfaengerHref} className="au-btn au-btn-secondary au-btn-sm">Empfänger ändern</Link>
           </div>
-          {empfaenger.length > 0 && (
-            <details className="au-kampagne-empfaenger">
-              <summary className="au-klein">Empfänger:innen anzeigen</summary>
-              <ul>
-                {empfaenger.slice(0, 50).map((e) => (
-                  <li key={e.id}>
-                    <span>{e.vorname} {e.nachname} <span className="au-klein">· {e.email}</span></span>
-                    {e.vermutlichRuhend && <span className="au-badge au-badge-neutral" title="Grobe Heuristik: letzte Mail über 180 Tage her oder nie">vermutlich ruhend</span>}
-                  </li>
-                ))}
-                {empfaenger.length > 50 && <li className="au-klein">… und {empfaenger.length - 50} weitere</li>}
-              </ul>
-            </details>
-          )}
-        </section>
-
-        <section className="au-panel">
-          <div className="au-panel-kopf"><h2 style={{ margin: 0 }}>2 · Inhalt</h2></div>
-          <div className="au-kampagne-panel-inhalt">
-            {empfaenger.length === 0 ? (
-              <p className="au-leer" style={{ margin: 0 }}>Mit diesem Filter gibt es aktuell keine Empfänger:innen. Bitte links den Filter anpassen.</p>
-            ) : (
-              <form action={erstelleKampagne}>
-            <input type="hidden" name="regeln" value={regelnJson} />
-            {aktivesSegment && <input type="hidden" name="segment_id" value={aktivesSegment.id} />}
-
-            <label className="au-label">Name der Kampagne (intern)</label>
-            <input className="au-input" name="name" required placeholder="z. B. Arbeitsgruppe Unternehmerinnen – Einladung" />
-
-            <label className="au-label">Betreff</label>
-            <input className="au-input" name="betreff" required placeholder="z. B. Einladung: Arbeitsgruppe Unternehmerinnen" />
-
-            <label className="au-label">Betreff B (optional, A/B-Test)</label>
-            <input className="au-input" name="betreff_b" placeholder="Zweite Betreffzeile – die Empfänger werden zufällig 50/50 aufgeteilt" />
-
-            <label className="au-label">Inhalt ({"{{vorname}}"} / {"{{nachname}}"} verfügbar, Zeilenumbrüche werden übernommen)</label>
-            <InhaltMitLinkCheck
-              fusszeile={[
-                { label: "Impressum", url: bausteine.impressum_url },
-                { label: "Datenschutz", url: bausteine.datenschutz_url },
-              ]}
-            />
-
-            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontWeight: 400, marginBottom: "0.5rem", fontSize: "0.9rem" }}>
-              <input type="checkbox" name="baustein_signatur" defaultChecked /> Signatur anhängen
-            </label>
-            <p className="au-klein" style={{ marginTop: 0 }}>
-              Impressum, Datenschutz und ein persönlicher Abmeldelink kommen bei Kampagnen immer darunter (Pflicht bei Werbe-Mails). Bausteine pflegen: Funnel → Signatur &amp; Fußzeile.
-            </p>
-
-            <label className="au-label" htmlFor="mindestabstand_tage">Mindestabstand (Tage)</label>
-            <input className="au-input" id="mindestabstand_tage" name="mindestabstand_tage" type="number" min={0} max={90} defaultValue={4} style={{ maxWidth: 120 }} />
-            <p className="au-klein" style={{ marginTop: "-0.5rem" }}>
-              Wer in den letzten X Tagen schon eine Funnel- oder Kampagnen-Mail bekommen hat, wird in der Vorschau markiert und standardmäßig
-              ausgelassen. 0 = keine Sperrfrist (z. B. bei einer dringenden Programmänderung).
-            </p>
-
-            <button type="submit" className="au-btn au-btn-primary">
-              Weiter zur Vorschau ({empfaenger.length} Empfänger:innen) →
-            </button>
-            <p className="au-klein" style={{ marginBottom: 0 }}>Verschickt wird erst im nächsten Schritt, nach ausdrücklicher Bestätigung.</p>
-          </form>
-            )}
-          </div>
-        </section>
-      </div>
+          <KampagnenInhalt
+            speichernAction={erstelleKampagne}
+            regelnJson={regelnJson}
+            segmentId={aktivesSegment?.id || null}
+            anzahl={empfaenger.length}
+            beispiel={empfaenger[0] ? { vorname: empfaenger[0].vorname, nachname: empfaenger[0].nachname } : null}
+            bausteine={bausteine}
+          />
+        </>
+      )}
     </main>
   );
 }

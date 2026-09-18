@@ -206,13 +206,23 @@ export default function RegelBuilder({
           + Gruppe hinzufügen
         </button>
         <span className="au-regeln-treffer">{zaehlt ? "zählt …" : anzahl === null ? "—" : <><strong>{anzahl}</strong> Treffer</>}</span>
+        {geaendert && (
+          <button
+            type="button"
+            className="au-btn au-btn-secondary au-btn-sm"
+            onClick={() => router.push(`/kampagnen/neu?regeln=${encodeURIComponent(json)}`, { scroll: false })}
+            title="Zeigt rechts die Personen zu den geänderten Regeln"
+          >
+            Liste aktualisieren
+          </button>
+        )}
         <button
           type="button"
-          className={`au-btn au-btn-sm ${geaendert ? "au-btn-primary" : "au-btn-secondary"}`}
-          onClick={() => router.push(`/kampagnen/neu?regeln=${encodeURIComponent(json)}`, { scroll: false })}
-          disabled={!geaendert}
+          className="au-btn au-btn-primary au-btn-sm"
+          disabled={zaehlt || anzahl === 0}
+          onClick={() => router.push(`/kampagnen/neu?regeln=${encodeURIComponent(json)}&schritt=inhalt`)}
         >
-          {geaendert ? "Übernehmen" : "Übernommen"}
+          Weiter: Inhalt →
         </button>
       </div>
     </div>
