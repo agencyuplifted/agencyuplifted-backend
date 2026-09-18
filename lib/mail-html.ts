@@ -34,6 +34,7 @@ export const BEISPIEL_WERTE: Record<string, string> = {
   vorname: "Anna",
   nachname: "Beispiel",
   firma: "Beispiel Agentur GmbH",
+  option: "Shift",
   seminartitel: "Wertorientierte Preisfindung in Agenturen",
   seminardatum: "07.10.2026",
   datum_start: "Mittwoch, 7. Oktober 2026",

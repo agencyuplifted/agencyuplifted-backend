@@ -42,6 +42,7 @@ export const PLATZHALTER_HILFE: { key: string; beschreibung: string; verfuegbarB
   { key: "{{unterlagen_link}}", beschreibung: "Persönlicher Link zur Unterlagen-Seite des Termins", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
   { key: "{{freigabe_link}}", beschreibung: "Persönlicher Link, um in der Teilnehmerliste mit Foto/LinkedIn zu erscheinen", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
   { key: "{{firma}}", beschreibung: "Organisation des Empfängers (falls vorhanden)", verfuegbarBei: ["buchung_erstellt"] },
+  { key: "{{option}}", beschreibung: "Gebuchte Option, z. B. Shift", verfuegbarBei: ["buchung_erstellt", "vor_seminarstart", "nach_seminarende"] },
 ];
 
 // Deutscher Kalendertag -- der Cron laeuft um 06:00 UTC, Stichtage sind
@@ -92,7 +93,13 @@ async function teilnehmerlisteText(supabase: any, seminarterminId: string): Prom
   return zeilen.join("\n") || "(noch keine Teilnehmer)";
 }
 
-type Empfaenger = { email: string; werte: Record<string, string>; abmelde: { typ: AbmeldeTyp; id: string } };
+type Empfaenger = {
+  email: string;
+  werte: Record<string, string>;
+  abmelde: { typ: AbmeldeTyp; id: string };
+  /** Titel der gebuchten Option (seminartermin_optionen.titel), fuer Options-Filter */
+  option?: string | null;
+};
 
 async function sammleFaelligeEmpfaenger(
   supabase: any,
@@ -124,14 +131,20 @@ async function sammleFaelligeEmpfaenger(
       if (!imFenster(anchor)) continue;
       const { data: positionen } = await supabase
         .from("buchungspositionen")
-        .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status)")
+        .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status), seminartermin_optionen(titel)")
         .eq("buchung_id", b.id);
       const empfaenger: Empfaenger[] = (positionen || [])
         .filter((p: any) => p.teilnehmer?.email && p.teilnehmer?.marketing_consent_status !== "abgemeldet")
         .map((p: any) => ({
           email: p.teilnehmer.email,
-          werte: { vorname: p.teilnehmer.vorname, nachname: p.teilnehmer.nachname, firma: b.organisationen?.name || "" },
+          werte: {
+            vorname: p.teilnehmer.vorname,
+            nachname: p.teilnehmer.nachname,
+            firma: b.organisationen?.name || "",
+            option: p.seminartermin_optionen?.titel || "",
+          },
           abmelde: { typ: "t" as const, id: p.teilnehmer.id },
+          option: p.seminartermin_optionen?.titel || null,
         }));
       if (empfaenger.length) ergebnis.push({ bezugTyp: "buchung", bezugId: b.id, empfaenger });
     }
@@ -156,7 +169,7 @@ async function sammleFaelligeEmpfaenger(
 
       const { data: positionen } = await supabase
         .from("buchungspositionen")
-        .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status), buchungen(status)")
+        .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status), buchungen(status), seminartermin_optionen(titel)")
         .eq("seminartermin_id", t.id);
       const titel = t.titel || t.seminartypen?.name || "Seminar";
       const seminardatum = formatDatum(t.datum_start);
@@ -184,8 +197,10 @@ async function sammleFaelligeEmpfaenger(
             zeit_start: t.zeit_start ? String(t.zeit_start).slice(0, 5) : "",
             ort: ortLang || ort,
             ...seminarLinks(p.teilnehmer.id, t.id),
+            option: p.seminartermin_optionen?.titel || "",
           },
           abmelde: { typ: "t" as const, id: p.teilnehmer.id },
+          option: p.seminartermin_optionen?.titel || null,
         }));
       if (empfaenger.length) ergebnis.push({ bezugTyp: "seminartermin", bezugId: t.id, empfaenger });
     }
@@ -301,6 +316,9 @@ async function ermittleFaelligeEintraege(
         const personTags = empf.abmelde.typ === "t" ? tagsProTeilnehmer.get(empf.abmelde.id) : undefined;
         if (funnel.tag_bedingung_mit && !personTags?.has(funnel.tag_bedingung_mit)) continue;
         if (funnel.tag_bedingung_ohne && personTags?.has(funnel.tag_bedingung_ohne)) continue;
+        // Options-Filter (z. B. Upgrade-Angebot nur an "Shift"); ohne gebuchte Option faellt man bei "nur" raus
+        if (funnel.nur_optionen?.length && !(empf.option && funnel.nur_optionen.includes(empf.option))) continue;
+        if (funnel.ausschluss_optionen?.length && empf.option && funnel.ausschluss_optionen.includes(empf.option)) continue;
         if (funnel.ausschluss_seminartyp_id && empf.abmelde.typ === "t" && kategorieTeilnehmer.get(funnel.ausschluss_seminartyp_id)?.has(empf.abmelde.id)) continue;
         if (funnel.mindestabstand_tage > 0) {
           const zuletzt = letzteMail.get(empf.email.trim().toLowerCase());

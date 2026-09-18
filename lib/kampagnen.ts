@@ -78,8 +78,9 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
   const brauchtBesuche = bedingungen.some((b) => ["seminar_besucht", "seminar_gebucht", "seminar_termin", "letztes_seminar_monate"].includes(b.feld));
   const brauchtTags = bedingungen.some((b) => b.feld === "tag");
   const brauchtKampagnen = bedingungen.some((b) => b.feld.startsWith("kampagne_"));
+  const brauchtOptionen = bedingungen.some((b) => b.feld === "option_gebucht");
 
-  const [{ data }, lifecycle, besuche, tagZuordnungen, nichtGeoeffnet, kampagnenLog] = await Promise.all([
+  const [{ data }, lifecycle, besuche, tagZuordnungen, nichtGeoeffnet, kampagnenLog, optionsPositionen] = await Promise.all([
     supabase
       .from("teilnehmer")
       .select("id, vorname, nachname, email, anrede, rolle, unternehmer_status, marketing_consent_status, deaktiviert_am")
@@ -107,6 +108,11 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
           supabase.from("kampagnen_versand_log").select("teilnehmer_id, kampagne_id, geoeffnet_am, geklickt_am").eq("status", "gesendet").range(von, bis)
         )
       : Promise.resolve([]),
+    brauchtOptionen
+      ? ladeAlleZeilen((von, bis) =>
+          supabase.from("buchungspositionen").select("teilnehmer_id, buchungen(status), seminartermin_optionen(titel)").not("seminartermin_option_id", "is", null).range(von, bis)
+        )
+      : Promise.resolve([]),
   ]);
   const nichtGeoeffnetSet = new Set(nichtGeoeffnet.map((z: any) => z.teilnehmer_id));
   const lifecycleMap = new Map(lifecycle.map((l: any) => [l.teilnehmer_id, l]));
@@ -132,6 +138,11 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
     else if (b.stand === "gebucht_kuenftig") hinzu(gebucht, b.teilnehmer_id, b.seminarkategorie);
   }
   for (const z of tagZuordnungen) hinzu(tagsVon, z.teilnehmer_id, z.tag_id);
+  const optionenVon = mengeProTeilnehmer();
+  for (const p of optionsPositionen) {
+    if (p.buchungen?.status === "storniert" || !p.seminartermin_optionen?.titel) continue;
+    hinzu(optionenVon, p.teilnehmer_id, String(p.seminartermin_optionen.titel).trim());
+  }
   for (const z of kampagnenLog) {
     if (!z.teilnehmer_id) continue;
     hinzu(kBekommen, z.teilnehmer_id, z.kampagne_id);
@@ -158,6 +169,8 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
         return menge(tagsVon);
       case "seminar_termin":
         return menge(termineVon);
+      case "option_gebucht":
+        return menge(optionenVon);
       case "kampagne_bekommen":
         return menge(kBekommen);
       case "kampagne_geoeffnet":

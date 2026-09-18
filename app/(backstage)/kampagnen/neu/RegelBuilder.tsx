@@ -24,6 +24,7 @@ export default function RegelBuilder({
   tags,
   termine,
   kampagnen,
+  optionen: optionsTitel,
   zaehlen,
   angewendetAnzahl,
 }: {
@@ -32,6 +33,7 @@ export default function RegelBuilder({
   tags: { id: string; label: string }[];
   termine: { id: string; label: string }[];
   kampagnen: { id: string; label: string }[];
+  optionen: string[];
   zaehlen: (regelnJson: string) => Promise<{ fehler: string | null; anzahl?: number }>;
   angewendetAnzahl: number;
 }) {
@@ -64,6 +66,7 @@ export default function RegelBuilder({
     if (def.quelle === "tags") return tags.map((t) => ({ key: t.id, label: `#${t.label}` }));
     if (def.quelle === "termine") return termine.map((t) => ({ key: t.id, label: t.label }));
     if (def.quelle === "kampagnen") return kampagnen.map((k) => ({ key: k.id, label: k.label }));
+    if (def.quelle === "optionen") return optionsTitel.map((o) => ({ key: o, label: o }));
     return def.werte || [];
   };
 

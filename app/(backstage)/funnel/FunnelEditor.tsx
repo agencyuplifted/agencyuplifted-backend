@@ -20,6 +20,7 @@ export default function FunnelEditor({
   bausteine,
   tags,
   seminartypen,
+  optionen,
   istSystem = false,
 }: {
   mail: {
@@ -38,7 +39,11 @@ export default function FunnelEditor({
     nur_seminartyp_id?: string | null;
     ausschluss_seminartyp_id?: string | null;
     mindestabstand_tage?: number;
+    nur_optionen?: string[];
+    ausschluss_optionen?: string[];
   } | null;
+  /** Alle Options-Titel ueber alle Termine (Shift, Alignment, …) */
+  optionen: string[];
   seminartypen: { id: string; name: string }[];
   bausteine: MailBausteine;
   tags: { id: string; label: string; aktiv: boolean }[];
@@ -68,6 +73,8 @@ export default function FunnelEditor({
   const [nurTyp, setNurTyp] = useState(mail?.nur_seminartyp_id || "");
   const [ohneTyp, setOhneTyp] = useState(mail?.ausschluss_seminartyp_id || "");
   const [abstand, setAbstand] = useState(String(mail?.mindestabstand_tage ?? 0));
+  const [nurOpt, setNurOpt] = useState<string[]>(mail?.nur_optionen || []);
+  const [ohneOpt, setOhneOpt] = useState<string[]>(mail?.ausschluss_optionen || []);
 
   const geaendert =
     name !== (mail?.name || "") ||
@@ -83,7 +90,10 @@ export default function FunnelEditor({
     tagOhne !== (mail?.tag_bedingung_ohne || "") ||
     nurTyp !== (mail?.nur_seminartyp_id || "") ||
     ohneTyp !== (mail?.ausschluss_seminartyp_id || "") ||
-    abstand !== String(mail?.mindestabstand_tage ?? 0);
+    abstand !== String(mail?.mindestabstand_tage ?? 0) ||
+    nurOpt.join("|") !== (mail?.nur_optionen || []).join("|") ||
+    ohneOpt.join("|") !== (mail?.ausschluss_optionen || []).join("|");
+  const optionsBezogen = seminarBezogenOderBuchung(triggerTyp);
   const seminarBezogen = triggerTyp === "vor_seminarstart" || triggerTyp === "nach_seminarende";
 
   // Ungespeicherte Aenderungen nicht still verwerfen, wenn links eine andere
@@ -289,6 +299,15 @@ export default function FunnelEditor({
               <input className="au-input" name="mindestabstand_tage" type="number" min={0} max={90} value={abstand} onChange={(e) => setAbstand(e.target.value)} style={{ margin: 0 }} />
             </label>
           </div>
+          {optionsBezogen && optionen.length > 0 && (
+            <div className="au-fe-optionen">
+              <OptionsWahl titel="Nur bei gebuchter Option" name="nur_optionen" optionen={optionen} werte={nurOpt} setWerte={setNurOpt} sperre={ohneOpt} />
+              <OptionsWahl titel="Nicht bei Option" name="ausschluss_optionen" optionen={optionen} werte={ohneOpt} setWerte={setOhneOpt} sperre={nurOpt} />
+              <span className="au-klein">
+                Beispiel Upgrade-Angebot: „Nur bei Shift“. Gilt für jeden Termin mit einer Option dieses Namens. Im Text steht <code>{"{{option}}"}</code> für die gebuchte Option.
+              </span>
+            </div>
+          )}
           <span className="au-klein">
             Mindestabstand 0 = aus (Standard für Service-Mails). Bei Werbe-/Anschluss-Mails z. B. 4: Wer gerade eine Mail bekommen hat, bekommt diese ein paar Tage später – nicht verworfen, nur verschoben.
           </span>
@@ -321,6 +340,53 @@ export default function FunnelEditor({
         {geaendert && mail?.id && <span className="au-klein">Ungespeicherte Änderungen</span>}
       </div>
     </form>
+  );
+}
+
+function seminarBezogenOderBuchung(trigger: string) {
+  return trigger === "buchung_erstellt" || trigger === "vor_seminarstart" || trigger === "nach_seminarende";
+}
+
+// Mehrfachauswahl von Options-Titeln als Chips; versteckte Inputs fuer das Formular
+function OptionsWahl({
+  titel,
+  name,
+  optionen,
+  werte,
+  setWerte,
+  sperre,
+}: {
+  titel: string;
+  name: string;
+  optionen: string[];
+  werte: string[];
+  setWerte: (w: string[]) => void;
+  sperre: string[];
+}) {
+  return (
+    <div>
+      <span className="au-klein">{titel}</span>
+      <div className="au-chips">
+        {optionen.map((o) => {
+          const an = werte.includes(o);
+          return (
+            <button
+              key={o}
+              type="button"
+              className={`au-chip${an ? " aktiv" : ""}`}
+              disabled={sperre.includes(o)}
+              aria-pressed={an}
+              onClick={() => setWerte(an ? werte.filter((w) => w !== o) : [...werte, o])}
+            >
+              {o}
+            </button>
+          );
+        })}
+      </div>
+      {werte.map((w) => (
+        <input key={w} type="hidden" name={name} value={w} />
+      ))}
+    </div>
   );
 }
 

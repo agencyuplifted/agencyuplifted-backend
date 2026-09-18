@@ -28,13 +28,15 @@ export default async function NeueKampagnePage({
   const supabase = getSupabaseAdmin();
 
   const vorDreiJahren = new Date(Date.now() - 3 * 365 * 86_400_000).toISOString().slice(0, 10);
-  const [{ data: segmente }, { data: seminartypen }, { data: tags }, { data: termine }, { data: alteKampagnen }] = await Promise.all([
+  const [{ data: segmente }, { data: seminartypen }, { data: tags }, { data: termine }, { data: alteKampagnen }, { data: optionsListe }] = await Promise.all([
     supabase.from("teilnehmer_segmente").select("*").order("erstellt_am", { ascending: false }),
     supabase.from("seminartypen").select("name").order("name"),
     supabase.from("tags").select("id, label").eq("aktiv", true).order("label"),
     supabase.from("seminartermine").select("id, kennung, titel, datum_start").gte("datum_start", vorDreiJahren).order("datum_start", { ascending: false }),
     supabase.from("kampagnen").select("id, name, versendet_am").eq("status", "versendet").order("versendet_am", { ascending: false }),
+    supabase.from("seminartermin_optionen").select("titel").is("deaktiviert_am", null),
   ]);
+  const optionsTitel = Array.from(new Set((optionsListe || []).map((o: any) => String(o.titel || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "de"));
 
   let filter: FilterKriterien;
   let aktivesSegment: { id: string; name: string } | null = null;
@@ -102,6 +104,7 @@ export default async function NeueKampagnePage({
               tags={(tags || []) as any[]}
               termine={(termine || []).map((t: any) => ({ id: t.id, label: `${t.kennung || t.titel} · ${formatDatum(t.datum_start)}` }))}
               kampagnen={(alteKampagnen || []).map((k: any) => ({ id: k.id, label: `${k.name}${k.versendet_am ? ` · ${formatDatum(k.versendet_am)}` : ""}` }))}
+              optionen={optionsTitel}
               zaehlen={zaehleKampagnenEmpfaenger}
               angewendetAnzahl={empfaenger.length}
             />

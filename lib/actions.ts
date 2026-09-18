@@ -2324,6 +2324,8 @@ function bausteinSchalterAusFormular(formData: FormData) {
     tag_bedingung_ohne: tag("tag_bedingung_ohne"),
     nur_seminartyp_id: tag("nur_seminartyp_id"),
     ausschluss_seminartyp_id: tag("ausschluss_seminartyp_id"),
+    nur_optionen: formData.getAll("nur_optionen").map(String).filter(Boolean).slice(0, 30),
+    ausschluss_optionen: formData.getAll("ausschluss_optionen").map(String).filter(Boolean).slice(0, 30),
     mindestabstand_tage: Math.min(90, Math.max(0, Math.floor(Number(formData.get("mindestabstand_tage") || 0)) || 0)),
     baustein_signatur: formData.get("baustein_signatur") === "on",
     baustein_rechtliches: formData.get("baustein_rechtliches") === "on",

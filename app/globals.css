@@ -4280,3 +4280,16 @@ a.au-kliste-name:hover {
     grid-column: 1;
   }
 }
+
+.au-fe-optionen {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--color-border);
+}
+
+.au-fe-optionen .au-chip:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

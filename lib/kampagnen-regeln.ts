@@ -10,6 +10,7 @@ export type RegelFeld =
   | "seminar_besucht"
   | "seminar_gebucht"
   | "seminar_termin"
+  | "option_gebucht"
   | "letztes_seminar_monate"
   | "tag"
   | "kampagne_bekommen"
@@ -35,7 +36,7 @@ export type FeldDefinition = {
   operatoren: { key: RegelOperator; label: string }[];
   /** feste Werte; dynamische (Seminarkategorien, Tags) kommen von der Seite */
   werte?: { key: string; label: string }[];
-  quelle?: "seminartypen" | "tags" | "termine" | "kampagnen";
+  quelle?: "seminartypen" | "tags" | "termine" | "kampagnen" | "optionen";
 };
 
 const MENGE_OPS: FeldDefinition["operatoren"] = [
@@ -53,6 +54,7 @@ export const FELDER: Record<RegelFeld, FeldDefinition> = {
   seminar_besucht: { label: "Seminar besucht", art: "menge", operatoren: MENGE_OPS, quelle: "seminartypen" },
   seminar_gebucht: { label: "Seminar gebucht (kommt noch)", art: "menge", operatoren: MENGE_OPS, quelle: "seminartypen" },
   seminar_termin: { label: "Seminartermin (gebucht/dabei)", art: "menge", operatoren: MENGE_OPS, quelle: "termine" },
+  option_gebucht: { label: "Gebuchte Option", art: "menge", operatoren: MENGE_OPS, quelle: "optionen" },
   letztes_seminar_monate: {
     label: "Letztes Seminar",
     art: "zahl",
