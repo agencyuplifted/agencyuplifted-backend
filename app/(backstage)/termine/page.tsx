@@ -33,20 +33,24 @@ function Jahresplaner({
   termine,
   gebuchtProTermin,
   heuteISO,
+  mitKopf = true,
 }: {
   monate: { jahr: number; monatIndex: number }[];
   termine: any[];
   gebuchtProTermin: Map<string, number>;
   heuteISO: string;
+  mitKopf?: boolean;
 }) {
   return (
-    <div className="au-planer" role="table" aria-label="Seminare der nächsten 12 Monate">
-      <div className="au-planer-zeile au-planer-kopfzeile" role="row">
-        <span className="au-planer-monat" />
-        {Array.from({ length: 31 }, (_, i) => (
-          <span key={i} className="au-planer-tagnr" style={{ gridColumn: i + 2 }}>{(i + 1) % 5 === 0 || i === 0 ? i + 1 : ""}</span>
-        ))}
-      </div>
+    <div className="au-planer" role="table" aria-label="Seminarkalender">
+      {mitKopf && (
+        <div className="au-planer-zeile au-planer-kopfzeile" role="row">
+          <span className="au-planer-monat" />
+          {Array.from({ length: 31 }, (_, i) => (
+            <span key={i} className="au-planer-tagnr" style={{ gridColumn: i + 2 }}>{(i + 1) % 5 === 0 || i === 0 ? i + 1 : ""}</span>
+          ))}
+        </div>
+      )}
       {monate.map(({ jahr, monatIndex }) => {
         const anzahlTage = new Date(jahr, monatIndex + 1, 0).getDate();
         const monatStart = isoDatum(jahr, monatIndex, 1);
@@ -206,9 +210,11 @@ type Ansicht = "anstehend" | "vergangen" | "abgesagt";
 export default async function TerminePage({
   searchParams,
 }: {
-  searchParams: Promise<{ ansicht?: string }>;
+  searchParams: Promise<{ ansicht?: string; kal?: string }>;
 }) {
-  const { ansicht: ansichtRaw } = await searchParams;
+  const { ansicht: ansichtRaw, kal: kalRaw } = await searchParams;
+  // Kalender-Fenster in Monaten relativ zum aktuellen Monat (Blaettern in 6er-Schritten)
+  const kalVersatz = Math.max(-60, Math.min(120, Math.round(Number(kalRaw) || 0)));
   const ansicht: Ansicht = ansichtRaw === "vergangen" || ansichtRaw === "abgesagt" ? ansichtRaw : "anstehend";
   const heute = new Date();
   const heuteISO = heute.toISOString().slice(0, 10);
@@ -226,8 +232,10 @@ export default async function TerminePage({
 
   // Jahresplaner oben: Vormonat bis 10 Monate voraus. Termine, die im Vormonat
   // beginnen und in den Fenster-Start hineinreichen, fehlen hoechstens am Rand.
-  const monatsFensterStart = new Date(heute.getFullYear(), heute.getMonth() - 1, 1);
-  const monatsFensterEnde = new Date(heute.getFullYear(), heute.getMonth() + 11, 0);
+  // Einen Monat Vorlauf abfragen, damit Seminare ueber den Monatswechsel
+  // (Beginn im Vormonat) am Fensteranfang nicht fehlen.
+  const monatsFensterStart = new Date(heute.getFullYear(), heute.getMonth() + kalVersatz - 1, 1);
+  const monatsFensterEnde = new Date(heute.getFullYear(), heute.getMonth() + kalVersatz + 12, 0);
   const { data: kalenderTermine } = await supabase
     .from("seminartermine")
     .select("id, titel, kennung, datum_start, datum_ende, kapazitaet, seminartypen(name, farbe)")
@@ -237,8 +245,8 @@ export default async function TerminePage({
     .order("datum_start", { ascending: true });
 
   const monatsKarten: { jahr: number; monatIndex: number }[] = [];
-  for (let i = -1; i <= 10; i++) {
-    const d = new Date(heute.getFullYear(), heute.getMonth() + i, 1);
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(heute.getFullYear(), heute.getMonth() + kalVersatz + i, 1);
     monatsKarten.push({ jahr: d.getFullYear(), monatIndex: d.getMonth() });
   }
 
@@ -318,7 +326,14 @@ export default async function TerminePage({
         </div>
       </header>
 
-      <Kalender monatsKarten={monatsKarten} kalenderTermine={kalenderTermine || []} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} />
+      <Kalender
+        monatsKarten={monatsKarten}
+        kalenderTermine={kalenderTermine || []}
+        gebuchtProTermin={gebuchtProTermin}
+        heuteISO={heuteISO}
+        versatz={kalVersatz}
+        ansichtParam={ansicht === "anstehend" ? "" : `&ansicht=${ansicht}`}
+      />
 
       <div className="au-tliste-leiste">
         <nav className="au-seitentabs" aria-label="Termin-Ansichten" style={{ marginBottom: 0, flex: 1 }}>
@@ -350,20 +365,39 @@ function Kalender({
   kalenderTermine,
   gebuchtProTermin,
   heuteISO,
+  versatz,
+  ansichtParam,
 }: {
   monatsKarten: { jahr: number; monatIndex: number }[];
   kalenderTermine: any[];
   gebuchtProTermin: Map<string, number>;
   heuteISO: string;
+  versatz: number;
+  ansichtParam: string;
 }) {
   const kategorien = new Map<string, string>();
   kalenderTermine.forEach((t: any) => {
     if (t.seminartypen?.name) kategorien.set(t.seminartypen.name, t.seminartypen.farbe || "var(--color-accent)");
   });
+  const erste = monatsKarten.slice(0, 6);
+  const weitere = monatsKarten.slice(6);
+  const bereich = (m: { jahr: number; monatIndex: number }[]) =>
+    `${MONATSKURZ[m[0].monatIndex]} ${m[0].jahr} – ${MONATSKURZ[m[m.length - 1].monatIndex]} ${m[m.length - 1].jahr}`;
+  const link = (v: number) => `/termine?kal=${v}${ansichtParam}`;
+  const inWeiteren = kalenderTermine.filter((t: any) => {
+    const w = weitere[0];
+    return w && t.datum_start >= isoDatum(w.jahr, w.monatIndex, 1);
+  }).length;
+
   return (
     <section className="au-panel au-panel-breit">
       <div className="au-panel-kopf">
-        <h2>Die nächsten 12 Monate</h2>
+        <div className="au-kal-nav">
+          <Link href={link(versatz - 6)} className="au-kal-knopf" aria-label="6 Monate früher" prefetch={false}>‹</Link>
+          <h2>{bereich(erste)}</h2>
+          <Link href={link(versatz + 6)} className="au-kal-knopf" aria-label="6 Monate später" prefetch={false}>›</Link>
+          {versatz !== 0 && <Link href={link(0)} className="au-panel-link" prefetch={false}>Heute</Link>}
+        </div>
         <span className="au-planer-legende">
           {[...kategorien.entries()].map(([name, farbe]) => (
             <span key={name}><i style={{ background: farbe }} />{name}</span>
@@ -372,7 +406,15 @@ function Kalender({
         </span>
       </div>
       <div className="au-panel-inhalt" style={{ overflowX: "auto" }}>
-        <Jahresplaner monate={monatsKarten} termine={kalenderTermine} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} />
+        <Jahresplaner monate={erste} termine={kalenderTermine} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} />
+        {weitere.length > 0 && (
+          <details className="au-planer-mehr">
+            <summary>
+              {bereich(weitere)} anzeigen{inWeiteren ? ` · ${inWeiteren} ${inWeiteren === 1 ? "Termin" : "Termine"}` : ""}
+            </summary>
+            <Jahresplaner monate={weitere} termine={kalenderTermine} gebuchtProTermin={gebuchtProTermin} heuteISO={heuteISO} mitKopf={false} />
+          </details>
+        )}
       </div>
     </section>
   );
