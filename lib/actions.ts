@@ -187,6 +187,7 @@ export async function updateTeilnehmerStammdaten(formData: FormData) {
       ernaehrung_sonderwuensche: formData.get("ernaehrung_sonderwuensche") || null,
       notizen: formData.get("notizen") || null,
       teilnehmerliste_opt_out: formData.get("teilnehmerliste_opt_out") === "on",
+      teilnehmerliste_freigabe: formData.get("teilnehmerliste_freigabe") === "on",
     })
     .eq("id", id);
   if (error) throw new Error(error.message);
@@ -2320,6 +2321,8 @@ export async function createFunnelMail(formData: FormData) {
     versatz_tage: Number(formData.get("versatz_tage") || 0),
     betreff: String(formData.get("betreff")),
     inhalt: String(formData.get("inhalt")),
+    // Neu angelegte Mails sind nie sofort aktiv -- erst pruefen, dann bewusst aktivieren.
+    aktiv: false,
   });
   if (error) throw new Error(error.message);
   revalidatePath("/funnel");
@@ -2351,7 +2354,12 @@ export async function toggleFunnelMailAktiv(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("id"));
   const aktivNeu = String(formData.get("aktiv_neu")) === "true";
-  const { error } = await supabase.from("funnel_mails").update({ aktiv: aktivNeu }).eq("id", id);
+  // aktiviert_am = Untergrenze fuer den Cron (lib/funnel.ts): nach dem
+  // Aktivieren gehen nur Mails fuer Stichtage ab heute raus, nie rueckwirkend.
+  const { error } = await supabase
+    .from("funnel_mails")
+    .update(aktivNeu ? { aktiv: true, aktiviert_am: new Date().toISOString() } : { aktiv: false })
+    .eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/funnel");
   redirect("/funnel");
@@ -2361,10 +2369,124 @@ export async function deleteFunnelMail(formData: FormData) {
   await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const id = String(formData.get("id"));
-  const { error } = await supabase.from("funnel_mails").delete().eq("id", id);
+  // Soft-Delete: die Versand-Historie (funnel_versand_log) haengt an der Mail.
+  const { error } = await supabase.from("funnel_mails").update({ aktiv: false, geloescht_am: new Date().toISOString() }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/funnel");
   redirect("/funnel");
+}
+
+export async function stelleFunnelMailWiederHer(formData: FormData) {
+  await requireBackstageLogin();
+  const { error } = await getSupabaseAdmin().from("funnel_mails").update({ geloescht_am: null }).eq("id", String(formData.get("id")));
+  if (error) throw new Error(error.message);
+  revalidatePath("/funnel");
+  redirect("/funnel");
+}
+
+// Import aus eingefuegtem Text (z. B. ChatGPT): Platzhalter wurden im UI schon
+// auf echte Merge-Felder gemappt. Immer INAKTIV angelegt -- nie automatisch
+// scharf geschaltet.
+export async function importiereFunnelMail(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const name = String(formData.get("name") || "").trim();
+  const betreff = String(formData.get("betreff") || "").trim();
+  const inhalt = String(formData.get("inhalt") || "").trim();
+  const trigger = String(formData.get("trigger_typ") || "");
+  const versatz = Number(formData.get("versatz_tage") || 0);
+  if (!name) return { fehler: "Bitte einen internen Namen angeben." };
+  if (!betreff) return { fehler: "Bitte einen Betreff angeben." };
+  if (!inhalt) return { fehler: "Der Text ist leer." };
+  if (!["buchung_erstellt", "vor_seminarstart", "nach_seminarende", "lead_erstellt", "warteliste_eingetragen"].includes(trigger)) {
+    return { fehler: "Bitte einen Auslöser wählen." };
+  }
+  if (!Number.isInteger(versatz) || versatz < 0 || versatz > 365) return { fehler: "Anzahl Tage muss zwischen 0 und 365 liegen." };
+  const { error } = await getSupabaseAdmin()
+    .from("funnel_mails")
+    .insert({ name, betreff, inhalt, trigger_typ: trigger, versatz_tage: versatz, aktiv: false });
+  if (error) return { fehler: error.message };
+  revalidatePath("/funnel");
+  return { fehler: null };
+}
+
+// ---------- Seminar-Unterlagen (Tabelle seminar_unterlagen, Bucket seminar-unterlagen) ----------
+// Dateien laden direkt vom Browser in den privaten Bucket (signierte Upload-URL),
+// weil Server-Action-Uploads bei Vercel auf ~4,5 MB begrenzt sind.
+
+export async function erzeugeUnterlagenUpload(formData: FormData): Promise<VorlagenAktionsErgebnis & { pfad?: string; uploadUrl?: string }> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const terminId = String(formData.get("seminartermin_id") || "");
+  const dateiname = String(formData.get("dateiname") || "datei")
+    .normalize("NFKD")
+    .replace(/[^\w.\-]+/g, "_")
+    .slice(-80);
+  if (!/^[0-9a-f-]{36}$/i.test(terminId)) return { fehler: "Termin fehlt." };
+  const pfad = `${terminId}/${Date.now()}-${dateiname}`;
+  const { data, error } = await getSupabaseAdmin().storage.from("seminar-unterlagen").createSignedUploadUrl(pfad);
+  if (error || !data) return { fehler: error?.message || "Upload konnte nicht vorbereitet werden." };
+  return { fehler: null, pfad: data.path, uploadUrl: data.signedUrl };
+}
+
+export async function speichereSeminarUnterlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const terminId = String(formData.get("seminartermin_id") || "");
+  const titel = String(formData.get("titel") || "").trim();
+  const pfad = String(formData.get("pfad") || "").trim();
+  const link = String(formData.get("link") || "").trim();
+  if (!titel) return { fehler: "Bitte einen Titel angeben." };
+  if (!pfad && !link) return { fehler: "Bitte eine Datei hochladen oder einen Link angeben." };
+  if (link && !/^https:\/\//i.test(link)) return { fehler: "Links bitte mit https:// angeben." };
+  const supabase = getSupabaseAdmin();
+  const { data: letzte } = await supabase.from("seminar_unterlagen").select("position").eq("seminartermin_id", terminId).order("position", { ascending: false }).limit(1);
+  const { error } = await supabase.from("seminar_unterlagen").insert({
+    seminartermin_id: terminId,
+    titel,
+    datei_url: pfad ? `storage:${pfad}` : link,
+    position: (letzte?.[0]?.position ?? -1) + 1,
+  });
+  if (error) return { fehler: error.message };
+  revalidatePath(`/termine/${terminId}`);
+  return { fehler: null };
+}
+
+export async function verschiebeSeminarUnterlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const id = String(formData.get("id") || "");
+  const terminId = String(formData.get("seminartermin_id") || "");
+  const richtung = String(formData.get("richtung") || "");
+  const supabase = getSupabaseAdmin();
+  const { data: liste, error } = await supabase.from("seminar_unterlagen").select("id, position").eq("seminartermin_id", terminId).order("position").order("erstellt_am");
+  if (error) return { fehler: error.message };
+  const reihe = [...(liste || [])];
+  const i = reihe.findIndex((u) => u.id === id);
+  const j = richtung === "hoch" ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= reihe.length) return { fehler: null };
+  [reihe[i], reihe[j]] = [reihe[j], reihe[i]];
+  for (let k = 0; k < reihe.length; k++) {
+    if (reihe[k].position !== k) await supabase.from("seminar_unterlagen").update({ position: k }).eq("id", reihe[k].id);
+  }
+  revalidatePath(`/termine/${terminId}`);
+  return { fehler: null };
+}
+
+export async function loescheSeminarUnterlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const id = String(formData.get("id") || "");
+  const supabase = getSupabaseAdmin();
+  const { data: u } = await supabase.from("seminar_unterlagen").select("seminartermin_id, datei_url").eq("id", id).maybeSingle();
+  if (!u) return { fehler: "Unterlage nicht gefunden." };
+  const { error } = await supabase.from("seminar_unterlagen").delete().eq("id", id);
+  if (error) return { fehler: error.message };
+  if (String(u.datei_url).startsWith("storage:")) {
+    await supabase.storage.from("seminar-unterlagen").remove([String(u.datei_url).slice(8)]);
+  }
+  revalidatePath(`/termine/${u.seminartermin_id}`);
+  return { fehler: null };
 }
 
 export async function funnelVersandJetzt() {

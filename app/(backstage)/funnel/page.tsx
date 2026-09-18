@@ -6,10 +6,14 @@ import {
   updateFunnelMail,
   deleteFunnelMail,
   toggleFunnelMailAktiv,
+  importiereFunnelMail,
+  stelleFunnelMailWiederHer,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatDatumZeit } from "@/lib/format";
-import { TRIGGER_LABEL, PLATZHALTER_HILFE, type TriggerTyp } from "@/lib/funnel";
+import { TRIGGER_LABEL, PLATZHALTER_HILFE, SYSTEM_FUNNEL_IDS, type TriggerTyp } from "@/lib/funnel";
+import FunnelImport from "./FunnelImport";
+import AufklappBereich from "../AufklappBereich";
 
 const TRIGGER_TYPEN: TriggerTyp[] = [
   "buchung_erstellt",
@@ -27,7 +31,9 @@ export default async function FunnelPage({
   const { lauf, gesendet, fehler, uebersprungen, geprueft } = await searchParams;
   const supabase = getSupabaseAdmin();
 
-  const { data: funnelMails } = await supabase.from("funnel_mails").select("*").order("erstellt_am", { ascending: false });
+  const { data: alleFunnelMails } = await supabase.from("funnel_mails").select("*").order("erstellt_am", { ascending: false });
+  const funnelMails = (alleFunnelMails || []).filter((f: any) => !f.geloescht_am);
+  const geloeschte = (alleFunnelMails || []).filter((f: any) => f.geloescht_am);
   const { data: log } = await supabase
     .from("funnel_versand_log")
     .select("*, funnel_mails(name)")
@@ -83,8 +89,17 @@ export default async function FunnelPage({
         </table>
       </div>
 
+      <AufklappBereich merkSchluessel="funnel-import" className="au-aufklapp-panel" style={{ marginBottom: "1.5rem" }} zusammenfassung={<strong>Mail aus Text importieren (z. B. aus ChatGPT)</strong>}>
+        <FunnelImport
+          felder={PLATZHALTER_HILFE.map((p) => ({ key: p.key.replace(/[{}]/g, ""), beschreibung: p.beschreibung }))}
+          trigger={TRIGGER_TYPEN.map((t) => ({ key: t, label: TRIGGER_LABEL[t] }))}
+          importAction={importiereFunnelMail}
+        />
+      </AufklappBereich>
+
       <div className="au-card">
         <h2>Neue Funnel-Mail</h2>
+        <p className="au-klein" style={{ marginTop: "-0.5rem" }}>Neue Mails werden inaktiv angelegt. Nach dem Aktivieren gehen sie nur für Stichtage ab dem Aktivierungstag raus – nie rückwirkend.</p>
         <form action={createFunnelMail}>
           <label className="au-label">Name (intern)</label>
           <input className="au-input" name="name" required placeholder="z. B. Erinnerung 3 Tage vor Seminarstart" />
@@ -125,18 +140,25 @@ export default async function FunnelPage({
                   {TRIGGER_LABEL[f.trigger_typ as TriggerTyp]?.replace("X", String(f.versatz_tage))}
                 </div>
                 <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>Betreff: {f.betreff}</div>
+                {SYSTEM_FUNNEL_IDS[f.id] ? (
+                  <div className="au-klein" style={{ marginTop: "0.3rem" }}>
+                    <span className="au-badge au-badge-neutral">System</span> {SYSTEM_FUNNEL_IDS[f.id]} – „aktiv“ spielt dafür keine Rolle, bitte inaktiv lassen.
+                  </div>
+                ) : f.aktiv && f.aktiviert_am ? (
+                  <div className="au-klein" style={{ marginTop: "0.3rem" }}>aktiv seit {formatDatum(f.aktiviert_am)} – verschickt nur für Stichtage ab diesem Tag</div>
+                ) : null}
               </div>
               <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <form action={toggleFunnelMailAktiv}>
+                {!SYSTEM_FUNNEL_IDS[f.id] && <form action={toggleFunnelMailAktiv}>
                   <input type="hidden" name="id" value={f.id} />
                   <input type="hidden" name="aktiv_neu" value={String(!f.aktiv)} />
                   <button type="submit" className="au-btn au-btn-secondary au-btn-sm">
                     {f.aktiv ? "Aktiv (deaktivieren)" : "Inaktiv (aktivieren)"}
                   </button>
-                </form>
+                </form>}
                 <form action={deleteFunnelMail}>
                   <input type="hidden" name="id" value={f.id} />
-                  <button type="submit" className="au-btn au-btn-danger au-btn-sm">Löschen</button>
+                  <button type="submit" className="au-btn au-btn-danger au-btn-sm" title="Kommt in den Papierkorb – die Versand-Historie bleibt erhalten">Löschen</button>
                 </form>
               </div>
             </div>
@@ -170,6 +192,20 @@ export default async function FunnelPage({
           </div>
         ))}
         {!funnelMails?.length && <p>Noch keine Funnel-Mails angelegt.</p>}
+        {geloeschte.length > 0 && (
+          <details style={{ marginTop: "1rem" }}>
+            <summary className="au-klein">Papierkorb ({geloeschte.length})</summary>
+            {geloeschte.map((f: any) => (
+              <div key={f.id} className="au-event-zeile">
+                <span>{f.name} <span className="au-klein">· gelöscht am {formatDatum(f.geloescht_am)}</span></span>
+                <form action={stelleFunnelMailWiederHer}>
+                  <input type="hidden" name="id" value={f.id} />
+                  <button type="submit" className="au-link">wiederherstellen</button>
+                </form>
+              </div>
+            ))}
+          </details>
+        )}
       </div>
 
       <div className="au-card">

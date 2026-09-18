@@ -389,6 +389,14 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
             Nicht auf Teilnehmerlisten aufführen (Opt-out)
           </label>
 
+          <label style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", fontWeight: 400, marginBottom: "1rem", fontSize: "0.9rem" }}>
+            <input type="checkbox" name="teilnehmerliste_freigabe" defaultChecked={!!t.teilnehmerliste_freigabe} style={{ marginTop: "0.2rem" }} />
+            <span>
+              In der Nach-Seminar-Teilnehmerliste mit Foto &amp; LinkedIn zeigen (Freigabe)
+              <span className="au-klein" style={{ display: "block" }}>Eigene Einwilligung, unabhängig von Referenz-Freigaben. Kann die Person auch selbst über den Link {"{{freigabe_link}}"} aus der Mail setzen.</span>
+            </span>
+          </label>
+
           <details open={hatWeitereAngaben} style={{ marginBottom: "1.1rem" }}>
             <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: "0.9rem", marginBottom: "0.75rem" }}>
               Weitere Angaben (Adresse, LinkedIn, Ernährung, Notizen)

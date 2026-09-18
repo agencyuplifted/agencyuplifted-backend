@@ -122,6 +122,8 @@ export async function middleware(request: NextRequest) {
     pathname === "/api/inbox" ||
     // Kalender-Abo: Kalender-Apps schicken keine Cookies, Token in der URL
     pathname.startsWith("/api/kalender/") ||
+    // Persoenliche Teilnehmer-Seiten aus den Seminar-Mails (signierter Token)
+    pathname.startsWith("/seminar/") ||
     pathname.startsWith("/wissen") ||
     pathname === "/sitemap.xml" ||
     pathname === "/robots.txt" ||

@@ -35,6 +35,10 @@ import {
   removeMitarbeiterVonTermin,
   setzeZimmerpartner,
   entferneZimmerpartner,
+  erzeugeUnterlagenUpload,
+  speichereSeminarUnterlage,
+  verschiebeSeminarUnterlage,
+  loescheSeminarUnterlage,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto, effektiveTerminNaechte, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
@@ -61,6 +65,8 @@ import {
 import { aktuellerPreisNetto, aktuellePreisstaffel, istPreisstaffelAktiv, letzterGueltigerTag, sortierteStaffeln, berlinKalendertag, berechneMonatlicheStichtageRueckwaerts, type PreisstaffelVorlage } from "@/lib/preisstaffeln";
 import Link from "next/link";
 import SeitenTabs from "../../SeitenTabs";
+import UnterlagenVerwaltung from "./UnterlagenVerwaltung";
+import { seminarLinks } from "@/lib/seminar-links";
 import AufklappBereich from "../../AufklappBereich";
 
 const badgeLabel: Record<string, string> = {
@@ -176,6 +182,7 @@ export default async function TerminDetailPage({
     { data: andereTermine },
     { data: alleOptionenFuerKopie },
     { data: preisstaffelVorlagen },
+    { data: unterlagen },
   ] = await Promise.all([
     supabase
       .from("seminartermine")
@@ -240,6 +247,7 @@ export default async function TerminDetailPage({
     // Gespeicherte Preisstaffel-Vorlagen fuer "Aus gespeicherter Vorlage laden"
     // (einmal fuer alle Optionen geladen, nicht pro Option).
     supabase.from("preisstaffel_vorlagen").select("*").order("name"),
+    supabase.from("seminar_unterlagen").select("id, titel, datei_url, position").eq("seminartermin_id", id).order("position").order("erstellt_am"),
   ]);
 
   // Exakt dieselbe Berechnung wie /api/public/seminartermine/[id], die der
@@ -399,6 +407,10 @@ export default async function TerminDetailPage({
   const optionenMitWarnung = aktiveOptionen.filter(
     (o: any) => !(o.preisstaffeln || []).length || normalpreisLuecke(o.preisstaffeln || [], termin.datum_start)
   ).length;
+  // Vorschau der Teilnehmer-Seiten mit dem Link des ersten echten Teilnehmers
+  const vorschauTeilnehmer = teilnehmerListe.find((tl) => tl.rolle === "teilnehmer") || teilnehmerListe[0];
+  const vorschauLinks = vorschauTeilnehmer ? seminarLinks(vorschauTeilnehmer.id, id) : null;
+  const vorschauPerson = vorschauTeilnehmer?.name || "";
   const statusStil: Record<string, string> = { geplant: "au-badge-neutral", bestaetigt: "au-badge-success", unterbesetzt: "au-badge-warning", abgesagt: "au-badge-danger" };
   const ortText = [termin.veranstaltungsorte?.name, termin.veranstaltungsorte?.ort].filter(Boolean).join(", ");
 
@@ -1266,6 +1278,38 @@ export default async function TerminDetailPage({
         </AufklappBereich>
       </div>
 
+            ),
+          },
+          {
+            key: "unterlagen",
+            label: "Unterlagen",
+            anzahl: unterlagen?.length || 0,
+            inhalt: (
+              <div className="au-bereichsstapel">
+                <Bereich titel="Unterlagen für die Teilnehmer">
+                  <p className="au-klein" style={{ marginTop: 0 }}>
+                    Erscheinen auf der persönlichen Unterlagen-Seite jedes Teilnehmers (Link <code>{"{{unterlagen_link}}"}</code> in den Funnel-Mails). Dateien liegen privat und werden nur über zeitlich begrenzte Links ausgeliefert.
+                  </p>
+                  <UnterlagenVerwaltung
+                    terminId={id}
+                    unterlagen={(unterlagen || []) as any[]}
+                    uploadVorbereitenAction={erzeugeUnterlagenUpload}
+                    speichernAction={speichereSeminarUnterlage}
+                    verschiebenAction={verschiebeSeminarUnterlage}
+                    loeschenAction={loescheSeminarUnterlage}
+                  />
+                </Bereich>
+                {vorschauLinks && (
+                  <Bereich titel="So sehen es die Teilnehmer">
+                    <p className="au-klein" style={{ marginTop: 0 }}>Vorschau mit dem persönlichen Link von {vorschauPerson}. Jeder Teilnehmer bekommt in der Mail seinen eigenen Link.</p>
+                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                      <a className="au-btn au-btn-secondary au-btn-sm" href={vorschauLinks.unterlagen_link} target="_blank" rel="noreferrer">Unterlagen-Seite ↗</a>
+                      <a className="au-btn au-btn-secondary au-btn-sm" href={vorschauLinks.teilnehmerliste_link} target="_blank" rel="noreferrer">Teilnehmerliste ↗</a>
+                      <a className="au-btn au-btn-secondary au-btn-sm" href={vorschauLinks.freigabe_link} target="_blank" rel="noreferrer">Freigabe-Seite ↗</a>
+                    </div>
+                  </Bereich>
+                )}
+              </div>
             ),
           },
           {
