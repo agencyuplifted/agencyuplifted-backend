@@ -19,6 +19,7 @@ const GROUPS: NavGroup[] = [
       { href: "/organisationen", label: "Organisationen" },
       { href: "/warteliste", label: "Warteliste" },
       { href: "/leads", label: "Leads" },
+      { href: "/netzwerk-einladen", label: "Uplifted Agencies" },
     ],
   },
   {

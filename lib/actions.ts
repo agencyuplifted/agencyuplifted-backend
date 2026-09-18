@@ -14,6 +14,7 @@ import { INBOX_TEXT_MAX, INBOX_TYPEN, INBOX_STATUS, INBOX_BEREICHE, INBOX_FORMAT
 import { TEILNAHME, TURNUS, EVENT_ROLLEN, KONTAKT_STATUS, nurErlaubterWert, berlinHeute, tagPlus } from "./events";
 import { FREQUENZEN, sendeErinnerung, type Erinnerung } from "./erinnerungen";
 import { randomBytes } from "crypto";
+import { getNetzwerkGruppen, sendeNetzwerkLink, getNetzwerkAuthKonfig } from "./netzwerk";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
@@ -4449,5 +4450,185 @@ export async function erneuereKalenderToken(formData: FormData): Promise<Vorlage
   const { error } = await getSupabaseAdmin().from("kalender_abos").update({ token }).eq("id", id);
   if (error) return { fehler: error.message };
   revalidatePath("/wiedervorlage/einstellungen");
+  return { fehler: null };
+}
+
+// ---------------------------------------------------------------------------
+// Netzwerk "Uplifted Agencies" -- Backstage-Seite /netzwerk-einladen.
+// Einladungen gehen NUR per ausdruecklichem Klick raus. Harte Regel ohne
+// Override: marketing_consent_status abgemeldet/keine_zustimmung kommt in
+// keine Liste. Jede Action prueft den Backstage-Login selbst (Server Actions
+// sind per ID auch von oeffentlichen Routen wie /netzwerk aus aufrufbar).
+
+const NETZWERK_AUSGESCHLOSSEN = ["abgemeldet", "keine_zustimmung"];
+
+async function pruefeBackstageLogin(): Promise<string | null> {
+  const benutzer = await getAktuellerBenutzer();
+  return benutzer ? null : "Nicht angemeldet.";
+}
+
+export async function ladeInPilotkreisEin(formData: FormData): Promise<VorlagenAktionsErgebnis & { info?: string }> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  // Ohne Publishable Key funktioniert /netzwerk nicht -- dann lieber gar
+  // nicht einladen, als Links auf eine Fehlerseite zu verschicken.
+  try {
+    getNetzwerkAuthKonfig();
+  } catch {
+    return { fehler: "Das Netzwerk ist noch nicht fertig eingerichtet: NEXT_PUBLIC_SUPABASE_ANON_KEY fehlt in Vercel. Es wurde nichts verschickt." };
+  }
+  const ids = formData.getAll("teilnehmer_id").map(String).filter(Boolean);
+  if (!ids.length) return { fehler: "Bitte mindestens eine Person auswählen." };
+  if (ids.length > 10) return { fehler: "Bitte höchstens 10 Personen auf einmal einladen – der Pilotkreis ist bewusst klein." };
+
+  const supabase = getSupabaseAdmin();
+  const { pilot } = await getNetzwerkGruppen();
+  const { data: personen, error } = await supabase
+    .from("teilnehmer")
+    .select("id, vorname, nachname, anrede, email, marketing_consent_status, deaktiviert_am, teilnehmer_community_status(community_gruppe_id)")
+    .in("id", ids);
+  if (error) return { fehler: error.message };
+
+  const eingeladen: string[] = [];
+  const uebersprungen: string[] = [];
+  for (const p of (personen || []) as any[]) {
+    const name = `${p.vorname} ${p.nachname}`;
+    if (p.deaktiviert_am || NETZWERK_AUSGESCHLOSSEN.includes(p.marketing_consent_status)) { uebersprungen.push(`${name} (Einwilligung)`); continue; }
+    if (!p.email) { uebersprungen.push(`${name} (keine E-Mail)`); continue; }
+    if ((p.teilnehmer_community_status || []).some((s: any) => s.community_gruppe_id === pilot)) { uebersprungen.push(`${name} (schon im Pilotkreis)`); continue; }
+    const { error: insFehler } = await supabase.from("teilnehmer_community_status").insert({ teilnehmer_id: p.id, community_gruppe_id: pilot, status: "eingeladen" });
+    if (insFehler) { uebersprungen.push(`${name} (${insFehler.message})`); continue; }
+    try {
+      await sendeNetzwerkLink({ email: p.email, vorname: p.vorname, anrede: p.anrede, art: "einladung" });
+      eingeladen.push(name);
+    } catch (e: any) {
+      // Ohne Mail keine "eingeladen"-Leiche hinterlassen
+      await supabase.from("teilnehmer_community_status").delete().eq("teilnehmer_id", p.id).eq("community_gruppe_id", pilot);
+      uebersprungen.push(`${name} (${e.message})`);
+    }
+  }
+  revalidatePath("/netzwerk-einladen");
+  return {
+    fehler: uebersprungen.length && !eingeladen.length ? `Niemand eingeladen: ${uebersprungen.join(", ")}` : null,
+    info: [eingeladen.length ? `Eingeladen: ${eingeladen.join(", ")}` : null, uebersprungen.length ? `Übersprungen: ${uebersprungen.join(", ")}` : null].filter(Boolean).join(" · "),
+  };
+}
+
+export async function sendeNetzwerkEinladungErneut(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const supabase = getSupabaseAdmin();
+  const { data: p } = await supabase.from("teilnehmer").select("vorname, anrede, email, marketing_consent_status").eq("id", String(formData.get("teilnehmer_id") || "")).maybeSingle();
+  if (!p?.email) return { fehler: "Keine E-Mail-Adresse." };
+  if (NETZWERK_AUSGESCHLOSSEN.includes(p.marketing_consent_status)) return { fehler: "Einwilligung fehlt – keine Einladung möglich." };
+  try {
+    await sendeNetzwerkLink({ email: p.email, vorname: p.vorname, anrede: p.anrede, art: "einladung" });
+  } catch (e: any) {
+    return { fehler: e.message };
+  }
+  return { fehler: null };
+}
+
+export async function setzeAufNetzwerkVormerkliste(formData: FormData): Promise<VorlagenAktionsErgebnis & { info?: string }> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const ids = formData.getAll("teilnehmer_id").map(String).filter(Boolean);
+  if (!ids.length) return { fehler: "Bitte mindestens eine Person auswählen." };
+  const supabase = getSupabaseAdmin();
+  const { vormerkliste } = await getNetzwerkGruppen();
+  const { data: personen, error } = await supabase.from("teilnehmer").select("id, marketing_consent_status").in("id", ids);
+  if (error) return { fehler: error.message };
+  const erlaubt = (personen || []).filter((p: any) => !NETZWERK_AUSGESCHLOSSEN.includes(p.marketing_consent_status)).map((p: any) => p.id);
+  if (erlaubt.length) {
+    const { error: e } = await supabase
+      .from("teilnehmer_community_status")
+      .upsert(erlaubt.map((id) => ({ teilnehmer_id: id, community_gruppe_id: vormerkliste, status: "vorgemerkt" })), { onConflict: "teilnehmer_id,community_gruppe_id", ignoreDuplicates: true });
+    if (e) return { fehler: e.message };
+  }
+  revalidatePath("/netzwerk-einladen");
+  return { fehler: null, info: `${erlaubt.length} vorgemerkt – es wurde nichts verschickt.` };
+}
+
+export async function entferneVonNetzwerkVormerkliste(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const { vormerkliste } = await getNetzwerkGruppen();
+  const { error } = await getSupabaseAdmin()
+    .from("teilnehmer_community_status")
+    .delete()
+    .eq("teilnehmer_id", String(formData.get("teilnehmer_id") || ""))
+    .eq("community_gruppe_id", vormerkliste);
+  if (error) return { fehler: error.message };
+  revalidatePath("/netzwerk-einladen");
+  return { fehler: null };
+}
+
+// Zugang sperren (Status "abgelehnt") bzw. wieder freigeben. Sperren wirkt
+// sofort, weil RLS nur Status "aktiv" als Mitglied zaehlt.
+export async function setzeNetzwerkZugang(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const teilnehmerId = String(formData.get("teilnehmer_id") || "");
+  const sperren = formData.get("sperren") === "true";
+  const supabase = getSupabaseAdmin();
+  const { pilot } = await getNetzwerkGruppen();
+  const { data: t } = await supabase.from("teilnehmer").select("auth_user_id").eq("id", teilnehmerId).maybeSingle();
+  const status = sperren ? "abgelehnt" : t?.auth_user_id ? "aktiv" : "eingeladen";
+  const { error } = await supabase.from("teilnehmer_community_status").update({ status }).eq("teilnehmer_id", teilnehmerId).eq("community_gruppe_id", pilot);
+  if (error) return { fehler: error.message };
+  revalidatePath("/netzwerk-einladen");
+  return { fehler: null };
+}
+
+// Manuelle Zuordnung aus der Pruefliste: Markus entscheidet, welcher
+// Teilnehmer hinter einem Login steckt. Einwilligungs-Ausschluss gilt auch hier.
+export async function ordneNetzwerkAnmeldungZu(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const pruefId = String(formData.get("pruef_id") || "");
+  const teilnehmerId = String(formData.get("teilnehmer_id") || "");
+  const supabase = getSupabaseAdmin();
+  const { data: eintrag } = await supabase.from("netzwerk_anmeldungen_pruefen").select("*").eq("id", pruefId).maybeSingle();
+  if (!eintrag?.auth_user_id) return { fehler: "Eintrag oder Login nicht gefunden." };
+  const { data: t } = await supabase.from("teilnehmer").select("id, auth_user_id, marketing_consent_status").eq("id", teilnehmerId).maybeSingle();
+  if (!t) return { fehler: "Teilnehmer nicht gefunden." };
+  if (NETZWERK_AUSGESCHLOSSEN.includes(t.marketing_consent_status)) return { fehler: "Diese Person hat keine Einwilligung – keine Freischaltung möglich." };
+  if (t.auth_user_id && t.auth_user_id !== eintrag.auth_user_id) return { fehler: "Dieser Teilnehmer ist bereits mit einem anderen Login verknüpft." };
+  const { data: belegt } = await supabase.from("teilnehmer").select("id").eq("auth_user_id", eintrag.auth_user_id).neq("id", teilnehmerId).maybeSingle();
+  if (belegt) return { fehler: "Dieser Login ist bereits einem anderen Teilnehmer zugeordnet." };
+
+  const { pilot } = await getNetzwerkGruppen();
+  const { error: e1 } = await supabase.from("teilnehmer").update({ auth_user_id: eintrag.auth_user_id }).eq("id", teilnehmerId);
+  if (e1) return { fehler: e1.message };
+  const { error: e2 } = await supabase
+    .from("teilnehmer_community_status")
+    .upsert({ teilnehmer_id: teilnehmerId, community_gruppe_id: pilot, status: "aktiv" }, { onConflict: "teilnehmer_id,community_gruppe_id" });
+  if (e2) return { fehler: e2.message };
+  await supabase.rpc("netzwerk_verbindungen_berechnen", { p_teilnehmer: teilnehmerId });
+  await supabase.from("netzwerk_anmeldungen_pruefen").update({ erledigt_am: new Date().toISOString(), notiz: `zugeordnet: ${teilnehmerId}` }).eq("id", pruefId);
+  revalidatePath("/netzwerk-einladen");
+  return { fehler: null };
+}
+
+export async function erledigeNetzwerkPruefung(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const { error } = await getSupabaseAdmin()
+    .from("netzwerk_anmeldungen_pruefen")
+    .update({ erledigt_am: new Date().toISOString(), notiz: String(formData.get("notiz") || "").trim() || "ohne Zuordnung erledigt" })
+    .eq("id", String(formData.get("pruef_id") || ""));
+  if (error) return { fehler: error.message };
+  revalidatePath("/netzwerk-einladen");
+  return { fehler: null };
+}
+
+export async function setzeAgenturRolle(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const rolle = String(formData.get("agentur_rolle") || "");
+  if (!["inhaber", "mitinhaber", "angestellt", "unbekannt"].includes(rolle)) return { fehler: "Ungültige Rolle." };
+  const { error } = await getSupabaseAdmin().from("teilnehmer_organisationen").update({ agentur_rolle: rolle }).eq("id", String(formData.get("id") || ""));
+  if (error) return { fehler: error.message };
+  revalidatePath("/netzwerk-einladen");
   return { fehler: null };
 }

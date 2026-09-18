@@ -6,10 +6,14 @@ import { formatDatum } from "@/lib/format";
 
 export default async function CommunityPage() {
   const supabase = getSupabaseAdmin();
-  const { data: gruppen } = await supabase.from("community_gruppen").select("*").order("erstellt_am", { ascending: false });
+  // Netzwerk-Gruppen (Uplifted Agencies) werden unter /netzwerk-einladen verwaltet,
+  // nicht hier -- sonst liessen sie sich mit den alten Status versehentlich aendern.
+  const NETZWERK_TYPEN = "(netzwerk_pilot,netzwerk_vormerkliste,zirkel)";
+  const { data: gruppen } = await supabase.from("community_gruppen").select("*").not("typ", "in", NETZWERK_TYPEN).order("erstellt_am", { ascending: false });
   const { data: mitglieder } = await supabase
     .from("teilnehmer_community_status")
-    .select("*, teilnehmer(vorname, nachname, email), community_gruppen(name)")
+    .select("*, teilnehmer(vorname, nachname, email), community_gruppen!inner(name, typ)")
+    .not("community_gruppen.typ", "in", NETZWERK_TYPEN)
     .order("erstellt_am", { ascending: false });
   const { data: teilnehmer } = await supabase.from("teilnehmer").select("*").order("nachname");
 

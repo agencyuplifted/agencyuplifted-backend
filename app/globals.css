@@ -1278,3 +1278,243 @@ details summary {
     font-size: 16px;
   }
 }
+
+/* ---------- Netzwerk "Uplifted Agencies" (/netzwerk) ---------- */
+
+.ua-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f6f5f1;
+}
+
+.ua-kopf {
+  background: #0b1b33;
+  padding: 0.9rem 1.25rem;
+}
+
+.ua-marke {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.ua-marke-zeichen {
+  background: #c9a227;
+  color: #0b1b33;
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.8rem;
+}
+
+.ua-inhalt {
+  flex: 1;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3rem;
+}
+
+.ua-fuss {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--color-text-faint);
+  padding: 1.25rem;
+}
+
+.ua-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  font-size: 0.92rem;
+}
+
+.ua-nav a {
+  color: var(--color-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ua-nav a:hover {
+  text-decoration: underline;
+}
+
+.ua-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.ua-karte {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1.1rem 1.2rem;
+  margin-bottom: 0.9rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.ua-schmal {
+  max-width: 460px;
+  margin: 2rem auto;
+}
+
+.ua-raster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.9rem;
+}
+
+.ua-person {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  margin-bottom: 0;
+}
+
+.ua-person:hover {
+  border-color: var(--color-accent);
+}
+
+.ua-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #0b1b33;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ua-avatar-gross {
+  width: 64px;
+  height: 64px;
+  font-size: 1.3rem;
+}
+
+.ua-zeile {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.ua-klein {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.ua-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+
+.ua-tag {
+  font-size: 0.72rem;
+  background: #eef1f6;
+  color: #0b1b33;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+}
+
+.ua-faden {
+  height: 5px;
+  background: var(--color-border);
+  border-radius: 3px;
+  margin-top: 0.6rem;
+  overflow: hidden;
+}
+
+.ua-faden > span {
+  display: block;
+  height: 100%;
+  background: #c9a227;
+}
+
+.ua-umschalter {
+  display: inline-flex;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ua-umschalter a {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  text-decoration: none;
+  color: var(--color-accent);
+}
+
+.ua-umschalter a.aktiv {
+  background: #0b1b33;
+  color: #fff;
+}
+
+.ua-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.9rem 0 1.1rem;
+}
+
+.ua-filter .au-input,
+.ua-filter .au-select {
+  width: auto;
+  flex: 1 1 170px;
+  margin-bottom: 0;
+}
+
+.ua-kontakt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
+}
+
+.ua-meldung {
+  margin: 0.6rem 0 0;
+  font-size: 0.88rem;
+}
+
+.ua-fehler {
+  color: var(--color-danger);
+}
+
+.ua-info {
+  color: var(--color-success);
+}
+
+.ua-badge-gesuch {
+  background: #fdf3e2;
+  color: #96650a;
+}
+
+.ua-badge-angebot {
+  background: #eaf6ee;
+  color: #1f7a3f;
+}
+
+@media (max-width: 860px) {
+  .ua-filter .au-input,
+  .ua-filter .au-select,
+  .ua-karte .au-input,
+  .ua-karte .au-textarea {
+    font-size: 16px;
+  }
+}

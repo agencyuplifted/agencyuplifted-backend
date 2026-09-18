@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/session";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 
 // Login-basierter Zugriffsschutz: jede Anfrage ausser /login, dem
 // Cron-Endpoint, den oeffentlichen Wissen-Seiten und statischen Assets
@@ -50,8 +51,43 @@ function mitRobotsHeader(response: NextResponse, request: NextRequest) {
   return response;
 }
 
+// Netzwerk "Uplifted Agencies" (/netzwerk): eigene Supabase-Auth-Session,
+// komplett unabhaengig vom Backstage-Login (au_session). Frischt die Session
+// auf und schickt nicht Eingeloggte zum Netzwerk-Login. Ob jemand aktives
+// Mitglied ist, prueft requireMitglied() in lib/netzwerk.ts (plus RLS).
+async function netzwerkMiddleware(request: NextRequest): Promise<NextResponse> {
+  const { pathname } = request.nextUrl;
+  const oeffentlich = pathname === "/netzwerk/login" || pathname.startsWith("/netzwerk/auth/");
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  let response = NextResponse.next({ request });
+  if (!url || !key) return mitRobotsHeader(response, request);
+
+  const supabase = createServerClient(url, key, {
+    cookieOptions: { path: "/netzwerk", sameSite: "lax", secure: true },
+    cookies: {
+      getAll: () => request.cookies.getAll(),
+      setAll: (liste) => {
+        liste.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({ request });
+        liste.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+      },
+    },
+  });
+  const { data } = await supabase.auth.getUser();
+  if (!data.user && !oeffentlich) {
+    return mitRobotsHeader(NextResponse.redirect(new URL("/netzwerk/login", request.url)), request);
+  }
+  return mitRobotsHeader(response, request);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Achtung: "/netzwerk-einladen" ist Backstage, deshalb exakter Pfadvergleich.
+  if (pathname === "/netzwerk" || pathname.startsWith("/netzwerk/")) {
+    return netzwerkMiddleware(request);
+  }
   const host = request.headers.get("host")?.toLowerCase() || "";
 
   if (PUBLIC_HOSTS.includes(host) && pathname !== "/" && !pathname.startsWith("/_next")) {
