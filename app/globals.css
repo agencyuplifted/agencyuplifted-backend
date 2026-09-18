@@ -1518,3 +1518,243 @@ details summary {
     font-size: 16px;
   }
 }
+
+/* ---------- Sidebar-Navigation (Bereiche, Schnellsuche) ---------- */
+
+.au-mobile-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.au-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.au-nav-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.au-nav-suche {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin: -0.5rem 0 1rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text-faint);
+  font-family: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.au-nav-suche:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
+.au-nav-suche span {
+  flex: 1;
+}
+
+.au-nav-suche kbd {
+  font-family: inherit;
+  font-size: 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+  background: var(--color-surface);
+}
+
+.au-nav-schnell {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.au-nav-hauptlink {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.au-nav-bereich-kopf {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.87rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.au-nav-bereich-kopf:hover {
+  background: var(--color-accent-soft);
+}
+
+.au-nav-bereich-kopf span {
+  flex: 1;
+}
+
+.au-nav-bereich-kopf.enthaelt-aktiv {
+  color: var(--color-accent);
+}
+
+.au-nav-pfeil {
+  color: var(--color-text-faint);
+  transition: transform 0.15s ease;
+}
+
+.au-nav-pfeil.offen {
+  transform: rotate(90deg);
+}
+
+.au-nav-unterlinks {
+  margin: 0.1rem 0 0.4rem 1.15rem;
+  padding-left: 0.6rem;
+  border-left: 1px solid var(--color-border);
+}
+
+.au-nav-unterlinks .au-sidebar-link {
+  font-size: 0.84rem;
+  padding: 0.35rem 0.6rem;
+}
+
+.au-nav-benutzer {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.4rem;
+}
+
+.au-nav-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.au-nav-benutzer-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.au-nav-abmelden {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.au-nav-abmelden:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
+}
+
+.au-suche-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(16, 24, 40, 0.35);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh 1rem 1rem;
+}
+
+.au-suche {
+  width: 100%;
+  max-width: 520px;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 50px rgba(16, 24, 40, 0.25);
+  overflow: hidden;
+}
+
+.au-suche-eingabe {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.95rem 1.1rem;
+  font-family: inherit;
+  font-size: 1rem;
+  outline: none;
+}
+
+.au-suche-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.au-suche-liste li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 7px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.au-suche-liste li.aktiv {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.au-suche-bereich {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+.au-suche-leer {
+  color: var(--color-text-faint);
+  cursor: default;
+}
+
+.au-suche-hinweis {
+  border-top: 1px solid var(--color-border);
+  padding: 0.5rem 1rem;
+  font-size: 0.72rem;
+  color: var(--color-text-faint);
+}
+
+@media (max-width: 860px) {
+  .au-suche-eingabe {
+    font-size: 16px;
+  }
+}
