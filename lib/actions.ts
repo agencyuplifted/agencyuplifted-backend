@@ -2315,7 +2315,7 @@ export async function sendeTestMail(formData: FormData) {
 export async function createFunnelMail(formData: FormData) {
   await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("funnel_mails").insert({
+  const { data, error } = await supabase.from("funnel_mails").insert({
     name: String(formData.get("name")),
     trigger_typ: String(formData.get("trigger_typ")),
     versatz_tage: Number(formData.get("versatz_tage") || 0),
@@ -2323,10 +2323,10 @@ export async function createFunnelMail(formData: FormData) {
     inhalt: String(formData.get("inhalt")),
     // Neu angelegte Mails sind nie sofort aktiv -- erst pruefen, dann bewusst aktivieren.
     aktiv: false,
-  });
+  }).select("id").single();
   if (error) throw new Error(error.message);
   revalidatePath("/funnel");
-  redirect("/funnel");
+  redirect(`/funnel?mail=${data.id}`);
 }
 
 export async function updateFunnelMail(formData: FormData) {
@@ -2346,7 +2346,7 @@ export async function updateFunnelMail(formData: FormData) {
     .eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/funnel");
-  redirect("/funnel");
+  redirect(`/funnel?mail=${id}&gespeichert=1`);
 }
 
 export async function toggleFunnelMailAktiv(formData: FormData) {
@@ -2362,7 +2362,7 @@ export async function toggleFunnelMailAktiv(formData: FormData) {
     .eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/funnel");
-  redirect("/funnel");
+  redirect(`/funnel?mail=${id}&gespeichert=1`);
 }
 
 export async function deleteFunnelMail(formData: FormData) {
@@ -2381,7 +2381,7 @@ export async function stelleFunnelMailWiederHer(formData: FormData) {
   const { error } = await getSupabaseAdmin().from("funnel_mails").update({ geloescht_am: null }).eq("id", String(formData.get("id")));
   if (error) throw new Error(error.message);
   revalidatePath("/funnel");
-  redirect("/funnel");
+  redirect(`/funnel?mail=${String(formData.get("id"))}`);
 }
 
 // Import aus eingefuegtem Text (z. B. ChatGPT): Platzhalter wurden im UI schon

@@ -13,7 +13,9 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatDatumZeit } from "@/lib/format";
 import { TRIGGER_LABEL, PLATZHALTER_HILFE, SYSTEM_FUNNEL_IDS, type TriggerTyp } from "@/lib/funnel";
 import FunnelImport from "./FunnelImport";
-import AufklappBereich from "../AufklappBereich";
+import FunnelEditor from "./FunnelEditor";
+import FunnelZeitstrahl, { type ZeitstrahlMail } from "./FunnelZeitstrahl";
+import TerminWahl from "./TerminWahl";
 
 const TRIGGER_TYPEN: TriggerTyp[] = [
   "buchung_erstellt",
@@ -23,30 +25,87 @@ const TRIGGER_TYPEN: TriggerTyp[] = [
   "warteliste_eingetragen",
 ];
 
+const TAG_MS = 86_400_000;
+const tageZwischen = (von: string, bis: string) => Math.round((Date.parse(bis) - Date.parse(von)) / TAG_MS);
+
+// Reihenfolge wie im Zeitstrahl: erst die personenbezogenen, dann vor → nach
+function zeitstrahlRang(m: { trigger_typ: string; versatz_tage: number }) {
+  if (m.trigger_typ === "vor_seminarstart") return 1000 - m.versatz_tage;
+  if (m.trigger_typ === "nach_seminarende") return 2000 + m.versatz_tage;
+  return m.versatz_tage;
+}
+
 export default async function FunnelPage({
   searchParams,
 }: {
-  searchParams: Promise<{ lauf?: string; gesendet?: string; fehler?: string; uebersprungen?: string; geprueft?: string }>;
+  searchParams: Promise<{ lauf?: string; gesendet?: string; fehler?: string; uebersprungen?: string; geprueft?: string; mail?: string; termin?: string; gespeichert?: string }>;
 }) {
-  const { lauf, gesendet, fehler, uebersprungen, geprueft } = await searchParams;
+  const { lauf, gesendet, fehler, uebersprungen, geprueft, mail: mailParam, termin: terminParam, gespeichert } = await searchParams;
   const supabase = getSupabaseAdmin();
+  const heute = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+  const vorVierMonaten = new Date(Date.now() - 120 * TAG_MS).toISOString().slice(0, 10);
 
-  const { data: alleFunnelMails } = await supabase.from("funnel_mails").select("*").order("erstellt_am", { ascending: false });
-  const funnelMails = (alleFunnelMails || []).filter((f: any) => !f.geloescht_am);
+  const [{ data: alleFunnelMails }, { data: log }, { data: termine }] = await Promise.all([
+    supabase.from("funnel_mails").select("*").order("erstellt_am", { ascending: false }),
+    supabase.from("funnel_versand_log").select("*, funnel_mails(name)").order("gesendet_am", { ascending: false }).limit(30),
+    supabase
+      .from("seminartermine")
+      .select("id, titel, kennung, datum_start, datum_ende")
+      .neq("status", "abgesagt")
+      .gte("datum_start", vorVierMonaten)
+      .order("datum_start")
+      .limit(40),
+  ]);
+  const funnelMails = (alleFunnelMails || [])
+    .filter((f: any) => !f.geloescht_am)
+    .sort((a: any, b: any) => zeitstrahlRang(a) - zeitstrahlRang(b));
   const geloeschte = (alleFunnelMails || []).filter((f: any) => f.geloescht_am);
-  const { data: log } = await supabase
-    .from("funnel_versand_log")
-    .select("*, funnel_mails(name)")
-    .order("gesendet_am", { ascending: false })
-    .limit(30);
+
+  const modus = mailParam === "neu" ? "neu" : mailParam === "import" ? "import" : "mail";
+  const ausgewaehlt: any = modus === "mail" ? funnelMails.find((f: any) => f.id === mailParam) || funnelMails[0] || null : null;
+  const istSystem = !!(ausgewaehlt && SYSTEM_FUNNEL_IDS[ausgewaehlt.id]);
+
+  // Beispieltermin: gewaehlt, sonst der naechste anstehende
+  const terminListe = (termine || []) as any[];
+  const beispiel =
+    terminListe.find((t) => t.id === terminParam) || terminListe.find((t) => t.datum_start >= heute) || terminListe[terminListe.length - 1] || null;
+  const dauerTage = beispiel?.datum_ende ? Math.max(0, tageZwischen(beispiel.datum_start, beispiel.datum_ende)) : 0;
+  const heuteOffset = beispiel ? tageZwischen(beispiel.datum_start, heute) : null;
+
+  const hrefFuer = (id: string) => {
+    const p = new URLSearchParams({ mail: id });
+    if (terminParam) p.set("termin", terminParam);
+    return `/funnel?${p}`;
+  };
+
+  const { data: versandDerMail, count: versandAnzahl } = ausgewaehlt
+    ? await supabase
+        .from("funnel_versand_log")
+        .select("gesendet_am", { count: "exact" })
+        .eq("funnel_mail_id", ausgewaehlt.id)
+        .order("gesendet_am", { ascending: false })
+        .limit(1)
+    : { data: null, count: 0 };
+
+  const zeitstrahlMails: ZeitstrahlMail[] = funnelMails.map((f: any) => ({
+    id: f.id,
+    name: f.name,
+    trigger_typ: f.trigger_typ,
+    versatz_tage: f.versatz_tage,
+    aktiv: f.aktiv,
+    system: !!SYSTEM_FUNNEL_IDS[f.id],
+  }));
+  const triggerOptionen = TRIGGER_TYPEN.map((t) => ({ key: t, label: TRIGGER_LABEL[t] }));
 
   return (
     <main>
-      <h1>Funnel-Mails</h1>
-      <p>
-        Automatische E-Mails mit Zeitschalter — z. B. Erinnerung vor dem Seminar oder Follow-up nach der Buchung.
-        Läuft automatisch einmal täglich; über den Button unten kann der Versand auch manuell angestoßen werden.
-      </p>
+      <div className="au-dash-kopf">
+        <div>
+          <h1 style={{ marginBottom: "0.25rem" }}>Funnel-Mails</h1>
+          <p style={{ margin: 0 }}>Automatische Mails mit Zeitschalter. Der Versand läuft einmal täglich morgens.</p>
+        </div>
+        <Link href="/funnel/vorschau" className="au-btn au-btn-secondary">Fällige Mails prüfen &amp; senden</Link>
+      </div>
 
       {lauf && (
         <div className="au-banner au-banner-success">
@@ -54,161 +113,112 @@ export default async function FunnelPage({
           zuvor verschickt (übersprungen), {fehler} Fehler.
         </div>
       )}
+      {gespeichert && <div className="au-banner au-banner-success">Gespeichert.</div>}
 
-      <div className="au-card">
-        <Link href="/funnel/vorschau" className="au-btn au-btn-primary">
-          Vorschau: Fällige Mails prüfen &amp; senden
-        </Link>
-        <p style={{ fontSize: "0.85rem", marginTop: "0.6rem", marginBottom: 0 }}>
-          Zeigt zuerst, wer was bekommen würde. Der tatsächliche Versand erfordert danach eine zweite,
-          ausdrückliche Bestätigung.
-        </p>
-      </div>
-
-      <div className="au-card">
-        <h2>Platzhalter</h2>
-        <table className="au-table">
-          <thead>
-            <tr>
-              <th>Platzhalter</th>
-              <th>Bedeutung</th>
-              <th>Verfügbar bei</th>
-            </tr>
-          </thead>
-          <tbody>
-            {PLATZHALTER_HILFE.map((p) => (
-              <tr key={p.key}>
-                <td style={{ fontFamily: "monospace" }}>{p.key}</td>
-                <td>{p.beschreibung}</td>
-                <td style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
-                  {p.verfuegbarBei.map((t) => TRIGGER_LABEL[t]).join(", ")}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <AufklappBereich merkSchluessel="funnel-import" className="au-aufklapp-panel" style={{ marginBottom: "1.5rem" }} zusammenfassung={<strong>Mail aus Text importieren (z. B. aus ChatGPT)</strong>}>
-        <FunnelImport
-          felder={PLATZHALTER_HILFE.map((p) => ({ key: p.key.replace(/[{}]/g, ""), beschreibung: p.beschreibung }))}
-          trigger={TRIGGER_TYPEN.map((t) => ({ key: t, label: TRIGGER_LABEL[t] }))}
-          importAction={importiereFunnelMail}
-        />
-      </AufklappBereich>
-
-      <div className="au-card">
-        <h2>Neue Funnel-Mail</h2>
-        <p className="au-klein" style={{ marginTop: "-0.5rem" }}>Neue Mails werden inaktiv angelegt. Nach dem Aktivieren gehen sie nur für Stichtage ab dem Aktivierungstag raus – nie rückwirkend.</p>
-        <form action={createFunnelMail}>
-          <label className="au-label">Name (intern)</label>
-          <input className="au-input" name="name" required placeholder="z. B. Erinnerung 3 Tage vor Seminarstart" />
-
-          <label className="au-label">Auslöser</label>
-          <select className="au-select" name="trigger_typ" required defaultValue="vor_seminarstart">
-            {TRIGGER_TYPEN.map((t) => (
-              <option key={t} value={t}>{TRIGGER_LABEL[t]}</option>
-            ))}
-          </select>
-
-          <label className="au-label">Anzahl Tage (X)</label>
-          <input className="au-input" name="versatz_tage" type="number" min={0} defaultValue={3} required />
-
-          <label className="au-label">Betreff</label>
-          <input className="au-input" name="betreff" required placeholder="z. B. Bald geht's los, {{vorname}}!" />
-
-          <label className="au-label">Inhalt (Platzhalter siehe oben, Zeilenumbrüche werden übernommen)</label>
-          <textarea
-            className="au-textarea"
-            name="inhalt"
-            required
-            placeholder={"Hallo {{vorname}},\n\nnur noch wenige Tage bis {{seminartitel}} am {{seminardatum}}.\n\nViele Grüße"}
-          />
-
-          <button type="submit" className="au-btn au-btn-primary">Funnel-Mail anlegen</button>
-        </form>
-      </div>
-
-      <div className="au-card">
-        <h2>Bestehende Funnel-Mails</h2>
-        {(funnelMails || []).map((f: any) => (
-          <div key={f.id} className="au-subcard">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <strong>{f.name}</strong>
-                <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
-                  {TRIGGER_LABEL[f.trigger_typ as TriggerTyp]?.replace("X", String(f.versatz_tage))}
-                </div>
-                <div style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>Betreff: {f.betreff}</div>
-                {SYSTEM_FUNNEL_IDS[f.id] ? (
-                  <div className="au-klein" style={{ marginTop: "0.3rem" }}>
-                    <span className="au-badge au-badge-neutral">System</span> {SYSTEM_FUNNEL_IDS[f.id]} – „aktiv“ spielt dafür keine Rolle, bitte inaktiv lassen.
-                  </div>
-                ) : f.aktiv && f.aktiviert_am ? (
-                  <div className="au-klein" style={{ marginTop: "0.3rem" }}>aktiv seit {formatDatum(f.aktiviert_am)} – verschickt nur für Stichtage ab diesem Tag</div>
-                ) : null}
-              </div>
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                {!SYSTEM_FUNNEL_IDS[f.id] && <form action={toggleFunnelMailAktiv}>
-                  <input type="hidden" name="id" value={f.id} />
-                  <input type="hidden" name="aktiv_neu" value={String(!f.aktiv)} />
-                  <button type="submit" className="au-btn au-btn-secondary au-btn-sm">
-                    {f.aktiv ? "Aktiv (deaktivieren)" : "Inaktiv (aktivieren)"}
-                  </button>
-                </form>}
-                <form action={deleteFunnelMail}>
-                  <input type="hidden" name="id" value={f.id} />
-                  <button type="submit" className="au-btn au-btn-danger au-btn-sm" title="Kommt in den Papierkorb – die Versand-Historie bleibt erhalten">Löschen</button>
-                </form>
-              </div>
-            </div>
-
-            <details style={{ marginTop: "0.85rem" }}>
-              <summary style={{ color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>Bearbeiten</summary>
-              <form action={updateFunnelMail} style={{ marginTop: "0.85rem" }}>
-                <input type="hidden" name="id" value={f.id} />
-                <label className="au-label">Name (intern)</label>
-                <input className="au-input" name="name" required defaultValue={f.name} />
-
-                <label className="au-label">Auslöser</label>
-                <select className="au-select" name="trigger_typ" required defaultValue={f.trigger_typ}>
-                  {TRIGGER_TYPEN.map((t) => (
-                    <option key={t} value={t}>{TRIGGER_LABEL[t]}</option>
-                  ))}
-                </select>
-
-                <label className="au-label">Anzahl Tage (X)</label>
-                <input className="au-input" name="versatz_tage" type="number" min={0} defaultValue={f.versatz_tage} required />
-
-                <label className="au-label">Betreff</label>
-                <input className="au-input" name="betreff" required defaultValue={f.betreff} />
-
-                <label className="au-label">Inhalt</label>
-                <textarea className="au-textarea" name="inhalt" required defaultValue={f.inhalt} />
-
-                <button type="submit" className="au-btn au-btn-primary">Speichern</button>
-              </form>
-            </details>
+      <div className="au-funnel-raster">
+        <aside className="au-panel au-funnel-links">
+          <div className="au-funnel-links-aktionen">
+            <Link href="/funnel?mail=neu" data-funnel-link className={`au-btn au-btn-primary au-btn-sm${modus === "neu" ? " aktiv" : ""}`}>+ Neue Mail</Link>
+            <Link href="/funnel?mail=import" data-funnel-link className="au-btn au-btn-secondary au-btn-sm">Import</Link>
           </div>
-        ))}
-        {!funnelMails?.length && <p>Noch keine Funnel-Mails angelegt.</p>}
-        {geloeschte.length > 0 && (
-          <details style={{ marginTop: "1rem" }}>
-            <summary className="au-klein">Papierkorb ({geloeschte.length})</summary>
-            {geloeschte.map((f: any) => (
-              <div key={f.id} className="au-event-zeile">
-                <span>{f.name} <span className="au-klein">· gelöscht am {formatDatum(f.geloescht_am)}</span></span>
-                <form action={stelleFunnelMailWiederHer}>
-                  <input type="hidden" name="id" value={f.id} />
-                  <button type="submit" className="au-link">wiederherstellen</button>
-                </form>
+          <TerminWahl
+            termine={terminListe.map((t) => ({ id: t.id, label: `${formatDatum(t.datum_start)} · ${t.kennung || t.titel}` }))}
+            gewaehlt={beispiel?.id || null}
+            mailParam={mailParam || null}
+          />
+          <FunnelZeitstrahl mails={zeitstrahlMails} auswahlId={ausgewaehlt?.id || null} hrefFuer={hrefFuer} dauerTage={dauerTage} heuteOffset={heuteOffset} />
+          {geloeschte.length > 0 && (
+            <details className="au-funnel-papierkorb">
+              <summary className="au-klein">Papierkorb ({geloeschte.length})</summary>
+              {geloeschte.map((f: any) => (
+                <div key={f.id} className="au-funnel-papierkorb-zeile">
+                  <span>{f.name} <span className="au-klein">· {formatDatum(f.geloescht_am)}</span></span>
+                  <form action={stelleFunnelMailWiederHer}>
+                    <input type="hidden" name="id" value={f.id} />
+                    <button type="submit" className="au-link">wiederherstellen</button>
+                  </form>
+                </div>
+              ))}
+            </details>
+          )}
+        </aside>
+
+        <section className="au-panel au-funnel-rechts">
+          {modus === "neu" && (
+            <>
+              <div className="au-panel-kopf"><h2 style={{ margin: 0 }}>Neue Funnel-Mail</h2></div>
+              <div className="au-funnel-rechts-inhalt">
+                <p className="au-klein" style={{ marginTop: 0 }}>Wird inaktiv angelegt. Nach dem Aktivieren geht sie nur für Stichtage ab dem Aktivierungstag raus – nie rückwirkend.</p>
+                <FunnelEditor key="neu" mail={null} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={createFunnelMail} />
               </div>
-            ))}
-          </details>
-        )}
+            </>
+          )}
+
+          {modus === "import" && (
+            <>
+              <div className="au-panel-kopf"><h2 style={{ margin: 0 }}>Mail aus Text importieren</h2></div>
+              <div className="au-funnel-rechts-inhalt">
+                <FunnelImport
+                  felder={PLATZHALTER_HILFE.map((p) => ({ key: p.key.replace(/[{}]/g, ""), beschreibung: p.beschreibung }))}
+                  trigger={triggerOptionen}
+                  importAction={importiereFunnelMail}
+                />
+              </div>
+            </>
+          )}
+
+          {modus === "mail" && !ausgewaehlt && (
+            <div className="au-funnel-rechts-inhalt">
+              <p>Noch keine Funnel-Mails. <Link href="/funnel?mail=neu">Erste Mail anlegen</Link></p>
+            </div>
+          )}
+
+          {ausgewaehlt && (
+            <>
+              <div className="au-panel-kopf">
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={{ margin: 0 }}>{ausgewaehlt.name}</h2>
+                  <div className="au-klein" style={{ marginTop: "0.2rem" }}>
+                    {versandAnzahl ? `${versandAnzahl}× verschickt, zuletzt ${formatDatum(versandDerMail![0].gesendet_am)}` : "noch nie verschickt"}
+                  </div>
+                </div>
+                <div className="au-funnel-kopf-aktionen">
+                  {istSystem ? (
+                    <span className="au-badge au-badge-neutral">System</span>
+                  ) : (
+                    <form action={toggleFunnelMailAktiv}>
+                      <input type="hidden" name="id" value={ausgewaehlt.id} />
+                      <input type="hidden" name="aktiv_neu" value={String(!ausgewaehlt.aktiv)} />
+                      <button type="submit" className={`au-funnel-schalter${ausgewaehlt.aktiv ? " an" : ""}`} aria-pressed={ausgewaehlt.aktiv}>
+                        <span className="au-funnel-schalter-knopf" aria-hidden="true" />
+                        {ausgewaehlt.aktiv ? "Aktiv" : "Inaktiv"}
+                      </button>
+                    </form>
+                  )}
+                  {!istSystem && (
+                    <form action={deleteFunnelMail}>
+                      <input type="hidden" name="id" value={ausgewaehlt.id} />
+                      <button type="submit" className="au-btn au-btn-danger au-btn-sm" title="Kommt in den Papierkorb – die Versand-Historie bleibt erhalten">Löschen</button>
+                    </form>
+                  )}
+                </div>
+              </div>
+              <div className="au-funnel-rechts-inhalt">
+                {istSystem ? (
+                  <div className="au-banner au-banner-warning" style={{ marginTop: 0 }}>
+                    {SYSTEM_FUNNEL_IDS[ausgewaehlt.id]} – „aktiv“ spielt dafür keine Rolle, bitte inaktiv lassen. Text und Betreff hier bearbeiten wirkt trotzdem.
+                  </div>
+                ) : ausgewaehlt.aktiv && ausgewaehlt.aktiviert_am ? (
+                  <p className="au-klein" style={{ marginTop: 0 }}>Aktiv seit {formatDatum(ausgewaehlt.aktiviert_am)} – verschickt nur für Stichtage ab diesem Tag.</p>
+                ) : null}
+                <FunnelEditor key={ausgewaehlt.id + (ausgewaehlt.aktualisiert_am || "")} mail={ausgewaehlt} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={updateFunnelMail} />
+              </div>
+            </>
+          )}
+        </section>
       </div>
 
-      <div className="au-card">
+      <div className="au-card" style={{ marginTop: "1.5rem" }}>
         <h2>Letzte Versendungen</h2>
         <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: 0 }}>
           Zustellung/Öffnung/Klick werden von Resend per Webhook gemeldet (nur bei aktivierter Tracking-Domain,

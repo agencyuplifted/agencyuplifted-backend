@@ -3074,3 +3074,325 @@ a.au-kennzahl:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Funnel (/funnel): Master-Detail mit Zeitstrahl ---------- */
+
+.au-funnel-raster {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.au-funnel-links {
+  padding: 0.9rem 0.85rem 1rem;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.au-funnel-links-aktionen {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.au-zs-termin {
+  display: block;
+  margin-bottom: 0.9rem;
+}
+
+.au-zs-termin .au-select {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.au-zs-titel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 0.3rem;
+}
+
+.au-zs-hinweis {
+  font-size: 0.75rem;
+  color: var(--color-text-faint);
+  margin: 0 0 0.4rem;
+}
+
+.au-zs-gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.au-zs-verbinder {
+  width: 2px;
+  height: 22px;
+  margin: 0.5rem 0 0.5rem 8px;
+  background: var(--color-border-strong);
+}
+
+.au-zs-achse {
+  position: relative;
+  margin-top: 0.3rem;
+}
+
+/* die eigentliche Achse */
+.au-zs-achse::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-border-strong);
+}
+
+.au-zs-linien {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.au-zs-linien polyline {
+  stroke: var(--color-border-strong);
+  stroke-width: 1;
+}
+
+.au-zs-punkt,
+.au-zs-marke {
+  position: absolute;
+  left: 4px;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 2px solid var(--color-text-faint);
+  z-index: 1;
+}
+
+.au-zs-punkt.an {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.au-zs-marke {
+  left: 1px;
+  width: 16px;
+  height: 4px;
+  margin-top: -2px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+
+.au-zs-label {
+  position: absolute;
+  left: 28px;
+  right: 0;
+}
+
+.au-zs-meilenstein {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  padding-top: 2px;
+}
+
+.au-zs-mail {
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--color-text);
+  line-height: 1.25;
+}
+
+.au-zs-mail:hover {
+  background: var(--color-bg);
+}
+
+.au-zs-mail.gewaehlt {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.au-zs-mail-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.au-zs-mail.aus .au-zs-mail-name {
+  color: var(--color-text-muted);
+}
+
+.au-zs-mail-zeit {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.au-zs-heute {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--color-akzent-rot);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.au-zs-heute span {
+  position: absolute;
+  right: 0;
+  top: -0.6rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-akzent-rot);
+  background: var(--color-surface);
+  padding: 0 0.2rem;
+}
+
+.au-zs-heute-text {
+  font-size: 0.7rem;
+  color: var(--color-akzent-rot);
+  margin: 0.2rem 0;
+}
+
+.au-funnel-papierkorb {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.au-funnel-papierkorb-zeile {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  padding: 0.3rem 0;
+}
+
+.au-funnel-rechts-inhalt {
+  padding: 1rem 1.15rem 1.25rem;
+}
+
+.au-funnel-kopf-aktionen {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.au-funnel-schalter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.7rem 0.3rem 0.35rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.au-funnel-schalter-knopf {
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--color-border-strong);
+  position: relative;
+  transition: background 0.15s;
+}
+
+.au-funnel-schalter-knopf::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #fff;
+  transition: left 0.15s;
+}
+
+.au-funnel-schalter.an {
+  border-color: var(--color-success-border);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.au-funnel-schalter.an .au-funnel-schalter-knopf {
+  background: var(--color-success);
+}
+
+.au-funnel-schalter.an .au-funnel-schalter-knopf::after {
+  left: 14px;
+}
+
+.au-fe-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 0.75rem;
+}
+
+.au-fe-pills-kopf {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.au-fe-pills {
+  margin-bottom: 0.25rem;
+}
+
+.au-fe-pills .au-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  min-height: 28px;
+}
+
+.au-fe-inhalt {
+  min-height: 340px;
+  margin-top: 0;
+}
+
+.au-fe-warnung {
+  font-size: 0.8rem;
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.6rem;
+}
+
+.au-fe-fuss {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 860px) {
+  .au-funnel-raster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .au-funnel-links {
+    position: static;
+    max-height: none;
+  }
+}
