@@ -60,6 +60,8 @@ import {
 } from "@/lib/schnelleinfuegen";
 import { aktuellerPreisNetto, aktuellePreisstaffel, istPreisstaffelAktiv, letzterGueltigerTag, sortierteStaffeln, berlinKalendertag, berechneMonatlicheStichtageRueckwaerts, type PreisstaffelVorlage } from "@/lib/preisstaffeln";
 import Link from "next/link";
+import TerminTabs from "./TerminTabs";
+import AufklappBereich from "../../AufklappBereich";
 
 const badgeLabel: Record<string, string> = {
   empfohlen: "Empfohlen",
@@ -67,13 +69,10 @@ const badgeLabel: Record<string, string> = {
 };
 
 // Rein optische Unterscheidungshilfe beim Bearbeiten mehrerer Optionen (kein
-// semantischer Status wie "Fehler"/"Warnung" -- deshalb eigene, ganz zarte
-// Farben statt der bestehenden --color-danger-soft/--color-warning-soft, die
-// echte Bedeutungen tragen). Reihenfolge folgt der Sortierung der Optionen
-// (1. = grün, 2. = gelb, 3. = rot, danach blau/lila/gelb; darüber hinaus
-// wiederholt sich die Liste -- mehr als 6 Optionen sind laut Markus ohnehin
-// nicht zu erwarten).
-const OPTION_FARBEN = ["#eefaf0", "#fefbe8", "#fdeeee", "#eaf3fc", "#f5eefb", "#fefbe8"];
+// semantischer Status wie "Fehler"/"Warnung") -- als farbiger Streifen links an
+// der Optionskarte statt vollflaechig eingefaerbter Karten. Reihenfolge folgt
+// der Sortierung (1. gruen, 2. gelb, 3. rot, dann blau/lila/tuerkis).
+const OPTION_AKZENT = ["#16a34a", "#ca8a04", "#dc2626", "#2563eb", "#9333ea", "#0891b2"];
 
 function formatZeit(t: string | null) {
   return t ? t.slice(0, 5) + " Uhr" : "";
@@ -216,7 +215,7 @@ export default async function TerminDetailPage({
     supabase
       .from("buchungspositionen")
       .select(
-        "teilnehmer_id, seminartermin_option_id, beschreibung, buchungen(status, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle)"
+        "teilnehmer_id, seminartermin_option_id, beschreibung, preis, buchungen(status, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle)"
       )
       .eq("seminartermin_id", id),
     supabase
@@ -390,63 +389,181 @@ export default async function TerminDetailPage({
   // termin.datum_start abhaengig) -- siehe wendePreisstaffelVorlageAn.
   const vorlagenStichtage = berechneMonatlicheStichtageRueckwaerts(termin.datum_start);
 
-  return (
-    <main>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+  const heuteISO = new Date().toISOString().slice(0, 10);
+  const tageBisStart = Math.round((Date.parse(termin.datum_start) - Date.parse(heuteISO)) / 86400000);
+  const kapazitaet = Number(termin.kapazitaet) || 0;
+  const belegungAnteil = kapazitaet ? Math.min(1, echteTeilnehmerAnzahl / kapazitaet) : 0;
+  const umsatzNetto = (buchungsPositionen || [])
+    .filter((p: any) => p.buchungen?.status !== "storniert")
+    .reduce((summe: number, p: any) => summe + Number(p.preis || 0), 0);
+  const optionenMitWarnung = aktiveOptionen.filter(
+    (o: any) => !(o.preisstaffeln || []).length || normalpreisLuecke(o.preisstaffeln || [], termin.datum_start)
+  ).length;
+  const statusStil: Record<string, string> = { geplant: "au-badge-neutral", bestaetigt: "au-badge-success", unterbesetzt: "au-badge-warning", abgesagt: "au-badge-danger" };
+  const ortText = [termin.veranstaltungsorte?.name, termin.veranstaltungsorte?.ort].filter(Boolean).join(", ");
+
+  const uebersicht = (
+    <div className="au-dash-raster">
+      <div className="au-dash-haupt">
+        <Bereich titel="Eckdaten" aktion={<a href="#einstellungen" className="au-panel-link">Bearbeiten →</a>}>
+          <dl className="au-eckdaten">
+            <dt>Zeitraum</dt><dd>{zeitraum}</dd>
+            {termin.vorabend_anreise_datum && (<><dt>Vorabendanreise</dt><dd>{formatDatum(termin.vorabend_anreise_datum)}{termin.vorabend_anreise_uhrzeit ? `, ${formatZeit(termin.vorabend_anreise_uhrzeit)}` : ""}</dd></>)}
+            <dt>Ort</dt><dd>{ortText || "—"}{termin.veranstaltungsorte?.nahe_grossstadt ? ` (bei ${termin.veranstaltungsorte.nahe_grossstadt})` : ""}</dd>
+            <dt>Format</dt><dd>{termin.format === "praesenz" ? "Präsenz" : termin.format}</dd>
+            <dt>Trainer</dt><dd>{termin.trainer?.name || "—"}</dd>
+            <dt>Kapazität</dt><dd>{kapazitaet} Plätze · mind. {termin.mindestteilnehmerzahl ?? "—"} · +{termin.ueberbuchungspuffer ?? 0} Puffer intern</dd>
+            {(termin.zusatzteilnehmer_preis || termin.zusatzteilnehmer_rabatt_prozent) && (<><dt>Weitere Person</dt><dd>{termin.zusatzteilnehmer_preis ? formatEUR(Number(termin.zusatzteilnehmer_preis)) : `${termin.zusatzteilnehmer_rabatt_prozent} % Rabatt`}</dd></>)}
+            {termin.zimmerupgrade_preis_pro_nacht_netto && (<><dt>Zimmer-Upgrade</dt><dd>{termin.zimmerupgrade_beschreibung || "Upgrade"}: {formatEUR(Number(termin.zimmerupgrade_preis_pro_nacht_netto))} pro Nacht</dd></>)}
+          </dl>
+        </Bereich>
+
+        <Bereich titel="Optionen & aktuelle Preise" aktion={<a href="#optionen" className="au-panel-link">Bearbeiten →</a>}>
+          {!aktiveOptionen.length && <p className="au-leer">Noch keine Optionen – ohne Option ist der Termin nicht buchbar.</p>}
+          <ul className="au-kompaktliste">
+            {aktiveOptionen.map((o: any) => {
+              const aktuell: any = (o.preisstaffeln || []).length ? aktuellePreisstaffel(o.preisstaffeln, termin.datum_start) : null;
+              return (
+                <li key={o.id}>
+                  <span>{o.titel}{o.badge && <span className="au-badge au-badge-gold" style={{ marginLeft: "0.4rem" }}>{badgeLabel[o.badge] || o.badge}</span>}</span>
+                  {aktuell ? (
+                    <span style={{ textAlign: "right" }}>
+                      <strong>{formatEUR(Number(aktuell.preis))}</strong>
+                      <span className="au-klein" style={{ display: "block" }}>bis {formatDatum(letzterGueltigerTag(aktuell, termin.datum_start))}</span>
+                    </span>
+                  ) : (
+                    <span className="au-text-danger">kein Preis</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </Bereich>
+      </div>
+      <div className="au-dash-seite">
+        {websiteAnzeige && (
+          <Bereich titel="Website zeigt" aktion={<a href="#website" className="au-panel-link">Ändern →</a>}>
+            <WebsiteAnzeigeHinweis anzeige={websiteAnzeige} termin={termin} />
+          </Bereich>
+        )}
+        <Bereich titel="Teilnehmer" aktion={<a href="#teilnehmer" className="au-panel-link">Alle →</a>}>
+          {!teilnehmerListe.length && <p className="au-leer">Noch keine Teilnehmer.</p>}
+          <ul className="au-kompaktliste">
+            {teilnehmerListe.slice(0, 8).map((t) => (
+              <li key={t.id}>
+                <Link href={`/teilnehmer/${t.id}`}>{t.name}</Link>
+                <span className="au-klein">{rolleBadge[t.rolle] || t.orga}</span>
+              </li>
+            ))}
+          </ul>
+          {teilnehmerListe.length > 8 && <p className="au-klein" style={{ margin: "0.4rem 0 0" }}>+ {teilnehmerListe.length - 8} weitere</p>}
+        </Bereich>
+      </div>
+    </div>
+  );
+
+  const gefahrenzone = (
+    <Bereich titel="Termin stornieren oder löschen">
+      <div className="au-gefahr">
         <div>
-          <h1>{titelAnzeige}{termin.kennung ? <span className="au-badge" style={{ marginLeft: "0.6rem", fontSize: "0.8rem", verticalAlign: "middle" }}>{termin.kennung}</span> : null}</h1>
-          <p style={{ color: "var(--color-text-muted)" }}>
-            {termin.seminartypen?.name} · {zeitraum}
-            {termin.vorabend_anreise_datum && (
-              <> · Vorabendanreise: {formatDatum(termin.vorabend_anreise_datum)}{termin.vorabend_anreise_uhrzeit ? ", " + formatZeit(termin.vorabend_anreise_uhrzeit) : ""}</>
-            )}
-            <br />
-            {termin.veranstaltungsorte?.name || "—"}{termin.veranstaltungsorte?.ort ? `, ${termin.veranstaltungsorte.ort}` : ""}{termin.veranstaltungsorte?.nahe_grossstadt ? ` (bei ${termin.veranstaltungsorte.nahe_grossstadt})` : ""} · {termin.format} · Trainer: {termin.trainer?.name || "—"} · Kapazität {termin.kapazitaet} (+{termin.ueberbuchungspuffer} intern) · Status {termin.status}
-            {(termin.zusatzteilnehmer_preis || termin.zusatzteilnehmer_rabatt_prozent) && (
-              <><br />Zusätzlicher Teilnehmer: {termin.zusatzteilnehmer_preis ? formatEUR(Number(termin.zusatzteilnehmer_preis)) : `${termin.zusatzteilnehmer_rabatt_prozent}% Rabatt`}</>
-            )}
+          <strong>{termin.status === "abgesagt" ? "Termin wieder aktivieren" : "Termin stornieren"}</strong>
+          <p className="au-klein" style={{ margin: "0.2rem 0 0" }}>
+            {termin.status === "abgesagt"
+              ? "Setzt den Termin zurück auf „geplant“ – er erscheint wieder auf der Website und ist buchbar."
+              : "Verschwindet von der Website. Bestehende Buchungen bleiben erhalten und können umgebucht werden. Du bekommst vorher eine Bestätigungsseite."}
           </p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
-          <Link href={`/termine/${id}/teilnehmerliste`} className="au-btn au-btn-secondary">
-            Teilnehmerliste (Hotel)
-          </Link>
+        {termin.status === "abgesagt" ? (
+          <form action={reaktiviereSeminartermin}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Wieder aktivieren</button>
+          </form>
+        ) : (
+          <form action={previewSeminarterminStornieren}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <button type="submit" className="au-btn au-btn-danger au-btn-sm">Stornieren …</button>
+          </form>
+        )}
+      </div>
+      <div className="au-gefahr">
+        <div>
+          <strong>Termin löschen</strong>
+          <p className="au-klein" style={{ margin: "0.2rem 0 0" }}>Endgültig. Du bekommst vorher eine Bestätigungsseite mit allem, was betroffen ist.</p>
+        </div>
+        <form action={previewSeminarterminLoeschen}>
+          <input type="hidden" name="seminartermin_id" value={id} />
+          <button type="submit" className="au-btn au-btn-danger au-btn-sm">Löschen …</button>
+        </form>
+      </div>
+    </Bereich>
+  );
+
+  return (
+    <main>
+      <p className="au-brotkrumen"><Link href="/termine">Seminartermine</Link> <span>›</span> {termin.kennung || titelAnzeige}</p>
+      <header className="au-dash-kopf">
+        <div style={{ minWidth: 0 }}>
+          <p className="au-dash-datum">
+            {termin.seminartypen?.name}
+            {termin.kennung && <> · <span className="au-badge au-badge-neutral">{termin.kennung}</span></>}
+            {" "}<span className={`au-badge ${statusStil[termin.status] || "au-badge-neutral"}`}>{termin.status === "bestaetigt" ? "bestätigt" : termin.status}</span>
+          </p>
+          <h1>{titelAnzeige}</h1>
+          <p className="au-termin-unterzeile">{zeitraum}{ortText ? ` · ${ortText}` : ""}{termin.trainer?.name ? ` · ${termin.trainer.name}` : ""}</p>
+        </div>
+        <div className="au-dash-aktionen">
+          <Link href={`/termine/${id}/teilnehmerliste`} className="au-btn au-btn-secondary au-btn-sm">Hotel-Liste</Link>
           <form action={duplicateSeminartermin}>
             <input type="hidden" name="seminartermin_id" value={id} />
-            <button type="submit" className="au-btn au-btn-secondary" title="Legt eine Kopie dieses Termins inkl. Optionen, Featurelisten, Preisstaffeln und Urgency-Stufen an">
-              Termin duplizieren
+            <button type="submit" className="au-btn au-btn-secondary au-btn-sm" title="Legt eine Kopie dieses Termins inkl. Optionen, Featurelisten, Preisstaffeln und Urgency-Stufen an">
+              Duplizieren
             </button>
           </form>
-          {termin.status === "abgesagt" ? (
-            <form action={reaktiviereSeminartermin}>
-              <input type="hidden" name="seminartermin_id" value={id} />
-              <button type="submit" className="au-btn au-btn-secondary" title="Setzt den Termin zurück auf 'geplant' -- erscheint danach wieder auf der Website und kann wieder gebucht werden">
-                Termin wieder aktivieren
-              </button>
-            </form>
-          ) : (
-            <form action={previewSeminarterminStornieren}>
-              <input type="hidden" name="seminartermin_id" value={id} />
-              <button type="submit" className="au-btn au-btn-danger" title="Führt zu einer Bestätigungsseite -- storniert den Termin (verschwindet von der Website, bestehende Buchungen bleiben und können umgebucht werden)">
-                Termin stornieren
-              </button>
-            </form>
-          )}
-          <form action={previewSeminarterminLoeschen}>
-            <input type="hidden" name="seminartermin_id" value={id} />
-            <button type="submit" className="au-btn au-btn-danger" title="Führt zu einer Bestätigungsseite, bevor der Termin wirklich gelöscht wird">
-              Termin löschen
-            </button>
-          </form>
+        </div>
+      </header>
+
+      <div className="au-kennzahlen">
+        <div className="au-kennzahl">
+          <div className="au-kennzahl-label">Belegung</div>
+          <div className="au-kennzahl-wert">{echteTeilnehmerAnzahl}<span className="au-kennzahl-von"> / {kapazitaet}</span></div>
+          <span className="au-belegung-balken" style={{ margin: "0.3rem 0 0.35rem" }}><span style={{ width: `${belegungAnteil * 100}%`, background: echteTeilnehmerAnzahl < (termin.mindestteilnehmerzahl || 0) ? "var(--color-warning)" : undefined }} /></span>
+          <div className="au-kennzahl-kontext">
+            {echteTeilnehmerAnzahl < (termin.mindestteilnehmerzahl || 0)
+              ? `noch ${(termin.mindestteilnehmerzahl || 0) - echteTeilnehmerAnzahl} bis zur Mindestzahl`
+              : `Mindestzahl ${termin.mindestteilnehmerzahl ?? "—"} erreicht`}
+          </div>
+        </div>
+        <div className="au-kennzahl">
+          <div className="au-kennzahl-label">Personen vor Ort</div>
+          <div className="au-kennzahl-wert">{teilnehmerListe.length}</div>
+          <div className="au-kennzahl-kontext">{anzahlZimmer} {anzahlZimmer === 1 ? "Zimmer" : "Zimmer"}{zimmerpartner?.length ? ` · ${zimmerpartner.length} geteilt` : ""}</div>
+        </div>
+        <div className="au-kennzahl">
+          <div className="au-kennzahl-label">Umsatz netto</div>
+          <div className="au-kennzahl-wert">{formatEUR(umsatzNetto)}</div>
+          <div className="au-kennzahl-kontext">brutto {formatEURBrutto(umsatzNetto)} · neues System</div>
+        </div>
+        <div className="au-kennzahl">
+          <div className="au-kennzahl-label">{tageBisStart >= 0 ? "Bis zum Start" : "Seit dem Start"}</div>
+          <div className="au-kennzahl-wert">{Math.abs(tageBisStart)} <span className="au-kennzahl-von">{Math.abs(tageBisStart) === 1 ? "Tag" : "Tage"}</span></div>
+          <div className="au-kennzahl-kontext">{formatDatum(termin.datum_start)}</div>
         </div>
       </div>
 
-      <div className="au-card">
-        <h2>Teilnehmer · {echteTeilnehmerAnzahl}</h2>
+      <TerminTabs
+        terminId={id}
+        tabs={[
+          { key: "uebersicht", label: "Übersicht", inhalt: uebersicht },
+          {
+            key: "teilnehmer",
+            label: "Teilnehmer",
+            anzahl: echteTeilnehmerAnzahl,
+            inhalt: (
+              <div className="au-bereichsstapel">
+      <Bereich titel={`Teilnehmer · ${echteTeilnehmerAnzahl}`} aktion={<Link href={`/termine/${id}/teilnehmerliste`} className="au-panel-link">Hotel-Liste zum Kopieren →</Link>}>
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>
           Alle Personen, die für diesen Termin gebucht haben oder (aus Alt-Daten) hatten — inklusive zugeordneter Legacy-Buchungen.
           {zimmerpartner && zimmerpartner.length > 0 && <> · {anzahlZimmer} Zimmer benötigt ({zimmerpartner.length} geteilt)</>}
-          {" "}<Link href={`/termine/${id}/teilnehmerliste`}>Hotel-Liste zum Kopieren →</Link>
         </p>
         <table className="au-table">
           <thead>
@@ -494,10 +611,9 @@ export default async function TerminDetailPage({
             )}
           </tbody>
         </table>
-      </div>
+      </Bereich>
 
-      <div className="au-card">
-        <h2>Zimmerpartner</h2>
+      <Bereich titel="Zimmerpartner">
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>
           Für Paare (z. B. Ehepaare), die sich ein Zimmer teilen — reduziert die Zimmerzahl automatisch, beide Personen bleiben in der Teilnehmerliste sichtbar.
         </p>
@@ -555,10 +671,698 @@ export default async function TerminDetailPage({
         ) : (
           <p style={{ color: "var(--color-text-faint)", fontSize: "0.85rem" }}>Mindestens 2 Teilnehmer nötig.</p>
         )}
+      </Bereich>
+
+      <Bereich titel="Mitarbeiter beim Termin">
+        <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
+          Referenten/Assistenz, die bei diesem Termin dabei sind — nicht als Teilnehmer, sondern als Personal erfasst.
+        </p>
+        <table className="au-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Rolle</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {terminMitarbeiter?.map((tm: any) => (
+              <tr key={tm.id}>
+                <td>{tm.mitarbeiter?.name}</td>
+                <td>{tm.rolle}</td>
+                <td>
+                  <form action={removeMitarbeiterVonTermin} style={{ display: "inline" }}>
+                    <input type="hidden" name="zuordnung_id" value={tm.id} />
+                    <input type="hidden" name="seminartermin_id" value={id} />
+                    <button type="submit" className="au-link-danger">entfernen</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+            {!terminMitarbeiter?.length && (
+              <tr><td colSpan={3} style={{ color: "var(--color-text-faint)" }}>Noch keine Mitarbeiter zugeordnet.</td></tr>
+            )}
+          </tbody>
+        </table>
+        <form action={addMitarbeiterZuTermin} className="au-row-2">
+          <input type="hidden" name="seminartermin_id" value={id} />
+          <div>
+            <label className="au-label">Mitarbeiter</label>
+            <select className="au-input" name="mitarbeiter_id" required>
+              <option value="">— wählen —</option>
+              {mitarbeiterListe?.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="au-label">Rolle</label>
+            <select className="au-input" name="rolle" defaultValue="Referent">
+              <option value="Referent">Referent</option>
+              <option value="Assistenz">Assistenz</option>
+              <option value="Co-Trainer">Co-Trainer</option>
+              <option value="Sonstiges">Sonstiges</option>
+            </select>
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <button type="submit" className="au-btn au-btn-primary">Mitarbeiter zuordnen</button>
+          </div>
+        </form>
+        <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", marginTop: "0.5rem" }}>
+          Fehlt jemand in der Liste? Unter <a href="/mitarbeiter" >Mitarbeiter</a> neu anlegen.
+        </p>
+      </Bereich>
+
+              </div>
+            ),
+          },
+          {
+            key: "optionen",
+            label: "Optionen & Preise",
+            anzahl: aktiveOptionen.length,
+            warnung: optionenMitWarnung > 0,
+            inhalt: (
+      <div className="au-optionen">
+        <p className="au-bereich-hinweis">
+          Jede Option ist ein eigenes buchbares Paket mit Titel, Beschreibung, Features und Preisstufen (Frühbucher bis Normalpreis). Klick auf „Bearbeiten“ öffnet Inhalt, Features und Preise einer Option.
+        </p>
+
+        <AufklappBereich
+          merkSchluessel={`vorschau-${id}`}
+          className="au-aufklapp-panel"
+          zusammenfassung={<><strong>Website-Vorschau</strong><span className="au-klein"> · so erscheinen die {aktiveOptionen.length} aktiven Optionen ungefähr auf Onepage</span></>}
+        >
+        {aktiveOptionen.length ? (
+          <div className="au-option-preview-grid">
+            {aktiveOptionen.map((opt: any) => {
+              const previewPreis = aktuellerPreisNetto(opt.preisstaffeln || [], termin.datum_start);
+              const featuresSortiert = (opt.seminartermin_options_features || [])
+                .slice()
+                .sort((a: any, b: any) => (a.sortierung ?? 0) - (b.sortierung ?? 0));
+              return (
+                <div
+                  key={opt.id}
+                  className={`au-option-preview-card ${opt.badge === "empfohlen" ? "au-option-preview-card-empfohlen" : ""}`}
+                >
+                  {opt.badge && <span className="au-badge au-badge-gold">{badgeLabel[opt.badge] || opt.badge}</span>}
+                  <p className="au-option-preview-title">{opt.titel}</p>
+                  {opt.beschreibung && <p className="au-option-preview-desc">{renderFett(opt.beschreibung)}</p>}
+                  {previewPreis !== null ? (
+                    <p className="au-option-preview-price">
+                      {formatEUR(previewPreis)}
+                      <span className="au-option-preview-price-hinweis"> netto · {formatEURBrutto(previewPreis)} brutto</span>
+                    </p>
+                  ) : (
+                    <p className="au-option-preview-price-fehlt">Noch kein Preis hinterlegt</p>
+                  )}
+                  {opt.vorspann_anzeigen && opt.vorspann_text && (
+                    <p style={{ fontWeight: 600, fontSize: "0.85rem", margin: "0.4rem 0 0.1rem" }}>{renderFett(opt.vorspann_text)}</p>
+                  )}
+                  {featuresSortiert.length > 0 && (
+                    <ul className="au-option-preview-features">
+                      {featuresSortiert.map((f: any) => (
+                        <li key={f.id} className={f.hervorgehoben ? "au-feature-hervorgehoben" : undefined}>
+                          {f.hervorgehoben && <HervorgehobenMarker />}
+                          {f.label && <strong>{renderFett(f.label)}: </strong>}
+                          {renderFett(f.text)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {opt.zusatz_teilnehmer_hinweis && (
+                    <p className="au-option-preview-zusatz">{renderFett(opt.zusatz_teilnehmer_hinweis)}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="au-option-preview-empty">Noch keine Optionen angelegt – die Vorschau erscheint hier, sobald mindestens eine Option existiert.</div>
+        )}
+        </AufklappBereich>
+
+        {optionen?.map((opt: any, optIndex: number) => (
+          <div
+            key={opt.id}
+            className={`au-option-karte${opt.deaktiviert_am ? " deaktiviert" : ""}`}
+            style={{ borderLeftColor: OPTION_AKZENT[optIndex % OPTION_AKZENT.length] }}
+          >
+            {(() => {
+              const staffeln = opt.preisstaffeln || [];
+              const aktuell: any = staffeln.length ? aktuellePreisstaffel(staffeln, termin.datum_start) : null;
+              const luecke = normalpreisLuecke(staffeln, termin.datum_start);
+              const features = (opt.seminartermin_options_features || []).length;
+              return (
+                <div className="au-option-kopf">
+                  <div className="au-option-titelbereich">
+                    <div className="au-option-titelzeile">
+                      <strong>{opt.titel}</strong>
+                      {opt.badge && <span className="au-badge au-badge-gold">{badgeLabel[opt.badge] || opt.badge}</span>}
+                      {opt.deaktiviert_am && <span className="au-badge au-badge-neutral">Deaktiviert</span>}
+                    </div>
+                    {opt.beschreibung && <p className="au-option-beschreibung">{renderFett(opt.beschreibung)}</p>}
+                    <div className="au-option-meta">
+                      {aktuell ? (
+                        <span className="au-option-preis">
+                          {formatEUR(Number(aktuell.preis))} <span className="au-klein">netto · {aktuell.name}, bis {formatDatum(letzterGueltigerTag(aktuell, termin.datum_start))}</span>
+                        </span>
+                      ) : (
+                        <span className="au-badge au-badge-danger">Kein Preis hinterlegt</span>
+                      )}
+                      <span className="au-klein">{features} {features === 1 ? "Feature" : "Features"}</span>
+                      <span className="au-klein">{staffeln.length} {staffeln.length === 1 ? "Preisstufe" : "Preisstufen"}</span>
+                      {opt.ratenzahlung_aktiv && <span className="au-klein">Ratenzahlung ({opt.ratenzahlung_anzahl_raten || "?"}×)</span>}
+                      {luecke && <span className="au-badge au-badge-warning" title={`„${luecke.name}“ endet schon am ${formatDatum(luecke.bis)}`}>Normalpreis endet zu früh</span>}
+                    </div>
+                  </div>
+                  <div className="au-option-werkzeuge">
+                <form action={moveSeminarOption}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <input type="hidden" name="richtung" value="hoch" />
+                  <button type="submit" className="au-btn au-btn-secondary au-btn-sm" disabled={optIndex === 0} title="Option nach oben verschieben">↑</button>
+                </form>
+                <form action={moveSeminarOption}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <input type="hidden" name="richtung" value="runter" />
+                  <button type="submit" className="au-btn au-btn-secondary au-btn-sm" disabled={optIndex === (optionen?.length || 0) - 1} title="Option nach unten verschieben">↓</button>
+                </form>
+                <form action={duplicateSeminarOption}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <button type="submit" className="au-btn au-btn-secondary au-btn-sm" title="Legt eine Kopie dieser Option (inkl. Features und Preisstaffeln) an, z. B. als Basis für Option B">
+                    Duplizieren
+                  </button>
+                </form>
+                <OptionLoeschenButton optionId={opt.id} seminarterminId={id} titel={opt.titel || ""} loeschenAction={loescheSeminarOption} />
+                  </div>
+                </div>
+              );
+            })()}
+
+            <AufklappBereich merkSchluessel={`option-${opt.id}`} className="au-option-details" zusammenfassung={<span>Bearbeiten: Inhalt, Features &amp; Preise</span>}>
+            <h4 className="au-option-abschnitt">Inhalt &amp; Einstellungen</h4>
+            <details className="au-unterklapp">
+              <summary>Titel, Beschreibung, Vorspann, Ratenzahlung …</summary>
+              <OptionSchnelleinfuegen
+                seminarterminOptionId={opt.id}
+                seminarterminId={id}
+                titelAktuell={opt.titel || ""}
+                beschreibungAktuell={opt.beschreibung || ""}
+                featuresAnzahlAktuell={(opt.seminartermin_options_features || []).length}
+                uebernehmenAction={uebernehmeOptionSchnelleinfuegen}
+                exportText={exportiereSchnelleinfuegenText(opt)}
+                exportHinweise={pruefeSchnelleinfuegenRoundTrip(opt)}
+              />
+              <form action={updateSeminarOption} style={{ marginTop: "0.6rem", maxWidth: 480 }}>
+                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                <input type="hidden" name="seminartermin_id" value={id} />
+                <label className="au-label">Titel</label>
+                <input className="au-input" name="titel" defaultValue={opt.titel} required />
+                <label className="au-label">Beschreibung</label>
+                <FettTextarea name="beschreibung" defaultValue={opt.beschreibung || ""} placeholder="Kurze Beschreibung dieser Option" />
+                <label className="au-label">Vorspann-Text (nur wenn diese Option auf einer günstigeren Option aufbaut)</label>
+                <input className="au-input" name="vorspann_text" defaultValue={opt.vorspann_text || ""} placeholder='z. B. "Alles aus Move, plus:"' />
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.9rem" }}>
+                  <input type="checkbox" name="vorspann_anzeigen" defaultChecked={opt.vorspann_anzeigen || false} /> Vorspann-Text anzeigen
+                </label>
+                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
+                  Text kann stehen bleiben, auch wenn er gerade nicht angezeigt werden soll – einfach den Schalter ausschalten statt den Text zu löschen.
+                </p>
+                <label className="au-label">Sortierung (0 = zuerst)</label>
+                <input className="au-input" name="sortierung" type="number" defaultValue={opt.sortierung ?? 0} />
+                <label className="au-label">Zusätzliche Nächte für Zimmer-Upgrade (nur bei Verlängerung/Zusatzübernachtung, sonst leer lassen)</label>
+                <input className="au-input" name="zimmerupgrade_zusatznaechte" type="number" min={0} defaultValue={opt.zimmerupgrade_zusatznaechte || ""} placeholder="z. B. 1" />
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.9rem" }}>
+                  <input type="checkbox" name="ratenzahlung_aktiv" defaultChecked={opt.ratenzahlung_aktiv || false} /> Ratenzahlung anbieten
+                </label>
+                <label className="au-label">Anzahl Raten (nur bei aktiver Ratenzahlung relevant)</label>
+                <input className="au-input" name="ratenzahlung_anzahl_raten" type="number" min={2} defaultValue={opt.ratenzahlung_anzahl_raten || ""} placeholder="z. B. 3" />
+                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
+                  Reine Zahlungsvereinbarung, keine automatische Abbuchung — 1. Rate sofort fällig, restliche Raten gleich hoch auf die Folgemonate verteilt (Rundungsdifferenz bei der letzten Rate). Zahlungseingänge weiterhin manuell auf der Buchung markieren.
+                </p>
+                <label className="au-label">Hinweis: zusätzlicher Teilnehmer (erscheint unter der Preistabelle auf Onepage)</label>
+                <FettTextarea
+                  name="zusatz_teilnehmer_hinweis"
+                  defaultValue={opt.zusatz_teilnehmer_hinweis || ""}
+                  placeholder="z. B. Jeder weitere zusätzliche Teilnehmer aus Deiner Agentur im Seminar pro Person 3.480 €. Inklusive drei Übernachtungen im Einzelzimmer mit Frühstück, drei gemeinsamen Mittag- und Abendessen. Inklusive allen Getränken (exklusive Hotelbar)"
+                />
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button type="submit" className="au-btn au-btn-secondary">Speichern</button>
+                </div>
+              </form>
+              {opt.deaktiviert_am ? (
+                <form action={reaktiviereSeminarOption} style={{ marginTop: "0.5rem" }}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Wieder aktivieren</button>
+                </form>
+              ) : (
+                <form action={deaktivierenSeminarOption} style={{ marginTop: "0.5rem" }}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <DeaktivierenOptionButton titel={opt.titel} />
+                </form>
+              )}
+            </details>
+
+            <form action={updateOptionBadge} style={{ display: "flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" }}>
+              <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+              <input type="hidden" name="seminartermin_id" value={id} />
+              <label className="au-label" style={{ marginBottom: 0 }}>Kennzeichnung</label>
+              <select name="badge" defaultValue={opt.badge || ""} style={{ padding: "0.35rem" }}>
+                <option value="">Keine</option>
+                <option value="empfohlen">Empfohlen</option>
+                <option value="meistgekauft">Meistgekauft</option>
+              </select>
+              <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
+            </form>
+
+            <div style={{ marginTop: "0.75rem" }}>
+              <h4 className="au-option-abschnitt">Features</h4>
+              <ul style={{ margin: "0.35rem 0 0.5rem", paddingLeft: "1.2rem" }}>
+                {(() => {
+                  const featuresGeordnet = [...(opt.seminartermin_options_features || [])].sort(
+                    (a: any, b: any) => a.sortierung - b.sortierung || new Date(a.erstellt_am).getTime() - new Date(b.erstellt_am).getTime()
+                  );
+                  return featuresGeordnet.map((f: any, idx: number) => (
+                    <li
+                      key={f.id}
+                      style={{
+                        fontSize: "0.9rem",
+                        listStyle: "none",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: "var(--radius-sm)",
+                        background: "#fafafa",
+                        padding: "0.5rem 0.65rem",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", flex: 1, minWidth: 160 }}>
+                          {f.hervorgehoben && <HervorgehobenMarker inline />}
+                          {f.label && <strong>{renderFett(f.label)}: </strong>}
+                          {renderFett(f.text)}
+                        </span>
+                        <form action={moveOptionFeature} style={{ display: "inline" }}>
+                          <input type="hidden" name="feature_id" value={f.id} />
+                          <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                          <input type="hidden" name="seminartermin_id" value={id} />
+                          <input type="hidden" name="richtung" value="hoch" />
+                          <button type="submit" className="au-btn au-btn-secondary au-btn-sm" disabled={idx === 0} title="Nach oben verschieben">↑</button>
+                        </form>
+                        <form action={moveOptionFeature} style={{ display: "inline" }}>
+                          <input type="hidden" name="feature_id" value={f.id} />
+                          <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                          <input type="hidden" name="seminartermin_id" value={id} />
+                          <input type="hidden" name="richtung" value="runter" />
+                          <button type="submit" className="au-btn au-btn-secondary au-btn-sm" disabled={idx === featuresGeordnet.length - 1} title="Nach unten verschieben">↓</button>
+                        </form>
+                        <form action={deleteOptionFeature} style={{ display: "inline" }}>
+                          <input type="hidden" name="feature_id" value={f.id} />
+                          <input type="hidden" name="seminartermin_id" value={id} />
+                          <button type="submit" className="au-link-danger">entfernen</button>
+                        </form>
+                      </div>
+                      <details style={{ marginTop: "0.4rem" }}>
+                        <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.8rem" }}>bearbeiten</summary>
+                        <form action={updateOptionFeature} style={{ marginTop: "0.5rem" }}>
+                          <input type="hidden" name="feature_id" value={f.id} />
+                          <input type="hidden" name="seminartermin_id" value={id} />
+                          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.4rem" }}>
+                            <input className="au-input" name="label" defaultValue={f.label || ""} placeholder="Label (optional)" style={{ maxWidth: 240, flex: "0 1 240px" }} />
+                            <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                              <input type="checkbox" name="hervorgehoben" defaultChecked={f.hervorgehoben || false} /> hervorheben (+)
+                            </label>
+                          </div>
+                          <FettInput name="text" defaultValue={f.text} required />
+                          <button type="submit" className="au-btn au-btn-secondary au-btn-sm" style={{ marginTop: "0.5rem" }}>Speichern</button>
+                        </form>
+                      </details>
+                    </li>
+                  ));
+                })()}
+                {!opt.seminartermin_options_features?.length && (
+                  <li style={{ fontSize: "0.9rem", color: "var(--color-text-faint)", listStyle: "none", marginLeft: "-1.2rem" }}>Noch keine Features.</li>
+                )}
+              </ul>
+              <form
+                action={createOptionFeature}
+                style={{ border: "1px dashed var(--color-border)", borderRadius: "var(--radius-sm)", padding: "0.6rem 0.65rem" }}
+              >
+                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                <input type="hidden" name="seminartermin_id" value={id} />
+                <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.4rem" }}>
+                  <input className="au-input" name="label" placeholder="Label (optional)" style={{ maxWidth: 240, flex: "0 1 240px" }} />
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                    <input type="checkbox" name="hervorgehoben" /> hervorheben (+)
+                  </label>
+                </div>
+                <FettInput name="text" placeholder="z. B. Einzelcoaching inklusive" required />
+                <button type="submit" className="au-btn au-btn-secondary" style={{ marginTop: "0.5rem" }}>+ Feature</button>
+              </form>
+            </div>
+
+            <div style={{ marginTop: "1rem" }}>
+              <h4 className="au-option-abschnitt">Preise <span className="au-klein">(netto, zzgl. USt.)</span></h4>
+              {(() => {
+                const luecke = normalpreisLuecke(opt.preisstaffeln || [], termin.datum_start);
+                return luecke ? (
+                  <div className="au-banner au-banner-warning" style={{ margin: "0.35rem 0", padding: "0.45rem 0.75rem", fontSize: "0.82rem" }}>
+                    Die letzte Stufe „{luecke.name}“ endet schon am {formatDatum(luecke.bis)}. Danach gilt ihr Preis zwar automatisch weiter,
+                    aber Onepage zeigt ein abgelaufenes „gilt bis“-Datum. Bei „{luecke.name}“ auf „bearbeiten“ → „dem Tag vor Seminarstart (Normalpreis)“ stellen.
+                  </div>
+                ) : null;
+              })()}
+              <table className="au-table" style={{ margin: "0.35rem 0 0.5rem" }}>
+                <thead>
+                  <tr>
+                    <th>Preisstufe</th>
+                    <th>gilt ab</th>
+                    <th>gilt bis einschl.</th>
+                    <th>Preis (netto)</th>
+                    <th>Preis (brutto, 19% USt.)</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preisstaffelZeilen(opt.preisstaffeln || [], termin.datum_start).map((z) => (
+                    <PreisstaffelZeile
+                      key={z.id}
+                      staffel={z}
+                      terminStart={termin.datum_start}
+                      seminarterminId={id}
+                      updateAction={updatePreisstaffel}
+                      deleteAction={deletePreisstaffel}
+                    />
+                  ))}
+                  {!opt.preisstaffeln?.length && (
+                    <tr><td colSpan={6} style={{ color: "var(--color-text-faint)" }}>Noch keine Preisstaffeln.</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <details style={{ margin: "0.25rem 0 0.5rem" }}>
+                <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>+ Preisstufe hinzufügen</summary>
+                <form action={createPreisstaffel} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem", alignItems: "start", marginTop: "0.5rem" }}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <div>
+                    <label className="au-label">Name der Preisstufe (z. B. Frühbucher)</label>
+                    <input className="au-input" name="name" required />
+                  </div>
+                  <div>
+                    <label className="au-label">Preis (€, netto zzgl. USt.)</label>
+                    <input className="au-input" name="preis" type="number" step="0.01" required />
+                  </div>
+                  <PreisstaffelStichtagFelder terminStart={termin.datum_start} />
+                  <div style={{ alignSelf: "end" }}>
+                    <button type="submit" className="au-btn au-btn-secondary">Preisstufe anlegen</button>
+                  </div>
+                </form>
+              </details>
+
+              <PreisstaffelVorlagenAktionen
+                seminarterminOptionId={opt.id}
+                seminarterminId={id}
+                terminDatumStart={termin.datum_start}
+                vorlagen={(preisstaffelVorlagen || []) as PreisstaffelVorlage[]}
+                bestehendeStaffeln={opt.preisstaffeln || []}
+                ersetzenAction={ersetzePreisstaffelnDurchVorlage}
+                alsVorlageSpeichernAction={speicherePreisstaffelnAlsVorlage}
+              />
+
+              <details style={{ marginTop: "0.5rem" }}>
+                <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.85rem" }}>
+                  Preisstaffel-Vorlage anwenden (monatlicher Stichtag rückwärts)
+                </summary>
+                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "0.5rem 0" }}>
+                  Legt 5 Preisstufen mit 4 Stichtagen an (jeweils der erste Donnerstag eines Monats, monatlich rückwärts ab dem Monat vor Terminstart) — rein additiv, bestehende Preisstaffeln bleiben unverändert. Bereits verstrichene Stichtage werden beim Anlegen einfach übersprungen.
+                </p>
+                <form action={wendePreisstaffelVorlageAn} style={{ marginTop: "0.5rem", maxWidth: 520 }}>
+                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <label className="au-label">Stufe 1 – Basispreis (€, netto, gültig bis {formatDatum(vorlagenStichtage[0])})</label>
+                  <input className="au-input" name="basispreis" type="number" step="0.01" required />
+                  {vorlagenStichtage.map((datum, idx) => (
+                    <div key={idx} className="au-row-2" style={{ alignItems: "flex-end" }}>
+                      <div>
+                        <label className="au-label">
+                          Übergang {idx + 1} (ab {formatDatum(datum)}
+                          {idx === 3 ? ", ~4 Wochen vor Termin" : ""})
+                        </label>
+                        <select className="au-select" name={`uebergang_${idx + 1}_modus`} defaultValue="betrag">
+                          <option value="betrag">Plus Betrag (€)</option>
+                          <option value="prozent">Plus Prozent (%)</option>
+                          <option value="manuell">Manueller Preis (€)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="au-label">Wert</label>
+                        <input className="au-input" name={`uebergang_${idx + 1}_wert`} type="number" step="0.01" required />
+                      </div>
+                    </div>
+                  ))}
+                  <button type="submit" className="au-btn au-btn-secondary" style={{ marginTop: "0.5rem" }}>
+                    Vorlage anwenden
+                  </button>
+                </form>
+              </details>
+
+              <details style={{ marginTop: "0.5rem" }}>
+                <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.85rem" }}>
+                  Preisstaffeln aus anderem Seminar kopieren
+                </summary>
+                <form
+                  action={copyPreisstaffelnFromOption}
+                  style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}
+                >
+                  <input type="hidden" name="ziel_option_id" value={opt.id} />
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <div style={{ flex: 1, minWidth: 260 }}>
+                    <label className="au-label">Quell-Option (Seminarkategorie – Termin – Option)</label>
+                    <select className="au-select" name="quell_option_id" required defaultValue="">
+                      <option value="" disabled>— bitte wählen —</option>
+                      {kopierbareGruppen.map(([seminartyp, gruppe]) => {
+                        const wählbar = gruppe.filter((k) => k.id !== opt.id);
+                        if (!wählbar.length) return null;
+                        return (
+                          <optgroup key={seminartyp} label={seminartyp}>
+                            {wählbar.map((k) => (
+                              <option key={k.id} value={k.id}>
+                                {k.terminLabel} – {k.titel}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <KopierePreisstaffelnButton ersetztBestehende={(opt.preisstaffeln?.length || 0) > 0} />
+                </form>
+                <p style={{ fontSize: "0.75rem", color: "var(--color-text-faint)", margin: "0.3rem 0 0" }}>
+                  {(opt.preisstaffeln?.length || 0) > 0
+                    ? `Ersetzt alle ${opt.preisstaffeln.length} bestehende(n) Preisstaffel(n) dieser Option. `
+                    : ""}
+                  Feste Datums-Stichtage werden unverändert mitkopiert und im Namen mit „(Datum ggf. anpassen)" markiert – der Kalendertag der Quelloption passt ggf. nicht zum Starttermin dieser Option und sollte danach geprüft werden.
+                </p>
+              </details>
+            </div>
+            </AufklappBereich>
+          </div>
+        ))}
+        {!optionen?.length && (
+          <p style={{ color: "var(--color-text-faint)" }}>Noch keine Optionen angelegt.</p>
+        )}
+
+        <OptionenImportExportTabs
+          exportText={exportiereAlleSchnelleinfuegenText(optionen || [])}
+          exportHinweise={(optionen || []).map((o: any) => ({ titel: o.titel, texte: pruefeSchnelleinfuegenRoundTrip(o) }))}
+          anzahlOptionen={optionen?.length || 0}
+          anzahlDeaktiviert={(optionen || []).filter((o: any) => o.deaktiviert_am).length}
+        >
+          <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0 0 0.75rem" }}>
+            Praktisch, wenn dieser Termin die gleichen (oder fast gleichen) Optionen wie ein bestehender Termin braucht – z. B. aus einem anderen Seminartyp. Quell-Termin waehlen, gewuenschte Option(en) ankreuzen, importieren. Importierte Optionen sind eigenstaendige Kopien (inkl. Features und Preisstaffeln) und koennen danach hier ganz normal bearbeitet werden, ohne den Quell-Termin zu beeinflussen.
+          </p>
+          <form method="GET" style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div>
+              <label className="au-label">Quell-Termin</label>
+              <select name="importVon" defaultValue={importVon || ""} style={{ padding: "0.45rem", minWidth: 320 }}>
+                <option value="">– Termin auswählen –</option>
+                {andereTermine?.map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.kennung ? `${t.kennung} · ` : ""}{t.titel || t.seminartypen?.name || "Ohne Titel"} ({formatDatum(t.datum_start)})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="au-btn au-btn-secondary">Optionen anzeigen</button>
+          </form>
+
+          {importQuellTermin && (
+            <div style={{ marginTop: "1rem" }}>
+              {importQuellOptionen?.length ? (
+                <form action={importSeminarOptions}>
+                  <input type="hidden" name="seminartermin_id" value={id} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", margin: "0.5rem 0 0.85rem" }}>
+                    {importQuellOptionen.map((opt: any) => (
+                      <label key={opt.id} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", fontSize: "0.9rem", cursor: "pointer" }}>
+                        <input type="checkbox" name="option_ids" value={opt.id} style={{ marginTop: "0.2rem" }} />
+                        <span>
+                          <strong>{opt.titel}</strong>
+                          {opt.badge && (
+                            <span className="au-badge au-badge-gold" style={{ marginLeft: "0.4rem" }}>
+                              {badgeLabel[opt.badge] || opt.badge}
+                            </span>
+                          )}
+                          <br />
+                          <span style={{ color: "var(--color-text-faint)" }}>
+                            {(opt.seminartermin_options_features?.length || 0)} Feature(s) · {(opt.preisstaffeln?.length || 0)} Preisstaffel(n)
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <button type="submit" className="au-btn au-btn-primary">Ausgewählte Optionen importieren</button>
+                </form>
+              ) : (
+                <p style={{ color: "var(--color-text-faint)", fontSize: "0.9rem" }}>Dieser Termin hat noch keine Optionen.</p>
+              )}
+            </div>
+          )}
+        </OptionenImportExportTabs>
+
+        <AufklappBereich merkSchluessel={`neue-option-${id}`} className="au-aufklapp-panel" zusammenfassung={<strong>+ Neue Option hinzufügen</strong>}>
+          <form action={createSeminarOption} style={{ marginTop: "0.75rem" }}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <input type="hidden" name="features_text" />
+            <NeueOptionSchnelleinfuegen />
+            <div className="au-row-2">
+              <div>
+                <label className="au-label">Titel (z. B. "Option A – Basis")</label>
+                <input className="au-input" name="titel" required />
+              </div>
+              <div>
+                <label className="au-label">Sortierung (0 = zuerst)</label>
+                <input className="au-input" name="sortierung" type="number" defaultValue={(optionen?.length || 0)} />
+              </div>
+            </div>
+            <label className="au-label">Kennzeichnung</label>
+            <select className="au-input" name="badge" defaultValue="">
+              <option value="">Keine</option>
+              <option value="empfohlen">Empfohlen</option>
+              <option value="meistgekauft">Meistgekauft</option>
+            </select>
+            <label className="au-label">Beschreibung</label>
+            <FettTextarea name="beschreibung" placeholder="Kurze Beschreibung dieser Option" />
+            <label className="au-label">Vorspann-Text (nur wenn diese Option auf einer günstigeren Option aufbaut)</label>
+            <input className="au-input" name="vorspann_text" placeholder='z. B. "Alles aus Move, plus:"' />
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", fontSize: "0.9rem" }}>
+              <input type="checkbox" name="vorspann_anzeigen" /> Vorspann-Text anzeigen
+            </label>
+            <button type="submit" className="au-btn au-btn-primary">Option anlegen</button>
+          </form>
+        </AufklappBereich>
       </div>
 
-      <div className="au-card">
-        <h2>Termin bearbeiten</h2>
+            ),
+          },
+          {
+            key: "website",
+            label: "Website-Anzeige",
+            inhalt: (
+              <div className="au-bereichsstapel">
+      {websiteAnzeige && (
+        <Bereich titel="Anzeige auf der Website">
+          <WebsiteAnzeigeHinweis anzeige={websiteAnzeige} termin={termin} ausfuehrlich />
+
+          <form action={updateVerfuegbarkeitsAnzeige} style={{ maxWidth: 560, borderTop: "1px solid var(--color-border, #e5e7eb)", paddingTop: "0.9rem" }}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <div>
+              <label className="au-label">Was der Hero zeigt</label>
+              <select className="au-select" name="verfuegbarkeit_anzeige_modus" defaultValue={termin.verfuegbarkeit_anzeige_modus || "zahlen"}>
+                <option value="zahlen">Platzzahl + Füllstandsbalken + Urgency-Text</option>
+                <option value="neutral">Neutral: nur „{VERFUEGBARKEIT_NEUTRAL_TEXT}“, keine Zahlen</option>
+              </select>
+            </div>
+            <div>
+              <label className="au-label">Angezeigte Restplätze (statt der echten Buchungszahl)</label>
+              <input className="au-input" name="angezeigte_restplaetze" type="number" min={0} defaultValue={termin.angezeigte_restplaetze ?? ""} placeholder={`leer = echte Restplätze (aktuell ${websiteAnzeige.freiRechnerisch} von ${termin.kapazitaet})`} />
+              <p style={{ fontSize: "0.8rem", color: "var(--color-text-faint)", margin: "-0.35rem 0 0.75rem" }}>
+                Gilt für Zahl, Balken und alle Urgency-Stufen. Kapazität ({termin.kapazitaet} Plätze) änderst du oben im Termin-Formular.
+              </p>
+            </div>
+            <UrgencyTextFeld
+              name="urgency_label_template"
+              label="Standard-Text (gilt, solange keine Stufe unten greift)"
+              defaultValue={termin.urgency_label_template || ""}
+              freiePlaetze={websiteAnzeige.freiePlaetze}
+              kapazitaet={termin.kapazitaet}
+              platzhalter="z. B. Noch Plätze frei"
+            />
+            <button type="submit" className="au-btn au-btn-primary au-btn-sm">Anzeige speichern</button>
+          </form>
+
+          <h3 style={{ margin: "1.5rem 0 0.25rem" }}>Urgency-Stufen (ab wann ein anderer Text erscheint)</h3>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
+            Greifen mehrere Stufen, gewinnt die mit der höchsten Belegung. Greift keine, erscheint der Standard-Text von oben.
+          </p>
+          <table className="au-table">
+            <thead>
+              <tr>
+                <th>Wenn …</th>
+                <th>… zeigt die Website</th>
+                <th></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {urgencyStufenZeilen.map((u) => (
+                <UrgencyStufeZeile
+                  key={u.id}
+                  stufe={u}
+                  seminarterminId={id}
+                  freiePlaetze={websiteAnzeige.freiePlaetze}
+                  kapazitaet={termin.kapazitaet}
+                  updateAction={updateUrgencyStufe}
+                  deleteAction={deleteUrgencyStufe}
+                />
+              ))}
+              {!urgencyStufenZeilen.length && (
+                <tr><td colSpan={4} style={{ color: "var(--color-text-faint)" }}>Noch keine Stufen — es gilt immer der Standard-Text.</td></tr>
+              )}
+            </tbody>
+          </table>
+          <details style={{ margin: "0.5rem 0 0" }}>
+            <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>+ Urgency-Stufe hinzufügen</summary>
+            <form action={createUrgencyStufe} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem", alignItems: "start", marginTop: "0.5rem" }}>
+              <input type="hidden" name="seminartermin_id" value={id} />
+              <UrgencySchwellenwertFelder />
+              <UrgencyTextFeld
+                name="text_vorlage"
+                label="Text"
+                freiePlaetze={websiteAnzeige.freiePlaetze}
+                kapazitaet={termin.kapazitaet}
+                platzhalter="z. B. Nur noch wenige Plätze frei"
+                required
+              />
+              <div style={{ alignSelf: "start" }}>
+                <button type="submit" className="au-btn au-btn-primary au-btn-sm">Stufe hinzufügen</button>
+              </div>
+            </form>
+          </details>
+        </Bereich>
+      )}
+
+              </div>
+            ),
+          },
+          {
+            key: "einstellungen",
+            label: "Einstellungen",
+            inhalt: (
+              <div className="au-bereichsstapel">
+      <Bereich titel="Termin bearbeiten">
         <form action={previewSeminarterminUpdate} style={{ maxWidth: 560 }}>
           <input type="hidden" name="seminartermin_id" value={id} />
 
@@ -735,654 +1539,19 @@ export default async function TerminDetailPage({
             Änderungen speichern
           </button>
         </form>
-      </div>
+      </Bereich>
 
-      {websiteAnzeige && (
-        <div className="au-card">
-          <h2>Anzeige auf der Website</h2>
-          <WebsiteAnzeigeHinweis anzeige={websiteAnzeige} termin={termin} ausfuehrlich />
-
-          <form action={updateVerfuegbarkeitsAnzeige} style={{ maxWidth: 560, borderTop: "1px solid var(--color-border, #e5e7eb)", paddingTop: "0.9rem" }}>
-            <input type="hidden" name="seminartermin_id" value={id} />
-            <div>
-              <label className="au-label">Was der Hero zeigt</label>
-              <select className="au-select" name="verfuegbarkeit_anzeige_modus" defaultValue={termin.verfuegbarkeit_anzeige_modus || "zahlen"}>
-                <option value="zahlen">Platzzahl + Füllstandsbalken + Urgency-Text</option>
-                <option value="neutral">Neutral: nur „{VERFUEGBARKEIT_NEUTRAL_TEXT}“, keine Zahlen</option>
-              </select>
-            </div>
-            <div>
-              <label className="au-label">Angezeigte Restplätze (statt der echten Buchungszahl)</label>
-              <input className="au-input" name="angezeigte_restplaetze" type="number" min={0} defaultValue={termin.angezeigte_restplaetze ?? ""} placeholder={`leer = echte Restplätze (aktuell ${websiteAnzeige.freiRechnerisch} von ${termin.kapazitaet})`} />
-              <p style={{ fontSize: "0.8rem", color: "var(--color-text-faint)", margin: "-0.35rem 0 0.75rem" }}>
-                Gilt für Zahl, Balken und alle Urgency-Stufen. Kapazität ({termin.kapazitaet} Plätze) änderst du oben im Termin-Formular.
-              </p>
-            </div>
-            <UrgencyTextFeld
-              name="urgency_label_template"
-              label="Standard-Text (gilt, solange keine Stufe unten greift)"
-              defaultValue={termin.urgency_label_template || ""}
-              freiePlaetze={websiteAnzeige.freiePlaetze}
-              kapazitaet={termin.kapazitaet}
-              platzhalter="z. B. Noch Plätze frei"
-            />
-            <button type="submit" className="au-btn au-btn-primary au-btn-sm">Anzeige speichern</button>
-          </form>
-
-          <h3 style={{ margin: "1.5rem 0 0.25rem" }}>Urgency-Stufen (ab wann ein anderer Text erscheint)</h3>
-          <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem", marginTop: 0 }}>
-            Greifen mehrere Stufen, gewinnt die mit der höchsten Belegung. Greift keine, erscheint der Standard-Text von oben.
-          </p>
-          <table className="au-table">
-            <thead>
-              <tr>
-                <th>Wenn …</th>
-                <th>… zeigt die Website</th>
-                <th></th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {urgencyStufenZeilen.map((u) => (
-                <UrgencyStufeZeile
-                  key={u.id}
-                  stufe={u}
-                  seminarterminId={id}
-                  freiePlaetze={websiteAnzeige.freiePlaetze}
-                  kapazitaet={termin.kapazitaet}
-                  updateAction={updateUrgencyStufe}
-                  deleteAction={deleteUrgencyStufe}
-                />
-              ))}
-              {!urgencyStufenZeilen.length && (
-                <tr><td colSpan={4} style={{ color: "var(--color-text-faint)" }}>Noch keine Stufen — es gilt immer der Standard-Text.</td></tr>
-              )}
-            </tbody>
-          </table>
-          <details style={{ margin: "0.5rem 0 0" }}>
-            <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>+ Urgency-Stufe hinzufügen</summary>
-            <form action={createUrgencyStufe} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem", alignItems: "start", marginTop: "0.5rem" }}>
-              <input type="hidden" name="seminartermin_id" value={id} />
-              <UrgencySchwellenwertFelder />
-              <UrgencyTextFeld
-                name="text_vorlage"
-                label="Text"
-                freiePlaetze={websiteAnzeige.freiePlaetze}
-                kapazitaet={termin.kapazitaet}
-                platzhalter="z. B. Nur noch wenige Plätze frei"
-                required
-              />
-              <div style={{ alignSelf: "start" }}>
-                <button type="submit" className="au-btn au-btn-primary au-btn-sm">Stufe hinzufügen</button>
+                {gefahrenzone}
               </div>
-            </form>
-          </details>
-        </div>
-      )}
-
-      <div className="au-card">
-        <h2>Mitarbeiter beim Termin</h2>
-        <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
-          Referenten/Assistenz, die bei diesem Termin dabei sind — nicht als Teilnehmer, sondern als Personal erfasst.
-        </p>
-        <table className="au-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Rolle</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {terminMitarbeiter?.map((tm: any) => (
-              <tr key={tm.id}>
-                <td>{tm.mitarbeiter?.name}</td>
-                <td>{tm.rolle}</td>
-                <td>
-                  <form action={removeMitarbeiterVonTermin} style={{ display: "inline" }}>
-                    <input type="hidden" name="zuordnung_id" value={tm.id} />
-                    <input type="hidden" name="seminartermin_id" value={id} />
-                    <button type="submit" className="au-link-danger">entfernen</button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-            {!terminMitarbeiter?.length && (
-              <tr><td colSpan={3} style={{ color: "var(--color-text-faint)" }}>Noch keine Mitarbeiter zugeordnet.</td></tr>
-            )}
-          </tbody>
-        </table>
-        <form action={addMitarbeiterZuTermin} className="au-row-2">
-          <input type="hidden" name="seminartermin_id" value={id} />
-          <div>
-            <label className="au-label">Mitarbeiter</label>
-            <select className="au-input" name="mitarbeiter_id" required>
-              <option value="">— wählen —</option>
-              {mitarbeiterListe?.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="au-label">Rolle</label>
-            <select className="au-input" name="rolle" defaultValue="Referent">
-              <option value="Referent">Referent</option>
-              <option value="Assistenz">Assistenz</option>
-              <option value="Co-Trainer">Co-Trainer</option>
-              <option value="Sonstiges">Sonstiges</option>
-            </select>
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <button type="submit" className="au-btn au-btn-primary">Mitarbeiter zuordnen</button>
-          </div>
-        </form>
-        <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", marginTop: "0.5rem" }}>
-          Fehlt jemand in der Liste? Unter <a href="/mitarbeiter" >Mitarbeiter</a> neu anlegen.
-        </p>
-      </div>
-
-      <div className="au-card">
-        <h2>Optionen (z. B. A / B / C)</h2>
-        <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
-          Jede Option ist ein eigenes buchbares Paket mit eigenem Titel, Beschreibung, Featureliste und eigenen Preisstufen (Frühbucher/Normalpreis). Ein Seminar mit nur einer Buchungsvariante braucht nur eine Option.
-        </p>
-
-        <h3 style={{ fontSize: "0.95rem", margin: "1.25rem 0 0.25rem" }}>Vorschau</h3>
-        <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "0 0 0.25rem" }}>
-          So kommen die Optionen ungefähr auf der Website an (Preis-Sektion und Buchungsformular auf Onepage) – zum Gegenchecken, bevor die Preise dorthin übertragen werden.
-        </p>
-        {aktiveOptionen.length ? (
-          <div className="au-option-preview-grid">
-            {aktiveOptionen.map((opt: any) => {
-              const previewPreis = aktuellerPreisNetto(opt.preisstaffeln || [], termin.datum_start);
-              const featuresSortiert = (opt.seminartermin_options_features || [])
-                .slice()
-                .sort((a: any, b: any) => (a.sortierung ?? 0) - (b.sortierung ?? 0));
-              return (
-                <div
-                  key={opt.id}
-                  className={`au-option-preview-card ${opt.badge === "empfohlen" ? "au-option-preview-card-empfohlen" : ""}`}
-                >
-                  {opt.badge && <span className="au-badge au-badge-gold">{badgeLabel[opt.badge] || opt.badge}</span>}
-                  <p className="au-option-preview-title">{opt.titel}</p>
-                  {opt.beschreibung && <p className="au-option-preview-desc">{renderFett(opt.beschreibung)}</p>}
-                  {previewPreis !== null ? (
-                    <p className="au-option-preview-price">
-                      {formatEUR(previewPreis)}
-                      <span className="au-option-preview-price-hinweis"> netto · {formatEURBrutto(previewPreis)} brutto</span>
-                    </p>
-                  ) : (
-                    <p className="au-option-preview-price-fehlt">Noch kein Preis hinterlegt</p>
-                  )}
-                  {opt.vorspann_anzeigen && opt.vorspann_text && (
-                    <p style={{ fontWeight: 600, fontSize: "0.85rem", margin: "0.4rem 0 0.1rem" }}>{renderFett(opt.vorspann_text)}</p>
-                  )}
-                  {featuresSortiert.length > 0 && (
-                    <ul className="au-option-preview-features">
-                      {featuresSortiert.map((f: any) => (
-                        <li key={f.id} className={f.hervorgehoben ? "au-feature-hervorgehoben" : undefined}>
-                          {f.hervorgehoben && <HervorgehobenMarker />}
-                          {f.label && <strong>{renderFett(f.label)}: </strong>}
-                          {renderFett(f.text)}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {opt.zusatz_teilnehmer_hinweis && (
-                    <p className="au-option-preview-zusatz">{renderFett(opt.zusatz_teilnehmer_hinweis)}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="au-option-preview-empty">Noch keine Optionen angelegt – die Vorschau erscheint hier, sobald mindestens eine Option existiert.</div>
-        )}
-
-        {optionen?.map((opt: any, optIndex: number) => (
-          <div
-            key={opt.id}
-            className="au-subcard"
-            style={{
-              background: OPTION_FARBEN[optIndex % OPTION_FARBEN.length],
-              ...(opt.deaktiviert_am ? { opacity: 0.55 } : {}),
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <strong>{opt.titel}</strong>
-                {opt.badge && <span className="au-badge au-badge-gold">{badgeLabel[opt.badge] || opt.badge}</span>}
-                {opt.deaktiviert_am && <span className="au-badge au-badge-neutral">Deaktiviert</span>}
-              </div>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <form action={moveSeminarOption}>
-                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                  <input type="hidden" name="seminartermin_id" value={id} />
-                  <input type="hidden" name="richtung" value="hoch" />
-                  <button type="submit" className="au-btn au-btn-secondary" disabled={optIndex === 0} title="Option nach oben verschieben">↑</button>
-                </form>
-                <form action={moveSeminarOption}>
-                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                  <input type="hidden" name="seminartermin_id" value={id} />
-                  <input type="hidden" name="richtung" value="runter" />
-                  <button type="submit" className="au-btn au-btn-secondary" disabled={optIndex === (optionen?.length || 0) - 1} title="Option nach unten verschieben">↓</button>
-                </form>
-                <form action={duplicateSeminarOption}>
-                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                  <input type="hidden" name="seminartermin_id" value={id} />
-                  <button type="submit" className="au-btn au-btn-secondary" title="Legt eine Kopie dieser Option (inkl. Features und Preisstaffeln) an, z. B. als Basis für Option B">
-                    Option duplizieren
-                  </button>
-                </form>
-                <OptionLoeschenButton optionId={opt.id} seminarterminId={id} titel={opt.titel || ""} loeschenAction={loescheSeminarOption} />
-              </div>
-            </div>
-            {opt.beschreibung && <p style={{ color: "#444", fontSize: "0.9rem", margin: "0.35rem 0" }}>{renderFett(opt.beschreibung)}</p>}
-
-            <details style={{ margin: "0.5rem 0" }}>
-              <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>Option bearbeiten</summary>
-              <OptionSchnelleinfuegen
-                seminarterminOptionId={opt.id}
-                seminarterminId={id}
-                titelAktuell={opt.titel || ""}
-                beschreibungAktuell={opt.beschreibung || ""}
-                featuresAnzahlAktuell={(opt.seminartermin_options_features || []).length}
-                uebernehmenAction={uebernehmeOptionSchnelleinfuegen}
-                exportText={exportiereSchnelleinfuegenText(opt)}
-                exportHinweise={pruefeSchnelleinfuegenRoundTrip(opt)}
-              />
-              <form action={updateSeminarOption} style={{ marginTop: "0.6rem", maxWidth: 480 }}>
-                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                <input type="hidden" name="seminartermin_id" value={id} />
-                <label className="au-label">Titel</label>
-                <input className="au-input" name="titel" defaultValue={opt.titel} required />
-                <label className="au-label">Beschreibung</label>
-                <FettTextarea name="beschreibung" defaultValue={opt.beschreibung || ""} placeholder="Kurze Beschreibung dieser Option" />
-                <label className="au-label">Vorspann-Text (nur wenn diese Option auf einer günstigeren Option aufbaut)</label>
-                <input className="au-input" name="vorspann_text" defaultValue={opt.vorspann_text || ""} placeholder='z. B. "Alles aus Move, plus:"' />
-                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.9rem" }}>
-                  <input type="checkbox" name="vorspann_anzeigen" defaultChecked={opt.vorspann_anzeigen || false} /> Vorspann-Text anzeigen
-                </label>
-                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
-                  Text kann stehen bleiben, auch wenn er gerade nicht angezeigt werden soll – einfach den Schalter ausschalten statt den Text zu löschen.
-                </p>
-                <label className="au-label">Sortierung (0 = zuerst)</label>
-                <input className="au-input" name="sortierung" type="number" defaultValue={opt.sortierung ?? 0} />
-                <label className="au-label">Zusätzliche Nächte für Zimmer-Upgrade (nur bei Verlängerung/Zusatzübernachtung, sonst leer lassen)</label>
-                <input className="au-input" name="zimmerupgrade_zusatznaechte" type="number" min={0} defaultValue={opt.zimmerupgrade_zusatznaechte || ""} placeholder="z. B. 1" />
-                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.9rem" }}>
-                  <input type="checkbox" name="ratenzahlung_aktiv" defaultChecked={opt.ratenzahlung_aktiv || false} /> Ratenzahlung anbieten
-                </label>
-                <label className="au-label">Anzahl Raten (nur bei aktiver Ratenzahlung relevant)</label>
-                <input className="au-input" name="ratenzahlung_anzahl_raten" type="number" min={2} defaultValue={opt.ratenzahlung_anzahl_raten || ""} placeholder="z. B. 3" />
-                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
-                  Reine Zahlungsvereinbarung, keine automatische Abbuchung — 1. Rate sofort fällig, restliche Raten gleich hoch auf die Folgemonate verteilt (Rundungsdifferenz bei der letzten Rate). Zahlungseingänge weiterhin manuell auf der Buchung markieren.
-                </p>
-                <label className="au-label">Hinweis: zusätzlicher Teilnehmer (erscheint unter der Preistabelle auf Onepage)</label>
-                <FettTextarea
-                  name="zusatz_teilnehmer_hinweis"
-                  defaultValue={opt.zusatz_teilnehmer_hinweis || ""}
-                  placeholder="z. B. Jeder weitere zusätzliche Teilnehmer aus Deiner Agentur im Seminar pro Person 3.480 €. Inklusive drei Übernachtungen im Einzelzimmer mit Frühstück, drei gemeinsamen Mittag- und Abendessen. Inklusive allen Getränken (exklusive Hotelbar)"
-                />
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button type="submit" className="au-btn au-btn-secondary">Speichern</button>
-                </div>
-              </form>
-              {opt.deaktiviert_am ? (
-                <form action={reaktiviereSeminarOption} style={{ marginTop: "0.5rem" }}>
-                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                  <input type="hidden" name="seminartermin_id" value={id} />
-                  <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Wieder aktivieren</button>
-                </form>
-              ) : (
-                <form action={deaktivierenSeminarOption} style={{ marginTop: "0.5rem" }}>
-                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                  <input type="hidden" name="seminartermin_id" value={id} />
-                  <DeaktivierenOptionButton titel={opt.titel} />
-                </form>
-              )}
-            </details>
-
-            <form action={updateOptionBadge} style={{ display: "flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" }}>
-              <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-              <input type="hidden" name="seminartermin_id" value={id} />
-              <label className="au-label" style={{ marginBottom: 0 }}>Kennzeichnung</label>
-              <select name="badge" defaultValue={opt.badge || ""} style={{ padding: "0.35rem" }}>
-                <option value="">Keine</option>
-                <option value="empfohlen">Empfohlen</option>
-                <option value="meistgekauft">Meistgekauft</option>
-              </select>
-              <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
-            </form>
-
-            <div style={{ marginTop: "0.75rem" }}>
-              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-muted)" }}>Features</span>
-              <ul style={{ margin: "0.35rem 0 0.5rem", paddingLeft: "1.2rem" }}>
-                {(() => {
-                  const featuresGeordnet = [...(opt.seminartermin_options_features || [])].sort(
-                    (a: any, b: any) => a.sortierung - b.sortierung || new Date(a.erstellt_am).getTime() - new Date(b.erstellt_am).getTime()
-                  );
-                  return featuresGeordnet.map((f: any, idx: number) => (
-                    <li
-                      key={f.id}
-                      style={{
-                        fontSize: "0.9rem",
-                        listStyle: "none",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: "var(--radius-sm)",
-                        background: "#fafafa",
-                        padding: "0.5rem 0.65rem",
-                        marginBottom: "0.5rem",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", flex: 1, minWidth: 160 }}>
-                          {f.hervorgehoben && <HervorgehobenMarker inline />}
-                          {f.label && <strong>{renderFett(f.label)}: </strong>}
-                          {renderFett(f.text)}
-                        </span>
-                        <form action={moveOptionFeature} style={{ display: "inline" }}>
-                          <input type="hidden" name="feature_id" value={f.id} />
-                          <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                          <input type="hidden" name="seminartermin_id" value={id} />
-                          <input type="hidden" name="richtung" value="hoch" />
-                          <button type="submit" className="au-btn au-btn-secondary au-btn-sm" disabled={idx === 0} title="Nach oben verschieben">↑</button>
-                        </form>
-                        <form action={moveOptionFeature} style={{ display: "inline" }}>
-                          <input type="hidden" name="feature_id" value={f.id} />
-                          <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                          <input type="hidden" name="seminartermin_id" value={id} />
-                          <input type="hidden" name="richtung" value="runter" />
-                          <button type="submit" className="au-btn au-btn-secondary au-btn-sm" disabled={idx === featuresGeordnet.length - 1} title="Nach unten verschieben">↓</button>
-                        </form>
-                        <form action={deleteOptionFeature} style={{ display: "inline" }}>
-                          <input type="hidden" name="feature_id" value={f.id} />
-                          <input type="hidden" name="seminartermin_id" value={id} />
-                          <button type="submit" className="au-link-danger">entfernen</button>
-                        </form>
-                      </div>
-                      <details style={{ marginTop: "0.4rem" }}>
-                        <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.8rem" }}>bearbeiten</summary>
-                        <form action={updateOptionFeature} style={{ marginTop: "0.5rem" }}>
-                          <input type="hidden" name="feature_id" value={f.id} />
-                          <input type="hidden" name="seminartermin_id" value={id} />
-                          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.4rem" }}>
-                            <input className="au-input" name="label" defaultValue={f.label || ""} placeholder="Label (optional)" style={{ maxWidth: 240, flex: "0 1 240px" }} />
-                            <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
-                              <input type="checkbox" name="hervorgehoben" defaultChecked={f.hervorgehoben || false} /> hervorheben (+)
-                            </label>
-                          </div>
-                          <FettInput name="text" defaultValue={f.text} required />
-                          <button type="submit" className="au-btn au-btn-secondary au-btn-sm" style={{ marginTop: "0.5rem" }}>Speichern</button>
-                        </form>
-                      </details>
-                    </li>
-                  ));
-                })()}
-                {!opt.seminartermin_options_features?.length && (
-                  <li style={{ fontSize: "0.9rem", color: "var(--color-text-faint)", listStyle: "none", marginLeft: "-1.2rem" }}>Noch keine Features.</li>
-                )}
-              </ul>
-              <form
-                action={createOptionFeature}
-                style={{ border: "1px dashed var(--color-border)", borderRadius: "var(--radius-sm)", padding: "0.6rem 0.65rem" }}
-              >
-                <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                <input type="hidden" name="seminartermin_id" value={id} />
-                <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap", marginBottom: "0.4rem" }}>
-                  <input className="au-input" name="label" placeholder="Label (optional)" style={{ maxWidth: 240, flex: "0 1 240px" }} />
-                  <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
-                    <input type="checkbox" name="hervorgehoben" /> hervorheben (+)
-                  </label>
-                </div>
-                <FettInput name="text" placeholder="z. B. Einzelcoaching inklusive" required />
-                <button type="submit" className="au-btn au-btn-secondary" style={{ marginTop: "0.5rem" }}>+ Feature</button>
-              </form>
-            </div>
-
-            <div style={{ marginTop: "1rem" }}>
-              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-muted)" }}>Preisstaffeln (Nettopreise, zzgl. gesetzlicher USt.)</span>
-              {(() => {
-                const luecke = normalpreisLuecke(opt.preisstaffeln || [], termin.datum_start);
-                return luecke ? (
-                  <div className="au-banner au-banner-warning" style={{ margin: "0.35rem 0", padding: "0.45rem 0.75rem", fontSize: "0.82rem" }}>
-                    Die letzte Stufe „{luecke.name}“ endet schon am {formatDatum(luecke.bis)}. Danach gilt ihr Preis zwar automatisch weiter,
-                    aber Onepage zeigt ein abgelaufenes „gilt bis“-Datum. Bei „{luecke.name}“ auf „bearbeiten“ → „dem Tag vor Seminarstart (Normalpreis)“ stellen.
-                  </div>
-                ) : null;
-              })()}
-              <table className="au-table" style={{ margin: "0.35rem 0 0.5rem" }}>
-                <thead>
-                  <tr>
-                    <th>Preisstufe</th>
-                    <th>gilt ab</th>
-                    <th>gilt bis einschl.</th>
-                    <th>Preis (netto)</th>
-                    <th>Preis (brutto, 19% USt.)</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preisstaffelZeilen(opt.preisstaffeln || [], termin.datum_start).map((z) => (
-                    <PreisstaffelZeile
-                      key={z.id}
-                      staffel={z}
-                      terminStart={termin.datum_start}
-                      seminarterminId={id}
-                      updateAction={updatePreisstaffel}
-                      deleteAction={deletePreisstaffel}
-                    />
-                  ))}
-                  {!opt.preisstaffeln?.length && (
-                    <tr><td colSpan={6} style={{ color: "var(--color-text-faint)" }}>Noch keine Preisstaffeln.</td></tr>
-                  )}
-                </tbody>
-              </table>
-              <details style={{ margin: "0.25rem 0 0.5rem" }}>
-                <summary style={{ cursor: "pointer", color: "#0B1B33", fontSize: "0.85rem", fontWeight: 600 }}>+ Preisstufe hinzufügen</summary>
-                <form action={createPreisstaffel} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem", alignItems: "start", marginTop: "0.5rem" }}>
-                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                  <input type="hidden" name="seminartermin_id" value={id} />
-                  <div>
-                    <label className="au-label">Name der Preisstufe (z. B. Frühbucher)</label>
-                    <input className="au-input" name="name" required />
-                  </div>
-                  <div>
-                    <label className="au-label">Preis (€, netto zzgl. USt.)</label>
-                    <input className="au-input" name="preis" type="number" step="0.01" required />
-                  </div>
-                  <PreisstaffelStichtagFelder terminStart={termin.datum_start} />
-                  <div style={{ alignSelf: "end" }}>
-                    <button type="submit" className="au-btn au-btn-secondary">Preisstufe anlegen</button>
-                  </div>
-                </form>
-              </details>
-
-              <PreisstaffelVorlagenAktionen
-                seminarterminOptionId={opt.id}
-                seminarterminId={id}
-                terminDatumStart={termin.datum_start}
-                vorlagen={(preisstaffelVorlagen || []) as PreisstaffelVorlage[]}
-                bestehendeStaffeln={opt.preisstaffeln || []}
-                ersetzenAction={ersetzePreisstaffelnDurchVorlage}
-                alsVorlageSpeichernAction={speicherePreisstaffelnAlsVorlage}
-              />
-
-              <details style={{ marginTop: "0.5rem" }}>
-                <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.85rem" }}>
-                  Preisstaffel-Vorlage anwenden (monatlicher Stichtag rückwärts)
-                </summary>
-                <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "0.5rem 0" }}>
-                  Legt 5 Preisstufen mit 4 Stichtagen an (jeweils der erste Donnerstag eines Monats, monatlich rückwärts ab dem Monat vor Terminstart) — rein additiv, bestehende Preisstaffeln bleiben unverändert. Bereits verstrichene Stichtage werden beim Anlegen einfach übersprungen.
-                </p>
-                <form action={wendePreisstaffelVorlageAn} style={{ marginTop: "0.5rem", maxWidth: 520 }}>
-                  <input type="hidden" name="seminartermin_option_id" value={opt.id} />
-                  <input type="hidden" name="seminartermin_id" value={id} />
-                  <label className="au-label">Stufe 1 – Basispreis (€, netto, gültig bis {formatDatum(vorlagenStichtage[0])})</label>
-                  <input className="au-input" name="basispreis" type="number" step="0.01" required />
-                  {vorlagenStichtage.map((datum, idx) => (
-                    <div key={idx} className="au-row-2" style={{ alignItems: "flex-end" }}>
-                      <div>
-                        <label className="au-label">
-                          Übergang {idx + 1} (ab {formatDatum(datum)}
-                          {idx === 3 ? ", ~4 Wochen vor Termin" : ""})
-                        </label>
-                        <select className="au-select" name={`uebergang_${idx + 1}_modus`} defaultValue="betrag">
-                          <option value="betrag">Plus Betrag (€)</option>
-                          <option value="prozent">Plus Prozent (%)</option>
-                          <option value="manuell">Manueller Preis (€)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="au-label">Wert</label>
-                        <input className="au-input" name={`uebergang_${idx + 1}_wert`} type="number" step="0.01" required />
-                      </div>
-                    </div>
-                  ))}
-                  <button type="submit" className="au-btn au-btn-secondary" style={{ marginTop: "0.5rem" }}>
-                    Vorlage anwenden
-                  </button>
-                </form>
-              </details>
-
-              <details style={{ marginTop: "0.5rem" }}>
-                <summary style={{ cursor: "pointer", color: "#0B1B33", fontWeight: 600, fontSize: "0.85rem" }}>
-                  Preisstaffeln aus anderem Seminar kopieren
-                </summary>
-                <form
-                  action={copyPreisstaffelnFromOption}
-                  style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}
-                >
-                  <input type="hidden" name="ziel_option_id" value={opt.id} />
-                  <input type="hidden" name="seminartermin_id" value={id} />
-                  <div style={{ flex: 1, minWidth: 260 }}>
-                    <label className="au-label">Quell-Option (Seminarkategorie – Termin – Option)</label>
-                    <select className="au-select" name="quell_option_id" required defaultValue="">
-                      <option value="" disabled>— bitte wählen —</option>
-                      {kopierbareGruppen.map(([seminartyp, gruppe]) => {
-                        const wählbar = gruppe.filter((k) => k.id !== opt.id);
-                        if (!wählbar.length) return null;
-                        return (
-                          <optgroup key={seminartyp} label={seminartyp}>
-                            {wählbar.map((k) => (
-                              <option key={k.id} value={k.id}>
-                                {k.terminLabel} – {k.titel}
-                              </option>
-                            ))}
-                          </optgroup>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  <KopierePreisstaffelnButton ersetztBestehende={(opt.preisstaffeln?.length || 0) > 0} />
-                </form>
-                <p style={{ fontSize: "0.75rem", color: "var(--color-text-faint)", margin: "0.3rem 0 0" }}>
-                  {(opt.preisstaffeln?.length || 0) > 0
-                    ? `Ersetzt alle ${opt.preisstaffeln.length} bestehende(n) Preisstaffel(n) dieser Option. `
-                    : ""}
-                  Feste Datums-Stichtage werden unverändert mitkopiert und im Namen mit „(Datum ggf. anpassen)" markiert – der Kalendertag der Quelloption passt ggf. nicht zum Starttermin dieser Option und sollte danach geprüft werden.
-                </p>
-              </details>
-            </div>
-          </div>
-        ))}
-        {!optionen?.length && (
-          <p style={{ color: "var(--color-text-faint)" }}>Noch keine Optionen angelegt.</p>
-        )}
-
-        <OptionenImportExportTabs
-          exportText={exportiereAlleSchnelleinfuegenText(optionen || [])}
-          exportHinweise={(optionen || []).map((o: any) => ({ titel: o.titel, texte: pruefeSchnelleinfuegenRoundTrip(o) }))}
-          anzahlOptionen={optionen?.length || 0}
-          anzahlDeaktiviert={(optionen || []).filter((o: any) => o.deaktiviert_am).length}
-        >
-          <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", margin: "0 0 0.75rem" }}>
-            Praktisch, wenn dieser Termin die gleichen (oder fast gleichen) Optionen wie ein bestehender Termin braucht – z. B. aus einem anderen Seminartyp. Quell-Termin waehlen, gewuenschte Option(en) ankreuzen, importieren. Importierte Optionen sind eigenstaendige Kopien (inkl. Features und Preisstaffeln) und koennen danach hier ganz normal bearbeitet werden, ohne den Quell-Termin zu beeinflussen.
-          </p>
-          <form method="GET" style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap" }}>
-            <div>
-              <label className="au-label">Quell-Termin</label>
-              <select name="importVon" defaultValue={importVon || ""} style={{ padding: "0.45rem", minWidth: 320 }}>
-                <option value="">– Termin auswählen –</option>
-                {andereTermine?.map((t: any) => (
-                  <option key={t.id} value={t.id}>
-                    {t.kennung ? `${t.kennung} · ` : ""}{t.titel || t.seminartypen?.name || "Ohne Titel"} ({formatDatum(t.datum_start)})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button type="submit" className="au-btn au-btn-secondary">Optionen anzeigen</button>
-          </form>
-
-          {importQuellTermin && (
-            <div style={{ marginTop: "1rem" }}>
-              {importQuellOptionen?.length ? (
-                <form action={importSeminarOptions}>
-                  <input type="hidden" name="seminartermin_id" value={id} />
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", margin: "0.5rem 0 0.85rem" }}>
-                    {importQuellOptionen.map((opt: any) => (
-                      <label key={opt.id} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", fontSize: "0.9rem", cursor: "pointer" }}>
-                        <input type="checkbox" name="option_ids" value={opt.id} style={{ marginTop: "0.2rem" }} />
-                        <span>
-                          <strong>{opt.titel}</strong>
-                          {opt.badge && (
-                            <span className="au-badge au-badge-gold" style={{ marginLeft: "0.4rem" }}>
-                              {badgeLabel[opt.badge] || opt.badge}
-                            </span>
-                          )}
-                          <br />
-                          <span style={{ color: "var(--color-text-faint)" }}>
-                            {(opt.seminartermin_options_features?.length || 0)} Feature(s) · {(opt.preisstaffeln?.length || 0)} Preisstaffel(n)
-                          </span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                  <button type="submit" className="au-btn au-btn-primary">Ausgewählte Optionen importieren</button>
-                </form>
-              ) : (
-                <p style={{ color: "var(--color-text-faint)", fontSize: "0.9rem" }}>Dieser Termin hat noch keine Optionen.</p>
-              )}
-            </div>
-          )}
-        </OptionenImportExportTabs>
-
-        <div className="au-card">
-          <strong>Neue Option hinzufügen</strong>
-          <form action={createSeminarOption} style={{ marginTop: "0.75rem" }}>
-            <input type="hidden" name="seminartermin_id" value={id} />
-            <input type="hidden" name="features_text" />
-            <NeueOptionSchnelleinfuegen />
-            <div className="au-row-2">
-              <div>
-                <label className="au-label">Titel (z. B. "Option A – Basis")</label>
-                <input className="au-input" name="titel" required />
-              </div>
-              <div>
-                <label className="au-label">Sortierung (0 = zuerst)</label>
-                <input className="au-input" name="sortierung" type="number" defaultValue={(optionen?.length || 0)} />
-              </div>
-            </div>
-            <label className="au-label">Kennzeichnung</label>
-            <select className="au-input" name="badge" defaultValue="">
-              <option value="">Keine</option>
-              <option value="empfohlen">Empfohlen</option>
-              <option value="meistgekauft">Meistgekauft</option>
-            </select>
-            <label className="au-label">Beschreibung</label>
-            <FettTextarea name="beschreibung" placeholder="Kurze Beschreibung dieser Option" />
-            <label className="au-label">Vorspann-Text (nur wenn diese Option auf einer günstigeren Option aufbaut)</label>
-            <input className="au-input" name="vorspann_text" placeholder='z. B. "Alles aus Move, plus:"' />
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", fontSize: "0.9rem" }}>
-              <input type="checkbox" name="vorspann_anzeigen" /> Vorspann-Text anzeigen
-            </label>
-            <button type="submit" className="au-btn au-btn-primary">Option anlegen</button>
-          </form>
-        </div>
-      </div>
-
-      <div className="au-card">
-        <h2>Änderungsprotokoll</h2>
+            ),
+          },
+          {
+            key: "verlauf",
+            label: "Verlauf",
+            anzahl: protokoll?.length || 0,
+            inhalt: (
+              <div className="au-bereichsstapel">
+      <Bereich titel="Änderungsprotokoll">
         <table className="au-table">
           <thead>
             <tr>
@@ -1406,7 +1575,26 @@ export default async function TerminDetailPage({
             )}
           </tbody>
         </table>
-      </div>
+      </Bereich>
+              </div>
+            ),
+          },
+        ]}
+      />
     </main>
+  );
+}
+
+// Einheitlicher Container fuer die Bereiche der Detailseite (Kopf mit Titel
+// und optionaler Aktion rechts) -- gleiche Optik wie die Dashboard-Panels.
+function Bereich({ titel, aktion, children }: { titel: React.ReactNode; aktion?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="au-panel">
+      <div className="au-panel-kopf">
+        <h2>{titel}</h2>
+        {aktion}
+      </div>
+      <div className="au-panel-inhalt">{children}</div>
+    </section>
   );
 }
