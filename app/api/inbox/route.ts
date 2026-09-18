@@ -80,7 +80,14 @@ export async function POST(request: NextRequest) {
   if (text.length > INBOX_TEXT_MAX) return antwort(`Text zu lang (max. ${INBOX_TEXT_MAX} Zeichen).`, 400);
 
   const quelleRoh = String(body?.source ?? body?.quelle ?? "iphone").toLowerCase().trim();
-  const quelle: InboxQuelle = (INBOX_QUELLEN as readonly string[]).includes(quelleRoh) ? (quelleRoh as InboxQuelle) : "iphone";
+  // Der Kurzbefehl schickt einfach "Gerätedetails -> Gerätemodell" mit
+  // ("iPhone", "Apple Watch", "iPad" ...), statt je Geraet einen eigenen
+  // Kurzbefehl pflegen zu muessen.
+  const quelle: InboxQuelle = (INBOX_QUELLEN as readonly string[]).includes(quelleRoh)
+    ? (quelleRoh as InboxQuelle)
+    : quelleRoh.includes("watch")
+      ? "watch"
+      : "iphone";
 
   const supabase = getSupabaseAdmin();
   const seit = new Date(Date.now() - DB_FENSTER_MIN * 60_000).toISOString();
