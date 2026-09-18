@@ -25,11 +25,20 @@ export default async function KampagnenVorschauPage({ params }: { params: Promis
 
   return (
     <main>
-      <h1>Vorschau: {kampagne.name}</h1>
-      <p>
-        Das hier würde jetzt tatsächlich verschickt werden, wenn du bestätigst. Der Filter wurde gerade eben live
-        gegen den aktuellen Teilnehmerbestand ausgewertet.
-      </p>
+      <header className="au-dash-kopf">
+        <div>
+          <p className="au-dash-datum">
+            <Link href="/kampagnen" className="au-panel-link">← Kampagnen</Link>
+          </p>
+          <h1>{kampagne.name}</h1>
+          <p style={{ margin: 0 }}>So würde die Kampagne jetzt verschickt – der Filter wurde gerade live gegen den aktuellen Bestand ausgewertet.</p>
+        </div>
+        <ol className="au-schritte" aria-label="Ablauf">
+          <li className="aktiv">1 · Empfänger</li>
+          <li className="aktiv">2 · Inhalt</li>
+          <li className="aktiv">3 · Vorschau &amp; Versand</li>
+        </ol>
+      </header>
 
       <div className="au-card au-card-tint au-sperrfrist-kopf">
         <div>

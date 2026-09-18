@@ -3690,3 +3690,222 @@ details .au-tag-form {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------- Kampagnen ---------- */
+.au-kliste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.au-kliste > li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.au-kliste > li:first-child {
+  border-top: 0;
+}
+
+.au-kliste-haupt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.au-kliste-name {
+  font-weight: 600;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+a.au-kliste-name:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.au-kliste-betreff {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.au-kliste-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+.au-kliste-aktionen {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.au-kliste-werte {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  flex-shrink: 0;
+}
+
+.au-kliste-wert {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 4.5rem;
+}
+
+.au-kliste-wert strong {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-kliste-wert span {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.au-kliste-balken {
+  display: block;
+  width: 4.5rem;
+  height: 4px;
+  margin-top: 0.3rem;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.au-kliste-balken b {
+  display: block;
+  height: 100%;
+  background: var(--color-success);
+}
+
+.au-kliste-hinweise {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.au-kliste-kompakt > li {
+  padding: 0.7rem 1.15rem;
+}
+
+.au-kampagne-regeln {
+  margin: 0;
+  padding: 0.9rem 1.15rem 1rem 2.2rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.au-kampagne-regeln strong {
+  color: var(--color-text);
+}
+
+/* Neue Kampagne: Empfaenger links, Inhalt rechts */
+.au-schritte {
+  display: flex;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.78rem;
+}
+
+.au-schritte li {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-faint);
+  background: var(--color-surface);
+}
+
+.au-schritte li.aktiv {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.au-kampagne-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.au-kampagne-panel-inhalt {
+  padding: 1rem 1.15rem 1.15rem;
+}
+
+.au-kampagne-filterfuss {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.au-kampagne-treffer {
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-accent-soft);
+}
+
+.au-kampagne-treffer-zahl {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-kampagne-empfaenger {
+  padding: 0.6rem 1.15rem 0.9rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.au-kampagne-empfaenger ul {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+
+.au-kampagne-empfaenger li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+@media (max-width: 1000px) {
+  .au-kampagne-raster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .au-kliste > li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .au-kliste-werte {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .au-kliste-wert {
+    align-items: flex-start;
+  }
+}

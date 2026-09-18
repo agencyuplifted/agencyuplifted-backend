@@ -68,33 +68,40 @@ export default async function NeueKampagnePage({
 
   return (
     <main>
-      <h1>Neue Kampagne</h1>
-      <p>
-        Filter festlegen, Empfängerzahl prüfen, Inhalt schreiben. Der eigentliche Versand erfolgt erst im nächsten
-        Schritt nach einer ausdrücklichen Bestätigung. Bereits abgemeldete Personen (Marketing-Consent) werden nie
-        einbezogen.
-      </p>
-
-      {segmente && segmente.length > 0 && (
-        <div className="au-card">
-          <h2>Gespeicherte Filtergruppen</h2>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            {segmente.map((s: any) => (
-              <Link
-                key={s.id}
-                href={`/kampagnen/neu?segment_id=${s.id}`}
-                className={`au-btn au-btn-sm ${aktivesSegment?.id === s.id ? "au-btn-primary" : "au-btn-secondary"}`}
-              >
-                {s.name}
-              </Link>
-            ))}
-          </div>
+      <header className="au-dash-kopf">
+        <div>
+          <p className="au-dash-datum">
+            <Link href="/kampagnen" className="au-panel-link">← Kampagnen</Link>
+          </p>
+          <h1>Neue Kampagne</h1>
         </div>
-      )}
+        <ol className="au-schritte" aria-label="Ablauf">
+          <li className="aktiv">1 · Empfänger</li>
+          <li className="aktiv">2 · Inhalt</li>
+          <li>3 · Vorschau &amp; Versand</li>
+        </ol>
+      </header>
 
-      <div className="au-card">
-        <h2>Filter {aktivesSegment ? `(aus Filtergruppe "${aktivesSegment.name}")` : "(manuell)"}</h2>
-        <form method="get" action="/kampagnen/neu">
+      <div className="au-kampagne-raster">
+        <section className="au-panel">
+          <div className="au-panel-kopf">
+            <h2 style={{ margin: 0 }}>1 · Empfänger auswählen</h2>
+            {aktivesSegment && <span className="au-badge au-badge-neutral">Filtergruppe „{aktivesSegment.name}“</span>}
+          </div>
+          <div className="au-kampagne-panel-inhalt">
+            {segmente && segmente.length > 0 && (
+              <div style={{ marginBottom: "1rem" }}>
+                <span className="au-klein">Gespeicherte Filtergruppen</span>
+                <div className="au-chips">
+                  {segmente.map((s: any) => (
+                    <Link key={s.id} href={`/kampagnen/neu?segment_id=${s.id}`} className={`au-chip${aktivesSegment?.id === s.id ? " aktiv" : ""}`}>
+                      {s.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+            <form method="get" action="/kampagnen/neu">
           <div className="au-row-2">
             <div>
               <label className="au-label">Geschlecht</label>
@@ -183,37 +190,41 @@ export default async function NeueKampagnePage({
               </select>
             </div>
           </div>
-          <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Filter anwenden</button>
+          <div className="au-kampagne-filterfuss"><button type="submit" className="au-btn au-btn-secondary au-btn-sm">Filter anwenden</button><Link href="/kampagnen/neu" className="au-link">zurücksetzen</Link></div>
         </form>
-      </div>
+          </div>
+          <div className="au-kampagne-treffer">
+            <div>
+              <strong className="au-kampagne-treffer-zahl">{empfaenger.length}</strong> Empfänger:innen
+              <div className="au-klein">
+                Abgemeldete sind immer ausgeschlossen.
+                {ruhend > 0 && ` ${ruhend} davon vermutlich ruhend (nur zur Orientierung).`}
+              </div>
+            </div>
+          </div>
+          {empfaenger.length > 0 && (
+            <details className="au-kampagne-empfaenger">
+              <summary className="au-klein">Empfänger:innen anzeigen</summary>
+              <ul>
+                {empfaenger.slice(0, 50).map((e) => (
+                  <li key={e.id}>
+                    <span>{e.vorname} {e.nachname} <span className="au-klein">· {e.email}</span></span>
+                    {e.vermutlichRuhend && <span className="au-badge au-badge-neutral" title="Grobe Heuristik: letzte Mail über 180 Tage her oder nie">vermutlich ruhend</span>}
+                  </li>
+                ))}
+                {empfaenger.length > 50 && <li className="au-klein">… und {empfaenger.length - 50} weitere</li>}
+              </ul>
+            </details>
+          )}
+        </section>
 
-      <div className="au-card au-card-tint">
-        <strong>{empfaenger.length}</strong> Empfänger:innen treffen auf diesen Filter zu (abgemeldete Personen bereits ausgeschlossen).
-        {ruhend > 0 && <span className="au-klein"> {ruhend} davon vermutlich ruhend (seit über 180 Tagen oder nie angeschrieben) – nur zur Orientierung.</span>}
-        {empfaenger.length > 0 && (
-          <details style={{ marginTop: "0.6rem" }}>
-            <summary style={{ cursor: "pointer" }}>Empfänger:innen anzeigen</summary>
-            <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.2rem" }}>
-              {empfaenger.slice(0, 50).map((e) => (
-                <li key={e.id}>
-                  {e.vorname} {e.nachname} — {e.email}
-                  {e.vermutlichRuhend && <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.4rem" }} title="Grobe Heuristik: letzte Mail über 180 Tage her oder nie">vermutlich ruhend</span>}
-                </li>
-              ))}
-              {empfaenger.length > 50 && <li>... und {empfaenger.length - 50} weitere</li>}
-            </ul>
-          </details>
-        )}
-      </div>
-
-      {empfaenger.length === 0 ? (
-        <div className="au-card">
-          <p style={{ marginTop: 0 }}>Mit diesem Filter gibt es aktuell keine Empfänger:innen. Bitte Filter anpassen.</p>
-        </div>
-      ) : (
-        <div className="au-card" style={{ maxWidth: 640 }}>
-          <h2>Inhalt</h2>
-          <form action={erstelleKampagne}>
+        <section className="au-panel">
+          <div className="au-panel-kopf"><h2 style={{ margin: 0 }}>2 · Inhalt</h2></div>
+          <div className="au-kampagne-panel-inhalt">
+            {empfaenger.length === 0 ? (
+              <p className="au-leer" style={{ margin: 0 }}>Mit diesem Filter gibt es aktuell keine Empfänger:innen. Bitte links den Filter anpassen.</p>
+            ) : (
+              <form action={erstelleKampagne}>
             {anredeWert && <input type="hidden" name="anrede" value={anredeWert} />}
             {rolleWert && <input type="hidden" name="rolle" value={rolleWert} />}
             {seminarWert && <input type="hidden" name="seminartypen" value={seminarWert} />}
@@ -249,11 +260,14 @@ export default async function NeueKampagnePage({
             </p>
 
             <button type="submit" className="au-btn au-btn-primary">
-              Weiter zur Vorschau ({empfaenger.length} Empfänger:innen)
+              Weiter zur Vorschau ({empfaenger.length} Empfänger:innen) →
             </button>
+            <p className="au-klein" style={{ marginBottom: 0 }}>Verschickt wird erst im nächsten Schritt, nach ausdrücklicher Bestätigung.</p>
           </form>
-        </div>
-      )}
+            )}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

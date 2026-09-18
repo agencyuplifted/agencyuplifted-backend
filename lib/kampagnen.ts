@@ -158,6 +158,24 @@ export type KampagnenEmpfaenger = GefilterterTeilnehmer & {
 
 const TAG_MS = 86_400_000;
 
+const ANREDE_TEXT: Record<string, string> = { Frau: "Frauen", Herr: "Männer", Divers: "Divers", keine_angabe: "Ohne Anrede" };
+const ROLLE_TEXT: Record<string, string> = { teilnehmer: "Teilnehmer", mitarbeiter: "Mitarbeiter", gastreferent: "Gastreferenten", organisator: "Organisatoren" };
+const UNTERNEHMER_TEXT: Record<string, string> = { unternehmer: "Unternehmer:innen", mitarbeiter: "Mitarbeiter:innen", unbekannt: "Position unbekannt" };
+
+/** Kurzbeschreibung eines Filters fuer Listen, z. B. ["Frauen", "Preisfindung", "nicht Führung"] */
+export function beschreibeFilter(filter: FilterKriterien, tagLabel: Map<string, string> = new Map()): string[] {
+  const teile: string[] = [];
+  filter.anrede?.forEach((a) => teile.push(ANREDE_TEXT[a] || a));
+  filter.unternehmer_status?.forEach((u) => teile.push(UNTERNEHMER_TEXT[u] || u));
+  filter.rolle?.forEach((r) => teile.push(ROLLE_TEXT[r] || r));
+  filter.seminartypen?.forEach((k) => teile.push(k));
+  if (filter.kategorie2) teile.push(filter.kategorie2_modus === "nicht_besucht" ? `nicht ${filter.kategorie2}` : `+ ${filter.kategorie2}`);
+  filter.teilnahme_stand?.forEach((t) => teile.push(TEILNAHME_STAND_LABEL[t] || t));
+  if (filter.netzwerk_mitglied) teile.push(filter.netzwerk_mitglied === "ja" ? "Netzwerk-Mitglieder" : "keine Netzwerk-Mitglieder");
+  filter.tags?.forEach((id) => teile.push(`#${tagLabel.get(id) || "Tag"}`));
+  return teile;
+}
+
 // Frequency-Capping: letzte Marketing-Mail pro Adresse. Abfrage in Paketen,
 // weil .in() sonst bei hunderten Adressen die URL-Laenge sprengt; Vergleich
 // ohne Gross-/Kleinschreibung, da die Logs die Adresse so speichern, wie sie
