@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getNetzwerkGruppen } from "@/lib/netzwerk";
+import { getNetzwerkGruppen, NETZWERK_BASIS_URL, netzwerkEingerichtet } from "@/lib/netzwerk";
+import KopierFeld from "../wiedervorlage/einstellungen/KopierFeld";
 import {
   ladeInPilotkreisEin,
   setzeAufNetzwerkVormerkliste,
@@ -87,8 +88,18 @@ export default async function NetzwerkEinladenPage({ searchParams }: { searchPar
       <p style={{ marginTop: "-0.75rem" }}>
         Pilotkreis = bekommt per Klick eine persönliche Einladung mit Zugang. Vormerkliste = reine Notiz für die spätere offizielle Einladung, verschickt nichts.
         Personen mit Einwilligung „abgemeldet“ oder „keine Zustimmung“ erscheinen hier grundsätzlich nicht.
-        {" "}<Link href="/netzwerk" target="_blank">Netzwerk öffnen ↗</Link>
       </p>
+      {/* Link zum Kopieren statt Direktlink: in der installierten Backstage-App
+          (PWA) oeffnen Links auf dieselbe Domain im App-Fenster statt im Browser. */}
+      <div className="au-card" style={{ padding: "0.9rem 1.1rem" }}>
+        <label className="au-label">Netzwerk-Adresse für Mitglieder (im Browser öffnen)</label>
+        <KopierFeld wert={`${NETZWERK_BASIS_URL}/login`} />
+        {!netzwerkEingerichtet() && (
+          <p className="au-text-danger" style={{ margin: "0.5rem 0 0", fontSize: "0.85rem" }}>
+            Noch nicht eingerichtet: NEXT_PUBLIC_SUPABASE_ANON_KEY fehlt in Vercel. Einladen ist gesperrt, bis der Schlüssel gesetzt und neu deployt ist.
+          </p>
+        )}
+      </div>
 
       {(pruefliste || []).length > 0 && (
         <div className="au-card au-banner-warning">

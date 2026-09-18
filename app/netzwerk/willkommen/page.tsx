@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createNetzwerkClient, ermittleZuordnung } from "@/lib/netzwerk";
+import { createNetzwerkClient, ermittleZuordnung, netzwerkEingerichtet } from "@/lib/netzwerk";
 import { bestaetigeIdentitaet, lehneIdentitaetAb, abmelden } from "@/lib/netzwerk-actions";
 import NetzwerkFormular from "../NetzwerkFormular";
 
@@ -10,6 +10,7 @@ export const metadata = { title: "Willkommen" };
 // bestaetigt von der Person selbst. Unklare Faelle legen NICHTS an, sondern
 // landen in der Pruefliste fuer Markus.
 export default async function WillkommenPage() {
+  if (!netzwerkEingerichtet()) redirect("/netzwerk/login");
   const client = await createNetzwerkClient();
   const { data } = await client.auth.getUser();
   if (!data.user?.email) redirect("/netzwerk/login");

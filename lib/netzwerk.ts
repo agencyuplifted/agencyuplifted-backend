@@ -28,6 +28,10 @@ export function getNetzwerkAuthKonfig(): { url: string; key: string } {
   return { url, key };
 }
 
+export function netzwerkEingerichtet(): boolean {
+  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY));
+}
+
 export async function createNetzwerkClient() {
   const { url, key } = getNetzwerkAuthKonfig();
   const store = await cookies();
@@ -51,6 +55,9 @@ export type NetzwerkMitglied = { teilnehmerId: string; authUserId: string; email
 // Fuer alle Mitglieder-Seiten: eingeloggt UND aktives Mitglied, sonst weiter
 // zum Login bzw. zur Willkommens-/Zuordnungsseite.
 export async function requireMitglied(): Promise<NetzwerkMitglied & { client: Awaited<ReturnType<typeof createNetzwerkClient>> }> {
+  // Ohne Publishable Key geht keine Session -- zur Login-Seite, die dann
+  // "Bald verfuegbar" zeigt (siehe app/netzwerk/layout.tsx), statt 500er.
+  if (!netzwerkEingerichtet()) redirect("/netzwerk/login");
   const client = await createNetzwerkClient();
   const { data } = await client.auth.getUser();
   if (!data.user) redirect("/netzwerk/login");
