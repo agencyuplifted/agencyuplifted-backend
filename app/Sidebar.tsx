@@ -11,6 +11,29 @@ type NavGroup = { title?: string; links: NavLink[] };
 const GROUPS: NavGroup[] = [
   { links: [{ href: "/dashboard", label: "Dashboard" }] },
   {
+    title: "Seminare & Teilnehmer",
+    links: [
+      { href: "/termine", label: "Termine" },
+      { href: "/buchungen", label: "Buchungen" },
+      { href: "/teilnehmer", label: "Teilnehmer" },
+      { href: "/organisationen", label: "Organisationen" },
+      { href: "/warteliste", label: "Warteliste" },
+      { href: "/leads", label: "Leads" },
+    ],
+  },
+  {
+    title: "Seminar-Einstellungen",
+    links: [
+      { href: "/seminartypen", label: "Seminarkategorien & Farben" },
+      { href: "/preisstaffel-vorlagen", label: "Preisstaffel-Vorlagen" },
+      { href: "/trainer", label: "Trainer" },
+      { href: "/orte", label: "Orte" },
+      { href: "/referenzen", label: "Referenzen" },
+      { href: "/buchungen/alte-seminare", label: "Alte Seminare zuordnen" },
+      { href: "/buchungen/fastbill", label: "FastBill-Abgleich" },
+    ],
+  },
+  {
     title: "Ideen & Wiedervorlage",
     links: [
       { href: "/inbox", label: "Ideen-Inbox" },
@@ -19,34 +42,14 @@ const GROUPS: NavGroup[] = [
       { href: "/kontakte", label: "Kontakte" },
     ],
   },
-  { links: [{ href: "/insights", label: "Insights" }] },
   {
-    title: "Verwaltung",
+    title: "Marketing & Inhalte",
     links: [
-      { href: "/termine", label: "Termine" },
-      { href: "/teilnehmer", label: "Teilnehmer" },
-      { href: "/organisationen", label: "Organisationen" },
-      { href: "/buchungen", label: "Buchungen" },
-      { href: "/buchungen/alte-seminare", label: "Alte Seminare zuordnen" },
-      { href: "/buchungen/fastbill", label: "FastBill-Abgleich" },
-      { href: "/referenzen", label: "Referenzen" },
-      { href: "/seminartypen", label: "Seminarkategorien & Farben" },
-      { href: "/preisstaffel-vorlagen", label: "Preisstaffel-Vorlagen" },
-    ],
-  },
-  {
-    title: "Vertrieb",
-    links: [
-      { href: "/leads", label: "Leads" },
-      { href: "/warteliste", label: "Warteliste" },
-    ],
-  },
-  {
-    title: "Personal",
-    links: [
-      { href: "/trainer", label: "Trainer" },
-      { href: "/mitarbeiter", label: "Mitarbeiter" },
-      { href: "/orte", label: "Orte" },
+      { href: "/insights", label: "Insights" },
+      { href: "/content-creation", label: "Content Creation" },
+      { href: "/buch-versand", label: "Buch-Versand" },
+      { href: "/buch-empfaenger", label: "Buch-Empfänger" },
+      { href: "/redirects", label: "Weiterleitungen" },
     ],
   },
   {
@@ -55,22 +58,14 @@ const GROUPS: NavGroup[] = [
       { href: "/community", label: "Community" },
       { href: "/funnel", label: "Funnel-Mails" },
       { href: "/kampagnen", label: "Kampagnen" },
-      { href: "/email-test", label: "E-Mail-Test" },
-    ],
-  },
-  {
-    title: "Marketing",
-    links: [
-      { href: "/content-creation", label: "Content Creation" },
-      { href: "/buch-versand", label: "Buch-Versand" },
-      { href: "/buch-empfaenger", label: "Buch-Empfänger" },
       { href: "/geburtstage", label: "Geburtstage" },
-      { href: "/redirects", label: "Weiterleitungen" },
+      { href: "/email-test", label: "E-Mail-Test" },
     ],
   },
   {
     title: "System",
     links: [
+      { href: "/mitarbeiter", label: "Mitarbeiter" },
       { href: "/einstellungen", label: "Einstellungen" },
     ],
   },
