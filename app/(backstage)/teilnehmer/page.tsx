@@ -11,10 +11,13 @@ export default async function TeilnehmerPage() {
     .from("teilnehmer")
     .select("*, buchungspositionen(seminartermine(seminartypen(name))), legacy_buchungen(seminartypen(name)), teilnehmer_organisationen(ist_hauptorganisation, organisationen(name))")
     .order("erstellt_am", { ascending: false });
-  const { data: segmente } = await supabase
-    .from("teilnehmer_segmente")
-    .select("*")
-    .order("erstellt_am", { ascending: false });
+  const [{ data: segmente }, { data: tags }, { data: zuordnungen }] = await Promise.all([
+    supabase.from("teilnehmer_segmente").select("*").order("erstellt_am", { ascending: false }),
+    supabase.from("tags").select("id, label, aktiv").order("label"),
+    supabase.from("teilnehmer_tags").select("teilnehmer_id, tag_id").limit(10000),
+  ]);
+  const tagsProTeilnehmer = new Map<string, string[]>();
+  (zuordnungen || []).forEach((z: any) => tagsProTeilnehmer.set(z.teilnehmer_id, [...(tagsProTeilnehmer.get(z.teilnehmer_id) || []), z.tag_id]));
 
   const rows = (teilnehmer || []).map((t: any) => {
     const seminare = Array.from(
@@ -41,6 +44,7 @@ export default async function TeilnehmerPage() {
         null,
       consent: t.marketing_consent_status || "unbekannt",
       deaktiviert: !!t.deaktiviert_am,
+      tags: tagsProTeilnehmer.get(t.id) || [],
     };
   });
 
@@ -139,7 +143,7 @@ export default async function TeilnehmerPage() {
         </form>
       </AufklappBereich>
 
-      <TeilnehmerTable teilnehmer={rows} segmente={segmente || []} />
+      <TeilnehmerTable teilnehmer={rows} segmente={segmente || []} tags={(tags || []) as any[]} />
     </main>
   );
 }

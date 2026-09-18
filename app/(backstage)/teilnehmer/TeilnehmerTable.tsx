@@ -20,12 +20,13 @@ type Row = {
   agentur: string | null;
   consent: string;
   deaktiviert: boolean;
+  tags: string[];
 };
 
 type Segment = {
   id: string;
   name: string;
-  filter_kriterien: { anrede?: string[]; rolle?: string[]; seminartypen?: string[]; unternehmer_status?: string[] };
+  filter_kriterien: { anrede?: string[]; rolle?: string[]; seminartypen?: string[]; unternehmer_status?: string[]; tags?: string[] };
 };
 
 const ANREDE_LABEL: Record<string, string> = { Herr: "Männer", Frau: "Frauen", Divers: "Divers", keine_angabe: "Ohne Angabe" };
@@ -38,7 +39,17 @@ function initialen(vorname: string, nachname: string) {
 
 type SortKey = "name" | "email" | "telefon" | "seminare" | "erstellt_am";
 
-export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: Row[]; segmente: Segment[] }) {
+export default function TeilnehmerTable({
+  teilnehmer,
+  segmente,
+  tags,
+}: {
+  teilnehmer: Row[];
+  segmente: Segment[];
+  tags: { id: string; label: string; aktiv: boolean }[];
+}) {
+  const [tagFilter, setTagFilter] = useState("");
+  const tagLabel = new Map(tags.map((t) => [t.id, t.label]));
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [seminarFilter, setSeminarFilter] = useState("");
@@ -70,6 +81,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
     setRolleFilter(segment.filter_kriterien.rolle?.[0] || "");
     setSeminarFilter(segment.filter_kriterien.seminartypen?.[0] || "");
     setUnternehmerFilter(segment.filter_kriterien.unternehmer_status?.[0] || "");
+    setTagFilter(segment.filter_kriterien.tags?.[0] || "");
   }
 
   function kampagneStarten() {
@@ -78,6 +90,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
     if (rolleFilter) params.set("rolle", rolleFilter);
     if (seminarFilter) params.set("seminartypen", seminarFilter);
     if (unternehmerFilter) params.set("unternehmer_status", unternehmerFilter);
+    if (tagFilter) params.set("tags", tagFilter);
     router.push(`/kampagnen/neu?${params.toString()}`);
   }
 
@@ -95,7 +108,8 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
       const matchAnrede = !anredeFilter || t.anrede === anredeFilter;
       const matchRolle = !rolleFilter || t.rolle === rolleFilter;
       const matchUnternehmer = !unternehmerFilter || t.unternehmer_status === unternehmerFilter;
-      return matchSearch && matchSeminar && matchAnrede && matchRolle && matchUnternehmer;
+      const matchTag = !tagFilter || t.tags.includes(tagFilter);
+      return matchSearch && matchSeminar && matchAnrede && matchRolle && matchUnternehmer && matchTag;
     });
     liste.sort((a, b) => {
       let av = "";
@@ -133,12 +147,13 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
     return sortDir === "asc" ? " ▲" : " ▼";
   }
 
-  const filterAktiv = !!(anredeFilter || rolleFilter || seminarFilter || unternehmerFilter);
+  const filterAktiv = !!(anredeFilter || rolleFilter || seminarFilter || unternehmerFilter || tagFilter);
   function filterZuruecksetzen() {
     setAnredeFilter("");
     setRolleFilter("");
     setSeminarFilter("");
     setUnternehmerFilter("");
+    setTagFilter("");
     setSearch("");
   }
 
@@ -182,6 +197,16 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
             <option value="Divers">Divers</option>
             <option value="keine_angabe">Ohne Angabe</option>
           </select>
+          {tags.length > 0 && (
+            <select className="au-select" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} aria-label="Tag">
+              <option value="">Alle Tags</option>
+              {tags
+                .filter((t) => t.aktiv || t.id === tagFilter)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>#{t.label}</option>
+                ))}
+            </select>
+          )}
           {segmente.length > 0 && (
             <select className="au-select" value="" onChange={(e) => e.target.value && wendeSegmentAn(e.target.value)} aria-label="Gespeicherte Filtergruppe">
               <option value="">Filtergruppe laden …</option>
@@ -216,6 +241,7 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
                 {rolleFilter && <input type="hidden" name="rolle" value={rolleFilter} />}
                 {seminarFilter && <input type="hidden" name="seminartypen" value={seminarFilter} />}
                 {unternehmerFilter && <input type="hidden" name="unternehmer_status" value={unternehmerFilter} />}
+                {tagFilter && <input type="hidden" name="tags" value={tagFilter} />}
                 <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Als Filtergruppe speichern</button>
               </form>
             </span>
@@ -249,6 +275,8 @@ export default function TeilnehmerTable({ teilnehmer, segmente }: { teilnehmer: 
                   {t.unternehmer_status !== "unbekannt" && <span className="au-badge au-badge-neutral">{UNTERNEHMER_LABEL[t.unternehmer_status]}</span>}
                   {ROLLE_LABEL[t.rolle] && <span className="au-badge au-badge-gold">{ROLLE_LABEL[t.rolle]}</span>}
                   {t.consent === "abgemeldet" && <span className="au-badge au-badge-danger" title="Marketing-Mails abgemeldet">abgemeldet</span>}
+                  {t.tags.slice(0, 2).map((id) => tagLabel.get(id) && <span key={id} className="au-badge au-badge-neutral au-badge-tag">#{tagLabel.get(id)}</span>)}
+                  {t.tags.length > 2 && <span className="au-klein">+{t.tags.length - 2}</span>}
                 </span>
                 <span className="au-plist-seminare">
                   {t.seminare.slice(0, 2).map((s) => <span key={s} className="au-etikett">{s}</span>)}

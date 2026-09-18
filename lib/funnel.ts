@@ -96,7 +96,7 @@ type Empfaenger = { email: string; werte: Record<string, string>; abmelde: { typ
 
 async function sammleFaelligeEmpfaenger(
   supabase: any,
-  funnel: { id: string; trigger_typ: TriggerTyp; versatz_tage: number; aktiviert_am?: string | null }
+  funnel: { id: string; trigger_typ: TriggerTyp; versatz_tage: number; aktiviert_am?: string | null; nur_seminartyp_id?: string | null }
 ): Promise<{ bezugTyp: string; bezugId: string; empfaenger: Empfaenger[] }[]> {
   const heute = heuteISO();
   // Nur Stichtage ab der Aktivierung (siehe funnel_mails.aktiviert_am). Ohne
@@ -140,10 +140,12 @@ async function sammleFaelligeEmpfaenger(
   if (funnel.trigger_typ === "vor_seminarstart" || funnel.trigger_typ === "nach_seminarende") {
     const { data: termine } = await supabase
       .from("seminartermine")
-      .select("id, titel, datum_start, datum_ende, zeit_start, status, seminartypen(name), veranstaltungsorte(name, ort, adresse)")
+      .select("id, titel, datum_start, datum_ende, zeit_start, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, ort, adresse)")
       .is("deaktiviert_am", null)
       .neq("status", "abgesagt");
     for (const t of termine || []) {
+      // Anschluss-Mails: nur nach Seminaren einer bestimmten Kategorie
+      if (funnel.nur_seminartyp_id && t.seminartyp_id !== funnel.nur_seminartyp_id) continue;
       const basisDatum =
         funnel.trigger_typ === "vor_seminarstart" ? String(t.datum_start).slice(0, 10) : String(t.datum_ende || t.datum_start).slice(0, 10);
       const richtung = funnel.trigger_typ === "vor_seminarstart" ? -funnel.versatz_tage : funnel.versatz_tage;
@@ -223,6 +225,8 @@ export type FaelligeVorschauEintrag = {
   betreff: string;
   inhaltHtml: string;
   headers?: Record<string, string>;
+  /** Nur bei Teilnehmern: nach erfolgreichem Versand zu setzender Tag */
+  tagNachVersand?: { teilnehmerId: string; tagId: string } | null;
 };
 
 async function ermittleFaelligeEintraege(
@@ -239,11 +243,69 @@ async function ermittleFaelligeEintraege(
   const { data: abmeldungen } = await supabase.from("mail_abmeldungen").select("email");
   const abgemeldet = new Set((abmeldungen || []).map((a: any) => a.email));
 
+  // Tag-Bedingungen: nur laden, wenn eine aktive Mail sie nutzt
+  const tagsProTeilnehmer = new Map<string, Set<string>>();
+  const genutzteTags = Array.from(
+    new Set(funnels.flatMap((f: any) => [f.tag_bedingung_mit, f.tag_bedingung_ohne]).filter(Boolean))
+  ) as string[];
+  if (genutzteTags.length) {
+    for (let von = 0; ; von += 1000) {
+      const { data } = await supabase.from("teilnehmer_tags").select("teilnehmer_id, tag_id").in("tag_id", genutzteTags).range(von, von + 999);
+      for (const z of data || []) {
+        if (!tagsProTeilnehmer.has(z.teilnehmer_id)) tagsProTeilnehmer.set(z.teilnehmer_id, new Set());
+        tagsProTeilnehmer.get(z.teilnehmer_id)!.add(z.tag_id);
+      }
+      if (!data || data.length < 1000) break;
+    }
+  }
+  // Anschluss-Mails: wer die Zielkategorie schon besucht ODER kuenftig gebucht hat, bekommt das Angebot nicht
+  const ausschlussKategorien = Array.from(new Set(funnels.map((f: any) => f.ausschluss_seminartyp_id).filter(Boolean))) as string[];
+  const kategorieTeilnehmer = new Map<string, Set<string>>();
+  if (ausschlussKategorien.length) {
+    for (let von = 0; ; von += 1000) {
+      const { data } = await supabase
+        .from("teilnehmer_seminar_besuche")
+        .select("teilnehmer_id, seminartyp_id")
+        .in("seminartyp_id", ausschlussKategorien)
+        .range(von, von + 999);
+      for (const z of data || []) {
+        if (!kategorieTeilnehmer.has(z.seminartyp_id)) kategorieTeilnehmer.set(z.seminartyp_id, new Set());
+        kategorieTeilnehmer.get(z.seminartyp_id)!.add(z.teilnehmer_id);
+      }
+      if (!data || data.length < 1000) break;
+    }
+  }
+  // Frequency-Capping nur fuer Mails, die es ausdruecklich einschalten (Standard 0 = aus).
+  // Innerhalb der Sperrfrist wird nichts verworfen: der Stichtag bleibt im Fenster,
+  // der naechste taegliche Lauf prueft erneut und schickt nach Ablauf der Frist.
+  const letzteMail = new Map<string, number>();
+  if (funnels.some((f: any) => f.mindestabstand_tage > 0)) {
+    for (let von = 0; ; von += 1000) {
+      const { data } = await supabase.from("letzte_marketing_mail_pro_email").select("email, letzte_marketing_mail_am").range(von, von + 999);
+      for (const z of data || []) {
+        const key = String(z.email).trim().toLowerCase();
+        letzteMail.set(key, Math.max(letzteMail.get(key) || 0, Date.parse(z.letzte_marketing_mail_am)));
+      }
+      if (!data || data.length < 1000) break;
+    }
+  }
+  const { data: aktiveTags } = await supabase.from("tags").select("id").eq("aktiv", true);
+  const aktiveTagIds = new Set((aktiveTags || []).map((t: any) => t.id));
+
   for (const funnel of funnels || []) {
     const gruppen = await sammleFaelligeEmpfaenger(supabase, funnel as any);
     for (const gruppe of gruppen) {
       for (const empf of gruppe.empfaenger) {
         if (abgemeldet.has(empf.email.trim().toLowerCase())) continue;
+        // Tags gibt es nur bei Teilnehmern: "nur mit Tag X" schliesst Leads/Warteliste aus
+        const personTags = empf.abmelde.typ === "t" ? tagsProTeilnehmer.get(empf.abmelde.id) : undefined;
+        if (funnel.tag_bedingung_mit && !personTags?.has(funnel.tag_bedingung_mit)) continue;
+        if (funnel.tag_bedingung_ohne && personTags?.has(funnel.tag_bedingung_ohne)) continue;
+        if (funnel.ausschluss_seminartyp_id && empf.abmelde.typ === "t" && kategorieTeilnehmer.get(funnel.ausschluss_seminartyp_id)?.has(empf.abmelde.id)) continue;
+        if (funnel.mindestabstand_tage > 0) {
+          const zuletzt = letzteMail.get(empf.email.trim().toLowerCase());
+          if (zuletzt && Date.now() - zuletzt < funnel.mindestabstand_tage * 86_400_000) continue;
+        }
         const { data: bereitsGesendet } = await supabase
           .from("funnel_versand_log")
           .select("id")
@@ -270,6 +332,10 @@ async function ermittleFaelligeEintraege(
             abmeldeUrl(empf.abmelde.typ, empf.abmelde.id)
           ),
           headers: schalterAus(funnel).abmelden ? abmeldeHeader(empf.abmelde.typ, empf.abmelde.id) : undefined,
+          tagNachVersand:
+            funnel.tag_nach_versand && empf.abmelde.typ === "t" && aktiveTagIds.has(funnel.tag_nach_versand)
+              ? { teilnehmerId: empf.abmelde.id, tagId: funnel.tag_nach_versand }
+              : null,
         });
       }
     }
@@ -337,6 +403,18 @@ export async function pruefeUndSendeFaelligeFunnelMails(): Promise<{
       fehlermeldung,
       resend_email_id: resendEmailId,
     });
+
+    // Automatischer Tag nach erfolgreichem Versand (z. B. "Funnel SPS abgeschlossen").
+    // Bereits vorhandener Tag bleibt unveraendert (inkl. urspruenglichem Datum/Quelle).
+    if (status === "gesendet" && eintrag.tagNachVersand) {
+      const { error: tagFehler } = await supabase
+        .from("teilnehmer_tags")
+        .upsert(
+          { teilnehmer_id: eintrag.tagNachVersand.teilnehmerId, tag_id: eintrag.tagNachVersand.tagId, quelle: "automatisch" },
+          { onConflict: "teilnehmer_id,tag_id", ignoreDuplicates: true }
+        );
+      if (tagFehler) console.error("Funnel-Tag setzen:", tagFehler.message);
+    }
 
     if (status === "gesendet") gesendet++;
     else fehler++;

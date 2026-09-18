@@ -3655,3 +3655,38 @@ details .au-tag-form {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Funnel-Editor: Tag-Bedingungen / Tag nach Versand */
+.au-fe-tags {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.au-fe-tags-raster {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.au-fe-tags-raster label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.au-fe-tags-raster .au-select {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 1000px) {
+  .au-fe-tags-raster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

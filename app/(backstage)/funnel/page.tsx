@@ -48,7 +48,7 @@ export default async function FunnelPage({
   const heute = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
   const vorVierMonaten = new Date(Date.now() - 120 * TAG_MS).toISOString().slice(0, 10);
 
-  const [{ data: alleFunnelMails }, { data: log }, { data: termine }, bausteine] = await Promise.all([
+  const [{ data: alleFunnelMails }, { data: log }, { data: termine }, bausteine, { data: tagListe }, { data: seminartypListe }] = await Promise.all([
     supabase.from("funnel_mails").select("*").order("erstellt_am", { ascending: false }),
     supabase.from("funnel_versand_log").select("*, funnel_mails(name)").order("gesendet_am", { ascending: false }).limit(30),
     supabase
@@ -59,7 +59,12 @@ export default async function FunnelPage({
       .order("datum_start")
       .limit(40),
     ladeBausteine(supabase),
+    supabase.from("tags").select("id, label, aktiv").order("label"),
+    supabase.from("seminartypen").select("id, name").order("name"),
   ]);
+  const seminartypen = (seminartypListe || []) as { id: string; name: string }[];
+  const typName = new Map(seminartypen.map((t) => [t.id, t.name]));
+  const tags = (tagListe || []) as { id: string; label: string; aktiv: boolean }[];
   const funnelMails = (alleFunnelMails || [])
     .filter((f: any) => !f.geloescht_am)
     .sort((a: any, b: any) => zeitstrahlRang(a) - zeitstrahlRang(b));
@@ -98,6 +103,7 @@ export default async function FunnelPage({
     versatz_tage: f.versatz_tage,
     aktiv: f.aktiv,
     system: !!SYSTEM_FUNNEL_IDS[f.id],
+    hinweis: f.nur_seminartyp_id ? `nur ${typName.get(f.nur_seminartyp_id) || "Kategorie"}` : null,
   }));
   const triggerOptionen = TRIGGER_TYPEN.map((t) => ({ key: t, label: TRIGGER_LABEL[t] }));
 
@@ -157,7 +163,7 @@ export default async function FunnelPage({
               <div className="au-panel-kopf"><h2 style={{ margin: 0 }}>Neue Funnel-Mail</h2></div>
               <div className="au-funnel-rechts-inhalt">
                 <p className="au-klein" style={{ marginTop: 0 }}>Wird inaktiv angelegt. Nach dem Aktivieren geht sie nur für Stichtage ab dem Aktivierungstag raus – nie rückwirkend.</p>
-                <FunnelEditor key="neu" mail={null} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={createFunnelMail} bausteine={bausteine} />
+                <FunnelEditor key="neu" mail={null} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={createFunnelMail} bausteine={bausteine} tags={tags} seminartypen={seminartypen} />
               </div>
             </>
           )}
@@ -228,7 +234,7 @@ export default async function FunnelPage({
                 ) : ausgewaehlt.aktiv && ausgewaehlt.aktiviert_am ? (
                   <p className="au-klein" style={{ marginTop: 0 }}>Aktiv seit {formatDatum(ausgewaehlt.aktiviert_am)} – verschickt nur für Stichtage ab diesem Tag.</p>
                 ) : null}
-                <FunnelEditor key={ausgewaehlt.id + (ausgewaehlt.aktualisiert_am || "")} mail={ausgewaehlt} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={updateFunnelMail} bausteine={bausteine} istSystem={istSystem} />
+                <FunnelEditor key={ausgewaehlt.id + (ausgewaehlt.aktualisiert_am || "")} mail={ausgewaehlt} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={updateFunnelMail} bausteine={bausteine} tags={tags} seminartypen={seminartypen} istSystem={istSystem} />
               </div>
             </>
           )}

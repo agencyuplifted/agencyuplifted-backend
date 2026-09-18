@@ -2316,7 +2316,14 @@ export async function sendeTestMail(formData: FormData) {
 }
 
 function bausteinSchalterAusFormular(formData: FormData) {
+  const tag = (feld: string) => String(formData.get(feld) || "") || null;
   return {
+    tag_nach_versand: tag("tag_nach_versand"),
+    tag_bedingung_mit: tag("tag_bedingung_mit"),
+    tag_bedingung_ohne: tag("tag_bedingung_ohne"),
+    nur_seminartyp_id: tag("nur_seminartyp_id"),
+    ausschluss_seminartyp_id: tag("ausschluss_seminartyp_id"),
+    mindestabstand_tage: Math.min(90, Math.max(0, Math.floor(Number(formData.get("mindestabstand_tage") || 0)) || 0)),
     baustein_signatur: formData.get("baustein_signatur") === "on",
     baustein_rechtliches: formData.get("baustein_rechtliches") === "on",
     baustein_abmelden: formData.get("baustein_abmelden") === "on",

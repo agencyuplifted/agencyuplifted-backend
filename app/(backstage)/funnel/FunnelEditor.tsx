@@ -17,6 +17,8 @@ export default function FunnelEditor({
   platzhalter,
   speichernAction,
   bausteine,
+  tags,
+  seminartypen,
   istSystem = false,
 }: {
   mail: {
@@ -29,8 +31,16 @@ export default function FunnelEditor({
     baustein_signatur?: boolean;
     baustein_rechtliches?: boolean;
     baustein_abmelden?: boolean;
+    tag_nach_versand?: string | null;
+    tag_bedingung_mit?: string | null;
+    tag_bedingung_ohne?: string | null;
+    nur_seminartyp_id?: string | null;
+    ausschluss_seminartyp_id?: string | null;
+    mindestabstand_tage?: number;
   } | null;
+  seminartypen: { id: string; name: string }[];
   bausteine: MailBausteine;
+  tags: { id: string; label: string; aktiv: boolean }[];
   istSystem?: boolean;
   trigger: { key: string; label: string }[];
   platzhalter: Platzhalter[];
@@ -51,6 +61,12 @@ export default function FunnelEditor({
   // Transaktionale System-Mails (Reservierung/Zahlung) bekommen nie einen Abmeldelink
   const [mitAbmelden, setMitAbmelden] = useState(istSystem ? false : start.abmelden);
   const [vorschau, setVorschau] = useState(false);
+  const [tagNach, setTagNach] = useState(mail?.tag_nach_versand || "");
+  const [tagMit, setTagMit] = useState(mail?.tag_bedingung_mit || "");
+  const [tagOhne, setTagOhne] = useState(mail?.tag_bedingung_ohne || "");
+  const [nurTyp, setNurTyp] = useState(mail?.nur_seminartyp_id || "");
+  const [ohneTyp, setOhneTyp] = useState(mail?.ausschluss_seminartyp_id || "");
+  const [abstand, setAbstand] = useState(String(mail?.mindestabstand_tage ?? 0));
 
   const geaendert =
     name !== (mail?.name || "") ||
@@ -60,7 +76,14 @@ export default function FunnelEditor({
     inhalt !== (mail?.inhalt || "") ||
     mitSignatur !== start.signatur ||
     mitRechtlichem !== start.rechtliches ||
-    (!istSystem && mitAbmelden !== start.abmelden);
+    (!istSystem && mitAbmelden !== start.abmelden) ||
+    tagNach !== (mail?.tag_nach_versand || "") ||
+    tagMit !== (mail?.tag_bedingung_mit || "") ||
+    tagOhne !== (mail?.tag_bedingung_ohne || "") ||
+    nurTyp !== (mail?.nur_seminartyp_id || "") ||
+    ohneTyp !== (mail?.ausschluss_seminartyp_id || "") ||
+    abstand !== String(mail?.mindestabstand_tage ?? 0);
+  const seminarBezogen = triggerTyp === "vor_seminarstart" || triggerTyp === "nach_seminarende";
 
   // Ungespeicherte Aenderungen nicht still verwerfen, wenn links eine andere
   // Mail angeklickt oder die Seite verlassen wird.
@@ -193,6 +216,72 @@ export default function FunnelEditor({
         <p className="au-fe-warnung">Ohne Abmeldelink nur für reine Service-Mails zum gebuchten Seminar (z. B. Anreise-Infos) – nicht für Werbung oder Follow-ups.</p>
       )}
 
+      {!istSystem && (
+        <div className="au-fe-tags">
+          <span className="au-label" style={{ margin: 0 }}>Tags</span>
+          {tags.length === 0 ? (
+            <span className="au-klein">Noch keine Tags angelegt – <Link href="/tags">Tags anlegen</Link></span>
+          ) : (
+            <div className="au-fe-tags-raster">
+              <label>
+                <span className="au-klein">Nur an Personen mit Tag</span>
+                <select className="au-select" name="tag_bedingung_mit" value={tagMit} onChange={(e) => setTagMit(e.target.value)}>
+                  {tagOptionen(tags, tagMit)}
+                </select>
+              </label>
+              <label>
+                <span className="au-klein">Nicht an Personen mit Tag</span>
+                <select className="au-select" name="tag_bedingung_ohne" value={tagOhne} onChange={(e) => setTagOhne(e.target.value)}>
+                  {tagOptionen(tags, tagOhne)}
+                </select>
+              </label>
+              <label>
+                <span className="au-klein">Nach dem Versand Tag setzen</span>
+                <select className="au-select" name="tag_nach_versand" value={tagNach} onChange={(e) => setTagNach(e.target.value)}>
+                  {tagOptionen(tags, tagNach)}
+                </select>
+              </label>
+            </div>
+          )}
+          {tagMit && ["lead_erstellt", "warteliste_eingetragen"].includes(triggerTyp) && (
+            <p className="au-fe-warnung" style={{ margin: 0 }}>Leads und Wartelisten-Einträge haben keine Tags – mit „Nur an Personen mit Tag“ geht diese Mail an niemanden.</p>
+          )}
+        </div>
+      )}
+
+      {!istSystem && (
+        <div className="au-fe-tags">
+          <span className="au-label" style={{ margin: 0 }}>Bedingungen (z. B. Anschluss-Angebot „nach Preisfindung → Führung“)</span>
+          <div className="au-fe-tags-raster">
+            <label>
+              <span className="au-klein">Nur nach Seminaren der Kategorie</span>
+              <select className="au-select" name="nur_seminartyp_id" value={seminarBezogen ? nurTyp : ""} disabled={!seminarBezogen} onChange={(e) => setNurTyp(e.target.value)}>
+                <option value="">{seminarBezogen ? "– alle –" : "nur bei vor/nach Seminar"}</option>
+                {seminartypen.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="au-klein">Nicht, wenn schon besucht oder gebucht</span>
+              <select className="au-select" name="ausschluss_seminartyp_id" value={ohneTyp} onChange={(e) => setOhneTyp(e.target.value)}>
+                <option value="">– keine Einschränkung –</option>
+                {seminartypen.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="au-klein">Mindestabstand zu anderen Mails (Tage)</span>
+              <input className="au-input" name="mindestabstand_tage" type="number" min={0} max={90} value={abstand} onChange={(e) => setAbstand(e.target.value)} style={{ margin: 0 }} />
+            </label>
+          </div>
+          <span className="au-klein">
+            Mindestabstand 0 = aus (Standard für Service-Mails). Bei Werbe-/Anschluss-Mails z. B. 4: Wer gerade eine Mail bekommen hat, bekommt diese ein paar Tage später – nicht verworfen, nur verschoben.
+          </span>
+        </div>
+      )}
+
       {problematisch.length > 0 && (
         <p className="au-fe-warnung">
           {problematisch.join(", ")}: gibt es bei diesem Auslöser nicht – bleibt im Versand leer.
@@ -220,6 +309,17 @@ export default function FunnelEditor({
       </div>
     </form>
   );
+}
+
+function tagOptionen(tags: { id: string; label: string; aktiv: boolean }[], gewaehlt: string) {
+  return [
+    <option key="" value="">– keiner –</option>,
+    ...tags
+      .filter((t) => t.aktiv || t.id === gewaehlt)
+      .map((t) => (
+        <option key={t.id} value={t.id}>{t.label}{t.aktiv ? "" : " (deaktiviert)"}</option>
+      )),
+  ];
 }
 
 function ersetze(text: string) {

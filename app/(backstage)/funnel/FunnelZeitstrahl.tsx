@@ -7,6 +7,8 @@ export type ZeitstrahlMail = {
   versatz_tage: number;
   aktiv: boolean;
   system: boolean;
+  /** z. B. "nur Preisfindung" bei Anschluss-Mails */
+  hinweis?: string | null;
 };
 
 // Linke Spalte der Funnel-Seite: seminarbezogene Mails auf einer echten
@@ -139,6 +141,7 @@ function MailLabel({ mail, aktiv, href, zeit }: { mail: ZeitstrahlMail; aktiv: b
       <span className="au-zs-mail-name">{mail.name}</span>
       <span className="au-zs-mail-zeit">
         {zeit}
+        {mail.hinweis ? ` · ${mail.hinweis}` : ""}
         {mail.system ? " · System" : mail.aktiv ? "" : " · inaktiv"}
       </span>
     </Link>
