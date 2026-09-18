@@ -156,6 +156,13 @@ export default async function NeueKampagnePage({
             <label className="au-label">Inhalt ({"{{vorname}}"} / {"{{nachname}}"} verfügbar, Zeilenumbrüche werden übernommen)</label>
             <textarea className="au-textarea" name="inhalt" required placeholder={"Hallo {{vorname}},\n\n..."} />
 
+            <label className="au-label" htmlFor="mindestabstand_tage">Mindestabstand (Tage)</label>
+            <input className="au-input" id="mindestabstand_tage" name="mindestabstand_tage" type="number" min={0} max={90} defaultValue={4} style={{ maxWidth: 120 }} />
+            <p className="au-klein" style={{ marginTop: "-0.5rem" }}>
+              Wer in den letzten X Tagen schon eine Funnel- oder Kampagnen-Mail bekommen hat, wird in der Vorschau markiert und standardmäßig
+              ausgelassen. 0 = keine Sperrfrist (z. B. bei einer dringenden Programmänderung).
+            </p>
+
             <button type="submit" className="au-btn au-btn-primary">
               Weiter zur Vorschau ({empfaenger.length} Empfänger:innen)
             </button>

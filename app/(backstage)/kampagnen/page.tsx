@@ -8,9 +8,9 @@ import { loescheKampagnenEntwurf } from "@/lib/actions";
 export default async function KampagnenPage({
   searchParams,
 }: {
-  searchParams: Promise<{ versendet?: string; gesendet?: string; fehler?: string }>;
+  searchParams: Promise<{ versendet?: string; gesendet?: string; fehler?: string; uebersprungen?: string }>;
 }) {
-  const { versendet, gesendet, fehler } = await searchParams;
+  const { versendet, gesendet, fehler, uebersprungen } = await searchParams;
   const supabase = getSupabaseAdmin();
 
   const { data: kampagnen } = await supabase.from("kampagnen").select("*").order("erstellt_am", { ascending: false });
@@ -18,11 +18,12 @@ export default async function KampagnenPage({
     .from("kampagnen_versand_log")
     .select("kampagne_id, status, geoeffnet_am, geklickt_am");
 
-  const statsProKampagne = new Map<string, { gesendet: number; fehler: number; geoeffnet: number; geklickt: number }>();
+  const statsProKampagne = new Map<string, { gesendet: number; fehler: number; geoeffnet: number; geklickt: number; uebersprungen: number }>();
   (logZeilen || []).forEach((z: any) => {
-    const s = statsProKampagne.get(z.kampagne_id) || { gesendet: 0, fehler: 0, geoeffnet: 0, geklickt: 0 };
+    const s = statsProKampagne.get(z.kampagne_id) || { gesendet: 0, fehler: 0, geoeffnet: 0, geklickt: 0, uebersprungen: 0 };
     if (z.status === "gesendet") s.gesendet++;
     if (z.status === "fehler") s.fehler++;
+    if (z.status === "uebersprungen_frequency_cap") s.uebersprungen++;
     if (z.geoeffnet_am) s.geoeffnet++;
     if (z.geklickt_am) s.geklickt++;
     statsProKampagne.set(z.kampagne_id, s);
@@ -43,7 +44,7 @@ export default async function KampagnenPage({
 
       {versendet && (
         <div className="au-banner au-banner-success">
-          Kampagne versendet: {gesendet} E-Mail(s) verschickt, {fehler} Fehler.
+          Kampagne versendet: {gesendet} E-Mail(s) verschickt, {fehler} Fehler{Number(uebersprungen) > 0 ? `, ${uebersprungen} wegen Sperrfrist ausgelassen` : ""}.
         </div>
       )}
 
@@ -85,11 +86,12 @@ export default async function KampagnenPage({
                 <th>Geöffnet</th>
                 <th>Geklickt</th>
                 <th>Fehler</th>
+                <th>Sperrfrist</th>
               </tr>
             </thead>
             <tbody>
               {versendetListe.map((k: any) => {
-                const s = statsProKampagne.get(k.id) || { gesendet: 0, fehler: 0, geoeffnet: 0, geklickt: 0 };
+                const s = statsProKampagne.get(k.id) || { gesendet: 0, fehler: 0, geoeffnet: 0, geklickt: 0, uebersprungen: 0 };
                 return (
                   <tr key={k.id}>
                     <td>{k.name}</td>
@@ -99,6 +101,7 @@ export default async function KampagnenPage({
                     <td>{s.geoeffnet}</td>
                     <td>{s.geklickt}</td>
                     <td>{s.fehler || "—"}</td>
+                    <td title="Wegen Mindestabstand ausgelassen">{s.uebersprungen || "—"}</td>
                   </tr>
                 );
               })}

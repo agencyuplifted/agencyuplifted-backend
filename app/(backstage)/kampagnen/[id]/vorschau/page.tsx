@@ -1,13 +1,15 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { kampagneVersandJetzt, loescheKampagnenEntwurf } from "@/lib/actions";
+import { kampagneVersandJetzt, loescheKampagnenEntwurf, setzeKampagnenMindestabstand } from "@/lib/actions";
 import { ermittleKampagnenEmpfaenger } from "@/lib/kampagnen";
 import BestaetigenButton from "./BestaetigenButton";
 
 export default async function KampagnenVorschauPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { kampagne, empfaenger } = await ermittleKampagnenEmpfaenger(id);
+  const inSperrfrist = empfaenger.filter((e) => e.inSperrfrist).length;
+  const tagMonat = (iso: string) => new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" });
 
   if (kampagne.status === "versendet") {
     return (
@@ -29,8 +31,26 @@ export default async function KampagnenVorschauPage({ params }: { params: Promis
         gegen den aktuellen Teilnehmerbestand ausgewertet.
       </p>
 
-      <div className="au-card au-card-tint">
-        <strong>{empfaenger.length}</strong> E-Mail(s) sind jetzt fällig.
+      <div className="au-card au-card-tint au-sperrfrist-kopf">
+        <div>
+          <strong>{empfaenger.length} Empfänger:innen</strong>
+          {inSperrfrist > 0 ? (
+            <>, davon <strong>{inSperrfrist} innerhalb der Sperrfrist</strong></>
+          ) : kampagne.mindestabstand_tage > 0 ? (
+            <>, niemand innerhalb der Sperrfrist</>
+          ) : null}
+          <div className="au-klein">
+            {kampagne.mindestabstand_tage > 0
+              ? `Sperrfrist: ${kampagne.mindestabstand_tage} Tage seit der letzten Funnel- oder Kampagnen-Mail`
+              : "Keine Sperrfrist (Mindestabstand 0)"}
+          </div>
+        </div>
+        <form action={setzeKampagnenMindestabstand} className="au-sperrfrist-form">
+          <input type="hidden" name="id" value={kampagne.id} />
+          <label className="au-klein" htmlFor="mindestabstand_tage">Mindestabstand (Tage)</label>
+          <input className="au-input" id="mindestabstand_tage" name="mindestabstand_tage" type="number" min={0} max={90} defaultValue={kampagne.mindestabstand_tage} />
+          <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Übernehmen</button>
+        </form>
       </div>
 
       {empfaenger.length === 0 && (
@@ -59,8 +79,15 @@ export default async function KampagnenVorschauPage({ params }: { params: Promis
               </thead>
               <tbody>
                 {empfaenger.map((e) => (
-                  <tr key={e.id}>
-                    <td>{e.vorname} {e.nachname} — {e.email}</td>
+                  <tr key={e.id} className={e.inSperrfrist ? "au-zeile-sperrfrist" : undefined}>
+                    <td>
+                      {e.vorname} {e.nachname} — {e.email}
+                      {e.inSperrfrist && (
+                        <div>
+                          <span className="au-badge au-badge-warning">innerhalb Sperrfrist, zuletzt am {tagMonat(e.letzteMarketingMailAm!)}</span>
+                        </div>
+                      )}
+                    </td>
                     <td>{e.betreff}</td>
                     <td style={{ maxWidth: 420 }}>
                       <details>
@@ -85,7 +112,7 @@ export default async function KampagnenVorschauPage({ params }: { params: Promis
             </form>
             <form action={kampagneVersandJetzt}>
               <input type="hidden" name="id" value={kampagne.id} />
-              <BestaetigenButton anzahl={empfaenger.length} />
+              <BestaetigenButton anzahl={empfaenger.length} inSperrfrist={inSperrfrist} />
             </form>
           </div>
         </>

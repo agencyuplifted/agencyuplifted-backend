@@ -3339,6 +3339,25 @@ export async function loescheTeilnehmerSegment(formData: FormData) {
   revalidatePath("/kampagnen/neu");
 }
 
+// Frequency-Capping: 0 = keine Sperrfrist (z. B. dringende Programmaenderung)
+function leseMindestabstand(formData: FormData): number {
+  const wert = Number(formData.get("mindestabstand_tage") ?? 4);
+  if (!Number.isInteger(wert) || wert < 0 || wert > 90) throw new Error("Mindestabstand muss zwischen 0 und 90 Tagen liegen.");
+  return wert;
+}
+
+export async function setzeKampagnenMindestabstand(formData: FormData) {
+  await requireBackstageLogin();
+  const id = String(formData.get("id"));
+  const { error } = await getSupabaseAdmin()
+    .from("kampagnen")
+    .update({ mindestabstand_tage: leseMindestabstand(formData), aktualisiert_am: new Date().toISOString() })
+    .eq("id", id)
+    .eq("status", "entwurf");
+  if (error) throw new Error(error.message);
+  redirect(`/kampagnen/${id}/vorschau`);
+}
+
 export async function erstelleKampagne(formData: FormData) {
   await requireBackstageLogin();
   const name = String(formData.get("name") || "").trim();
@@ -3356,6 +3375,7 @@ export async function erstelleKampagne(formData: FormData) {
       inhalt,
       filter_kriterien: leseFilterAusFormData(formData),
       segment_id: segmentId,
+      mindestabstand_tage: leseMindestabstand(formData),
     })
     .select("id")
     .single();
@@ -3368,9 +3388,9 @@ export async function kampagneVersandJetzt(formData: FormData) {
   await requireBackstageLogin();
   const id = String(formData.get("id"));
   const { sendeKampagneJetzt } = await import("./kampagnen");
-  const ergebnis = await sendeKampagneJetzt(id);
+  const ergebnis = await sendeKampagneJetzt(id, formData.get("trotz_sperrfrist") === "ja");
   revalidatePath("/kampagnen");
-  redirect(`/kampagnen?versendet=1&gesendet=${ergebnis.gesendet}&fehler=${ergebnis.fehler}`);
+  redirect(`/kampagnen?versendet=1&gesendet=${ergebnis.gesendet}&fehler=${ergebnis.fehler}&uebersprungen=${ergebnis.uebersprungen}`);
 }
 
 export async function loescheKampagnenEntwurf(formData: FormData) {
