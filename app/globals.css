@@ -5030,3 +5030,51 @@ a.au-kliste-name:hover {
 .au-tp-leg.feiertag { background: #f8d7d4; }
 .au-tp-leg.konferenz { background: repeating-linear-gradient(135deg, #cdbdec 0 3px, #efe9f8 3px 6px); }
 .au-tp-leg.blocker { background: repeating-linear-gradient(135deg, #f1b7b1 0 3px, #fbeceb 3px 6px); }
+
+/* Terminplaner-Kalender: Interaktion */
+.au-tp-zeile-klickbar {
+  cursor: pointer;
+}
+
+.au-tp-zeile-klickbar .au-planer-tag:hover {
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+}
+
+.au-planer-tag.gewaehlt {
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.au-planer-tag.ziel {
+  box-shadow: inset 0 0 0 2px var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.au-planer-balken.ziehbar {
+  cursor: grab;
+}
+
+.au-planer-balken.ziehbar:active {
+  cursor: grabbing;
+}
+
+.au-tp-balken-vorschlag {
+  cursor: pointer;
+}
+
+.au-tp-auswahl {
+  margin-top: 0.9rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.au-tp-auswahl-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}

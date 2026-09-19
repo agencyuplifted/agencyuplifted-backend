@@ -743,7 +743,8 @@ export default async function TerminplanerPage({
         art: (k.status === "in_pruefung" ? "pruefung" : "gemerkt") as KalenderBalken["art"],
         label: k.seminartypen?.name?.slice(0, 4) || (k.status === "in_pruefung" ? "Prüf." : "Kand."),
         titel: `${k.status === "in_pruefung" ? "In Prüfung" : "Gemerkt"}: ${spanne(k)}${k.veranstaltungsorte?.name ? ` · ${k.veranstaltungsorte.name}` : ""}`,
-        href: "#kandidaten",
+        start: k.datum_start,
+        kandidatId: k.id,
       })),
   ];
   // Vorschlaege (aktueller Filter + Bedarf), sofern nicht schon Kandidat
@@ -757,7 +758,8 @@ export default async function TerminplanerPage({
       art: "vorschlag",
       label: String(b.score),
       titel: `Vorschlag (${f.name}), Score ${b.score}: ${spanne(b)}\n${kurzGruende(b)}`,
-      href: "#vorschlaege",
+      start: b.datum_start,
+      formatId: f.id,
     });
   };
   if (format) beste.forEach((b) => alsBalken(b, format));
@@ -789,9 +791,13 @@ export default async function TerminplanerPage({
             ferien={(ferienJahr || []) as any[]}
             konferenzen={(konferenzen || []) as any[]}
             blocker={(blocker || []).filter((b: any) => b.aktiv) as any[]}
+            formate={formate.map((f) => ({ id: f.id, name: f.name, mitHotel: mitHotel(f) }))}
+            orte={(orteAlle || []).map((o: any) => ({ id: o.id, name: o.name }))}
+            standardFormatId={format?.id || ""}
+            standardOrtId={ortId}
           />
           <p className="au-klein" style={{ margin: "0.6rem 0 0" }}>
-            Grün gepunktet = beste Vorschläge ({format?.name}, {ZEITRAUM_LABEL[zeitraum]}{bedarfsGruppen.length ? " und laut Bedarf" : ""}), Zahl = Score. Mit der Maus über einen Tag oder Balken fahren für Details.
+            <strong>Klick auf einen Tag</strong> = diesen Start prüfen und merken · <strong>Kandidaten ziehen</strong> = verschieben (mit Vorschau) · Grün gepunktet = beste Vorschläge ({format?.name}, {ZEITRAUM_LABEL[zeitraum]}{bedarfsGruppen.length ? " und laut Bedarf" : ""}), Zahl = Score.
           </p>
         </div>
       </section>

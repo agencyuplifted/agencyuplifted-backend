@@ -100,6 +100,47 @@ function zeit(fd: FormData, feld: string): string | null | undefined {
   return /^\d{2}:\d{2}/.test(v) ? v.slice(0, 5) : null;
 }
 
+/** Kandidat im Kalender auf einen anderen Tag ziehen: neu bewerten, Kollision nur mit Bestaetigung */
+export async function verschiebeKandidat(formData: FormData): Promise<Ergebnis> {
+  const f = await loginFehler();
+  if (f) return { fehler: f };
+  const id = String(formData.get("id") || "");
+  const start = String(formData.get("datum_start") || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return { fehler: "Ungültiges Datum." };
+  const supabase = getSupabaseAdmin();
+  const { data: v } = await supabase.from("terminvorschlaege").select("id, status, format_id, termin_formate(*)").eq("id", id).maybeSingle();
+  if (!v || !["vorgeschlagen", "in_pruefung"].includes(v.status)) return { fehler: "Nur gemerkte oder angefragte Kandidaten lassen sich verschieben." };
+  const format = v.termin_formate as unknown as Format;
+  const b = bewerte(start, format, await ladePlanerDaten(Number(start.slice(0, 4))), heuteBerlin(), { vorschlagId: id });
+  const bestaetigt = formData.get("kollision_bestaetigt") === "on";
+  if (b.kollision && !bestaetigt) return { fehler: `${b.kollision}. Zum Verschieben „Überschneidung bewusst in Kauf nehmen“ anhaken.` };
+  const { error } = await supabase
+    .from("terminvorschlaege")
+    .update({
+      datum_start: b.datum_start,
+      datum_ende: b.datum_ende,
+      anreise_datum: b.anreise_datum,
+      score: b.score,
+      begruendung: b.gruende,
+      kollision_bestaetigt: !!b.kollision && bestaetigt,
+      aktualisiert_am: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidatePath("/termine/planer");
+  return { fehler: null, info: "Verschoben." };
+}
+
+/** Bewertung fuer einen bestehenden Kandidaten an einem anderen Tag (Vorschau beim Verschieben) */
+export async function pruefeVerschiebung(id: string, start: string): Promise<{ fehler: string | null; bewertung?: Bewertung }> {
+  const f = await loginFehler();
+  if (f) return { fehler: f };
+  const { data: v } = await getSupabaseAdmin().from("terminvorschlaege").select("termin_formate(*)").eq("id", id).maybeSingle();
+  if (!v?.termin_formate) return { fehler: "Kandidat nicht gefunden." };
+  const daten = await ladePlanerDaten(Number(start.slice(0, 4)));
+  return { fehler: null, bewertung: bewerte(start, v.termin_formate as unknown as Format, daten, heuteBerlin(), { vorschlagId: id }) };
+}
+
 export async function setzeKandidatStatus(formData: FormData) {
   await login();
   const status = String(formData.get("status"));
