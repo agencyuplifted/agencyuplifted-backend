@@ -776,21 +776,24 @@ export default async function TerminplanerPage({
   ];
   // Vorschlaege (aktueller Filter + Bedarf), sofern nicht schon Kandidat
   const vorschlagsBalken = new Map<string, KalenderBalken>();
-  const alsBalken = (b: Bewertung, f: Format) => {
+  const typFarbe = new Map((typen || []).map((t: any) => [t.id, t.farbe]));
+  const typName = new Map((typen || []).map((t: any) => [t.id, t.name]));
+  const alsBalken = (b: Bewertung, f: Format, typId?: string) => {
     if (gemerkt.has(`${f.id}|${b.datum_start}|${ortId || ""}`)) return;
     vorschlagsBalken.set(`${f.id}-${b.datum_start}`, {
       key: `v-${f.id}-${b.datum_start}`,
       von: b.anreise_datum || b.datum_start,
       bis: b.datum_ende,
       art: "vorschlag",
-      label: String(b.score),
-      titel: `Vorschlag (${f.name}), Score ${b.score}: ${spanne(b)}\n${kurzGruende(b)}`,
+      label: typId ? `${String(typName.get(typId) || "").slice(0, 4)} ${b.score}` : String(b.score),
+      titel: `Vorschlag${typId ? ` für ${typName.get(typId)}` : ""} (${f.name}), Score ${b.score}: ${spanne(b)}\n${kurzGruende(b)}`,
+      farbe: typId ? typFarbe.get(typId) || null : null,
       start: b.datum_start,
       formatId: f.id,
     });
   };
   if (format) beste.forEach((b) => alsBalken(b, format));
-  bedarfsGruppen.forEach((g) => g.f && g.liste.forEach((b) => alsBalken(b, g.f!)));
+  bedarfsGruppen.forEach((g) => g.f && g.liste.forEach((b) => alsBalken(b, g.f!, g.bd.seminartyp_id)));
   kalenderBalken.push(...vorschlagsBalken.values());
 
   return (
@@ -825,7 +828,7 @@ export default async function TerminplanerPage({
             standardOrtId={ortId}
           />
           <p className="au-klein" style={{ margin: "0.6rem 0 0" }}>
-            <strong>Klick auf einen Tag</strong> = diesen Start prüfen und merken · <strong>Kandidaten ziehen</strong> = verschieben (mit Vorschau) · Grün gepunktet = beste Vorschläge ({format?.name}, {ZEITRAUM_LABEL[zeitraum]}{bedarfsGruppen.length ? " und laut Bedarf" : ""}), Zahl = Score.
+            <strong>Klick auf einen Tag</strong> = diesen Start prüfen und merken · <strong>Kandidaten ziehen</strong> = verschieben (mit Vorschau) · Gepunktet = Vorschläge ({format?.name}, {ZEITRAUM_LABEL[zeitraum]}; aus dem Bedarf in Kategoriefarbe), Zahl = Score · „?“ = vorgeplant.
           </p>
         </div>
       </section>

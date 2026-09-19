@@ -391,9 +391,9 @@ export function KalenderLegende() {
   return (
     <span className="au-planer-legende au-tp-legende">
       <span><i className="au-tp-leg termin" />Seminar</span>
-      <span><i className="au-tp-leg pruefung" />in Prüfung</span>
-      <span><i className="au-tp-leg gemerkt" />gemerkt</span>
-      <span><i className="au-tp-leg vorschlag" />Vorschlag</span>
+      <span><i className="au-tp-leg pruefung" />vorgeplant: in Prüfung</span>
+      <span><i className="au-tp-leg gemerkt" />vorgeplant: gemerkt</span>
+      <span><i className="au-tp-leg vorschlag" />Vorschlag (gepunktet)</span>
       <span><i className="au-tp-leg ferien" />Ferien Bayern</span>
       <span><i className="au-tp-leg feiertag" />Feiertag</span>
       <span><i className="au-tp-leg konferenz" />Konferenz</span>
