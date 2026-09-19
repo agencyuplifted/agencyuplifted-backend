@@ -94,6 +94,12 @@ export async function legeKandidatAn(formData: FormData): Promise<Ergebnis> {
 }
 
 // "" = Feld leer gelassen (null), fehlt = nicht im Formular (undefined -> Format-Wert)
+// Leeres Feld = Standard aus den Einstellungen (null)
+function abstandAus(fd: FormData): number | null {
+  const v = String(fd.get("mindestabstand_tage") ?? "").trim();
+  return v === "" ? null : Math.min(120, Math.max(0, Math.floor(Number(v)) || 0));
+}
+
 function zeit(fd: FormData, feld: string): string | null | undefined {
   if (!fd.has(feld)) return undefined;
   const v = String(fd.get(feld) || "");
@@ -332,6 +338,7 @@ export async function legeFormatAn(formData: FormData) {
     vorabend: formData.get("vorabend") === "on",
     abendprogramm: formData.get("abendprogramm") === "on",
     beschreibung: String(formData.get("beschreibung") || "").trim() || null,
+    mindestabstand_tage: abstandAus(formData),
     sortierung: 99,
   });
   if (error) throw new Error(error.message);
@@ -356,6 +363,7 @@ export async function aktualisiereFormat(formData: FormData) {
       vorabend: formData.get("vorabend") === "on",
       abendprogramm: formData.get("abendprogramm") === "on",
       beschreibung: String(formData.get("beschreibung") || "").trim() || null,
+      mindestabstand_tage: abstandAus(formData),
       ferien_gewichtung_modus: ["abschlag", "neutral", "bonus"].includes(modus) ? modus : "abschlag",
       benoetigt_uebernachtung: formData.get("benoetigt_uebernachtung") === "on",
       start_uhrzeit: zeit(formData, "start_uhrzeit") ?? null,

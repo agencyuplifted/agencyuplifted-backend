@@ -29,7 +29,12 @@ export type Format = {
   benoetigt_uebernachtung?: boolean;
   /** abschlag = Ferien meiden (Skills-Trainings), neutral = egal, bonus = bewusst in Ferien (Erlebnis/Retreat) */
   ferien_gewichtung_modus?: "abschlag" | "neutral" | "bonus";
+  /** null/undefined = Standard aus den Einstellungen */
+  mindestabstand_tage?: number | null;
 };
+
+/** Mindestabstand fuer dieses Format (eigener Wert oder Standard) */
+export const abstandFuer = (format: Format, daten: PlanerDaten) => format.mindestabstand_tage ?? daten.einstellungen.mindestabstand_tage;
 
 export type Grund = { art: "ferien" | "konferenz" | "blocker" | "feiertag" | "termin" | "vorschlag" | "vorlauf" | "bonus"; text: string; punkte: number };
 
@@ -94,6 +99,7 @@ export function bewerte(start: string, format: Format, daten: PlanerDaten, heute
   const gruende: Grund[] = [];
   let gesperrt: string | null = null;
   let kollision: string | null = null;
+  const mindestabstand = abstandFuer(format, daten);
 
   // Eigene Seminartermine: Ueberschneidung = Kollision, zu nah = gesperrt
   for (const t of daten.termine) {
@@ -105,8 +111,8 @@ export function bewerte(start: string, format: Format, daten: PlanerDaten, heute
       gruende.push({ art: "termin", text: kollision, punkte: -100 });
     } else {
       const abstand = belegtBis < tVon ? tageZwischen(belegtBis, tVon) : tageZwischen(tBis, belegtVon);
-      if (abstand < daten.einstellungen.mindestabstand_tage) {
-        const text = `Nur ${abstand} Tage Abstand zu ${name} (Mindestabstand ${daten.einstellungen.mindestabstand_tage})`;
+      if (abstand < mindestabstand) {
+        const text = `Nur ${abstand} Tage Abstand zu ${name} (Mindestabstand ${mindestabstand})`;
         gesperrt ||= text;
         gruende.push({ art: "termin", text, punkte: -30 });
       }

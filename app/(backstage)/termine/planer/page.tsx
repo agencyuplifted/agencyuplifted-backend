@@ -10,6 +10,7 @@ import {
   waehleVerteilt,
   zeitraumGrenzen,
   wochentag,
+  abstandFuer,
   type Format,
   type Bewertung,
 } from "@/lib/terminplaner";
@@ -136,7 +137,7 @@ export default async function TerminplanerPage({
   // ---------- Reiter "Vorschläge" ----------
   const [zVon, zBis] = zeitraumGrenzen(jahr, zeitraum);
   const kandidatenListe = format ? generiere(zVon, zBis, format, daten, heute) : [];
-  const beste = format ? waehleVerteilt(kandidatenListe, 12, daten.einstellungen.mindestabstand_tage) : [];
+  const beste = format ? waehleVerteilt(kandidatenListe, 12, abstandFuer(format, daten)) : [];
 
   const bedarfsGruppen = (bedarf || []).map((bd: any) => {
     const f = formate.find((x) => x.id === bd.format_id) || format;
@@ -146,7 +147,7 @@ export default async function TerminplanerPage({
       (k: any) => k.seminartyp_id === bd.seminartyp_id && k.status === "in_pruefung" && k.datum_start >= bVon && k.datum_start <= bBis
     ).length;
     const offen = Math.max(0, bd.anzahl - vorhanden - inArbeit);
-    const liste = f && offen > 0 ? waehleVerteilt(generiere(bVon, bBis, f, daten, heute), Math.max(3, offen * 3), daten.einstellungen.mindestabstand_tage) : [];
+    const liste = f && offen > 0 ? waehleVerteilt(generiere(bVon, bBis, f, daten, heute), Math.max(3, offen * 3), abstandFuer(f, daten)) : [];
     return { bd, f, vorhanden, inArbeit, offen, liste };
   });
 
@@ -617,6 +618,7 @@ export default async function TerminplanerPage({
                   {f.abendprogramm && " · Abendprogramm"}
                   {f.start_uhrzeit && ` · ${f.start_uhrzeit.slice(0, 5)}${f.end_uhrzeit ? `–${f.end_uhrzeit.slice(0, 5)}` : ""} Uhr`}
                   {` · ${f.benoetigt_uebernachtung ? "mit Übernachtung (Hotelanfrage)" : "ohne Übernachtung"}`}
+                  {` · Mindestabstand ${f.mindestabstand_tage ?? daten.einstellungen.mindestabstand_tage} Tage${f.mindestabstand_tage == null ? " (Standard)" : ""}`}
                 </span>
                 <span className={`au-badge ${f.ferien_gewichtung_modus === "bonus" ? "au-badge-success" : f.ferien_gewichtung_modus === "neutral" ? "au-badge-neutral" : "au-badge-warning"}`} style={{ marginLeft: "0.4rem" }}>
                   {MODUS_LABEL[f.ferien_gewichtung_modus] || f.ferien_gewichtung_modus}
@@ -633,6 +635,9 @@ export default async function TerminplanerPage({
                       ))}
                     </select>
                     <label className="au-klein au-tp-inline">Seminartage <input className="au-input" name="seminar_tage" type="number" min={1} max={10} defaultValue={f.seminar_tage} /></label>
+                    <label className="au-klein au-tp-inline" title="Leer = Standard aus den Regeln">
+                      Mindestabstand <input className="au-input" name="mindestabstand_tage" type="number" min={0} max={120} defaultValue={f.mindestabstand_tage ?? ""} placeholder={String(daten.einstellungen.mindestabstand_tage)} /> Tage
+                    </label>
                     <label className="au-klein au-tp-inline">von <input className="au-input au-tp-zeit" type="time" name="start_uhrzeit" defaultValue={f.start_uhrzeit?.slice(0, 5) || ""} /></label>
                     <label className="au-klein au-tp-inline">bis <input className="au-input au-tp-zeit" type="time" name="end_uhrzeit" defaultValue={f.end_uhrzeit?.slice(0, 5) || ""} /></label>
                     <label className="au-klein au-tp-inline"><input type="checkbox" name="vorabend" defaultChecked={f.vorabend} /> Anreise Vorabend</label>
@@ -667,6 +672,9 @@ export default async function TerminplanerPage({
             ))}
           </select>
           <label className="au-klein au-tp-inline">Seminartage <input className="au-input" name="seminar_tage" type="number" min={1} max={10} defaultValue={2} /></label>
+          <label className="au-klein au-tp-inline" title="Leer = Standard aus den Regeln">
+            Mindestabstand <input className="au-input" name="mindestabstand_tage" type="number" min={0} max={120} placeholder={String(daten.einstellungen.mindestabstand_tage)} /> Tage
+          </label>
           <label className="au-klein au-tp-inline"><input type="checkbox" name="vorabend" /> Anreise Vorabend</label>
           <label className="au-klein au-tp-inline"><input type="checkbox" name="abendprogramm" /> Abendprogramm</label>
           <label className="au-klein au-tp-inline"><input type="checkbox" name="halbtag" /> Halbtag</label>
@@ -686,7 +694,7 @@ export default async function TerminplanerPage({
         <div className="au-panel-kopf"><h2 style={{ margin: 0 }}>Regeln</h2></div>
         <form action={speichereEinstellungen} className="au-tp-form" style={{ padding: "1rem 1.15rem" }}>
           <label className="au-klein au-tp-inline">
-            Mindestabstand zu eigenen Terminen <input className="au-input" name="mindestabstand_tage" type="number" min={0} max={120} defaultValue={daten.einstellungen.mindestabstand_tage} /> Tage
+            Standard-Mindestabstand zu eigenen Terminen <input className="au-input" name="mindestabstand_tage" type="number" min={0} max={120} defaultValue={daten.einstellungen.mindestabstand_tage} /> Tage
           </label>
           <label className="au-klein au-tp-inline">
             Mindest-Vorlauf <input className="au-input" name="vorlauf_tage" type="number" min={0} max={365} defaultValue={daten.einstellungen.vorlauf_tage} /> Tage
@@ -694,6 +702,7 @@ export default async function TerminplanerPage({
           <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
         </form>
         <p className="au-klein" style={{ padding: "0 1.15rem 1rem", margin: 0 }}>
+          Der Standard gilt für alle Formate ohne eigenen Wert (einstellbar pro Format unter „bearbeiten“, 0 = nur keine Überschneidung).
           Kapazität: ein Trainer – keine zeitgleichen Termine. Überschneidungen mit eigenen Seminarterminen schlägt der Planer nie vor.
         </p>
       </section>
