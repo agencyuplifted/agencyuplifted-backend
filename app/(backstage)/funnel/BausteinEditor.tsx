@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { baueMailHtml, type MailBausteine } from "@/lib/mail-html";
+import { baueMailHtml, PROFIL_LINKS, type MailBausteine } from "@/lib/mail-html";
 
 // Zentrale Mail-Bausteine mit Live-Vorschau: so sieht das Ende jeder
 // Funnel-Mail aus (einzelne Mails koennen Bausteine im Editor abwaehlen).
@@ -17,6 +17,17 @@ export default function BausteinEditor({ bausteine, speichernAction }: { baustei
       <form action={speichernAction}>
         <h3 className="au-bs-titel">Signatur</h3>
         <textarea className="au-textarea" rows={5} {...feld("signatur")} />
+
+        <label className="au-label">Profile unter der Signatur <span className="au-klein">(leer lassen = nicht anzeigen)</span></label>
+        <div className="au-bs-profile">
+          {PROFIL_LINKS.map((p) => (
+            <label key={p.key} className="au-bs-profil">
+              <img src={`/mail-icons/${p.icon}.png`} width={16} height={16} alt="" />
+              <span>{p.label}</span>
+              <input className="au-input" type="url" {...feld(p.key)} placeholder="https://…" />
+            </label>
+          ))}
+        </div>
 
         <h3 className="au-bs-titel">Impressum &amp; Datenschutz</h3>
         <label className="au-label">Firmenangaben (Name, Anschrift, ggf. Geschäftsführung / Register)</label>

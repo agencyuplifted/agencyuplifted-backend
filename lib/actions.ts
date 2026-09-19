@@ -2349,6 +2349,10 @@ export async function speichereMailBausteine(formData: FormData) {
       impressum_url: url("impressum_url"),
       datenschutz_url: url("datenschutz_url"),
       abmelde_text: text("abmelde_text", 300),
+      linkedin_url: url("linkedin_url"),
+      youtube_url: url("youtube_url"),
+      instagram_url: url("instagram_url"),
+      website_url: url("website_url"),
       aktualisiert_am: new Date().toISOString(),
     })
     .eq("id", 1);

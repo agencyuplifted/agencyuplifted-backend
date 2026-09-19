@@ -126,6 +126,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/seminar/") ||
     // Abmeldeseite aus den Mails (signierter Token)
     pathname.startsWith("/abmelden/") ||
+    // Icons der Mail-Signatur -- Mailprogramme laden sie ohne Login
+    pathname.startsWith("/mail-icons/") ||
     pathname.startsWith("/wissen") ||
     pathname === "/sitemap.xml" ||
     pathname === "/robots.txt" ||

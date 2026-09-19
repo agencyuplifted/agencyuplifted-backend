@@ -4675,3 +4675,22 @@ a.au-kliste-name:hover {
   align-items: center !important;
   padding-left: 1.5rem;
 }
+
+.au-bs-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.au-bs-profil {
+  display: grid;
+  grid-template-columns: 16px 5.5rem minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.au-bs-profil .au-input {
+  margin: 0;
+}

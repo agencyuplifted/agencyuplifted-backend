@@ -8,6 +8,10 @@ export type MailBausteine = {
   impressum_url: string;
   datenschutz_url: string;
   abmelde_text: string;
+  linkedin_url: string;
+  youtube_url: string;
+  instagram_url: string;
+  website_url: string;
 };
 
 export type BausteinSchalter = { signatur: boolean; rechtliches: boolean; abmelden: boolean };
@@ -18,7 +22,30 @@ export const STANDARD_BAUSTEINE: MailBausteine = {
   impressum_url: "https://agencyuplifted.com/impressum",
   datenschutz_url: "https://www.agencyuplifted.de/datenschutz",
   abmelde_text: "Du möchtest diese Mails nicht mehr bekommen?",
+  linkedin_url: "",
+  youtube_url: "",
+  instagram_url: "",
+  website_url: "",
 };
+
+// Kleine graue PNG-Icons (SVG zeigen Gmail/Outlook nicht an); muessen oeffentlich
+// erreichbar sein -- /mail-icons/ ist in der Middleware freigegeben.
+const ICON_BASIS = "https://backstage.agencyuplifted.com/mail-icons";
+export const PROFIL_LINKS: { key: "linkedin_url" | "youtube_url" | "instagram_url" | "website_url"; label: string; icon: string }[] = [
+  { key: "linkedin_url", label: "LinkedIn", icon: "linkedin" },
+  { key: "youtube_url", label: "YouTube", icon: "youtube" },
+  { key: "instagram_url", label: "Instagram", icon: "instagram" },
+  { key: "website_url", label: "Website", icon: "website" },
+];
+
+function profilZeile(b: MailBausteine) {
+  const links = PROFIL_LINKS.filter((p) => (b[p.key] || "").trim()).map(
+    (p) =>
+      `<a href="${escape(b[p.key].trim())}" style="color:#6e6e73;text-decoration:none;white-space:nowrap">` +
+      `<img src="${ICON_BASIS}/${p.icon}.png" width="14" height="14" alt="" style="vertical-align:-2px;border:0;margin-right:4px">${p.label}</a>`
+  );
+  return links.length ? `<div style="margin-top:10px;font-size:13px;color:#6e6e73">${links.join('<span style="color:#c7c7cc">&nbsp;&nbsp;·&nbsp;&nbsp;</span>')}</div>` : "";
+}
 
 export function schalterAus(mail: { baustein_signatur?: boolean | null; baustein_rechtliches?: boolean | null; baustein_abmelden?: boolean | null }): BausteinSchalter {
   return {
@@ -68,7 +95,7 @@ export function baueMailHtml(
 ): string {
   const teile: string[] = [`<div>${inhaltText.replace(/\n/g, "<br/>")}</div>`];
   if (schalter.signatur && bausteine.signatur.trim()) {
-    teile.push(`<div style="margin-top:20px">${zeilen(bausteine.signatur.trim())}</div>`);
+    teile.push(`<div style="margin-top:20px">${zeilen(bausteine.signatur.trim())}${profilZeile(bausteine)}</div>`);
   }
   const fuss: string[] = [];
   if (schalter.rechtliches) {
