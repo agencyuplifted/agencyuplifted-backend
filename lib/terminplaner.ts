@@ -23,6 +23,12 @@ export type Format = {
   halbtag: boolean;
   vorabend: boolean;
   abendprogramm: boolean;
+  start_uhrzeit?: string | null;
+  end_uhrzeit?: string | null;
+  /** false = Abend-/Halbtagsformat: keine Hotelanfrage, Location direkt */
+  benoetigt_uebernachtung?: boolean;
+  /** abschlag = Ferien meiden (Skills-Trainings), neutral = egal, bonus = bewusst in Ferien (Erlebnis/Retreat) */
+  ferien_gewichtung_modus?: "abschlag" | "neutral" | "bonus";
 };
 
 export type Grund = { art: "ferien" | "konferenz" | "blocker" | "feiertag" | "termin" | "vorschlag" | "vorlauf" | "bonus"; text: string; punkte: number };
@@ -161,8 +167,24 @@ export function bewerte(start: string, format: Format, daten: PlanerDaten, heute
   }
   const LANDNAME: Record<string, string> = { BY: "Bayern", DE: "übrige Bundesländer", AT: "Österreich", CH: "Schweiz" };
   const DECKEL: Record<string, number> = { BY: 40, DE: 30, AT: 15, CH: 12 };
+  // Ferien-Wertung pro Format: Skills-Trainings meiden Ferien (Abschlag),
+  // Erlebnis-/Community-Formate liegen bewusst darin (Bonus, halbe Staerke,
+  // nur echte Ueberschneidung), manche Formate sind davon unabhaengig (neutral).
+  const modus = format.ferien_gewichtung_modus || "abschlag";
   for (const [land, e] of [...proLand.entries()].sort((a, b) => (a[0] === "BY" ? -1 : b[0] === "BY" ? 1 : 0))) {
     const deckel = DECKEL[land] ?? 15;
+    if (modus === "neutral") {
+      if (e.voll.length && !gruende.some((g) => g.art === "ferien" && g.punkte === 0)) {
+        gruende.push({ art: "ferien", text: "Ferienzeit – für dieses Format nicht gewertet", punkte: 0 });
+      }
+      continue;
+    }
+    if (modus === "bonus") {
+      if (!e.voll.length) continue;
+      const bonus = Math.round(Math.min(deckel, e.punkte) / 2);
+      gruende.push({ art: "bonus", text: `${LANDNAME[land] || land}: Ferienzeit – für dieses Format erwünscht`, punkte: bonus });
+      continue;
+    }
     const punkte = -Math.min(deckel, Math.round(e.punkte));
     const teile = land === "BY"
       ? [e.voll.length ? "Schulferien" : "direkt vor/nach Schulferien"]
@@ -184,7 +206,8 @@ export function bewerte(start: string, format: Format, daten: PlanerDaten, heute
     }
   }
 
-  const score = Math.max(0, Math.min(100, 100 + gruende.reduce((s, g) => s + g.punkte, 0)));
+  // Ueber 100 nur durch Boni (Brueckentag, Ferien bei Erlebnisformaten)
+  const score = Math.max(0, Math.min(120, 100 + gruende.reduce((s, g) => s + g.punkte, 0)));
   return { ...k, score, gruende, gesperrt, kollision };
 }
 

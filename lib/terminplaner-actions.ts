@@ -59,21 +59,27 @@ export async function legeKandidatAn(formData: FormData): Promise<Ergebnis> {
   if (b.kollision && !bestaetigt) return { fehler: `${b.kollision}. Zum Speichern „Überschneidung bewusst in Kauf nehmen“ anhaken.` };
 
   const supabase = getSupabaseAdmin();
-  const { data: doppelt } = await supabase
+  const ortId = String(formData.get("veranstaltungsort_id") || "") || null;
+  // Touring: gleicher Tag/Format in einer anderen Stadt ist ein eigener Kandidat
+  let doppeltAbfrage = supabase
     .from("terminvorschlaege")
     .select("id")
     .eq("datum_start", b.datum_start)
     .eq("format_id", formatId)
-    .neq("status", "verworfen")
-    .maybeSingle();
-  if (doppelt) return { fehler: "Dieser Termin ist schon unter „Kandidaten“." };
+    .neq("status", "verworfen");
+  doppeltAbfrage = ortId ? doppeltAbfrage.eq("veranstaltungsort_id", ortId) : doppeltAbfrage.is("veranstaltungsort_id", null);
+  const { data: doppelt } = await doppeltAbfrage.limit(1);
+  if (doppelt?.length) return { fehler: "Dieser Termin ist schon unter „Kandidaten“." };
 
   const { error } = await supabase.from("terminvorschlaege").insert({
     datum_start: b.datum_start,
     datum_ende: b.datum_ende,
     anreise_datum: b.anreise_datum,
     format_id: formatId,
-    veranstaltungsort_id: String(formData.get("veranstaltungsort_id") || "") || null,
+    veranstaltungsort_id: ortId,
+    // Uhrzeiten aus dem Format vorbefuellt, pro Termin/Stadt ueberschreibbar
+    start_uhrzeit: zeit(formData, "start_uhrzeit") ?? format.start_uhrzeit ?? null,
+    end_uhrzeit: zeit(formData, "end_uhrzeit") ?? format.end_uhrzeit ?? null,
     seminartyp_id: String(formData.get("seminartyp_id") || "") || null,
     score: b.score,
     begruendung: b.gruende,
@@ -85,6 +91,13 @@ export async function legeKandidatAn(formData: FormData): Promise<Ergebnis> {
   if (error) return { fehler: error.message };
   revalidatePath("/termine/planer");
   return { fehler: null, info: status === "in_pruefung" ? "Als „in Prüfung“ gespeichert." : "Als Kandidat gemerkt." };
+}
+
+// "" = Feld leer gelassen (null), fehlt = nicht im Formular (undefined -> Format-Wert)
+function zeit(fd: FormData, feld: string): string | null | undefined {
+  if (!fd.has(feld)) return undefined;
+  const v = String(fd.get(feld) || "");
+  return /^\d{2}:\d{2}/.test(v) ? v.slice(0, 5) : null;
 }
 
 export async function setzeKandidatStatus(formData: FormData) {
@@ -108,6 +121,7 @@ export async function aktualisiereKandidat(formData: FormData) {
       veranstaltungsort_id: String(formData.get("veranstaltungsort_id") || "") || null,
       seminartyp_id: String(formData.get("seminartyp_id") || "") || null,
       notiz: String(formData.get("notiz") || "").trim() || null,
+      ...(formData.has("start_uhrzeit") ? { start_uhrzeit: zeit(formData, "start_uhrzeit"), end_uhrzeit: zeit(formData, "end_uhrzeit") } : {}),
       aktualisiert_am: new Date().toISOString(),
     })
     .eq("id", String(formData.get("id")));
@@ -134,6 +148,8 @@ export async function bestaetigeKandidat(formData: FormData) {
       datum_ende: v.datum_ende,
       dauer_tage: v.termin_formate?.seminar_tage || null,
       vorabend_anreise_datum: v.anreise_datum,
+      zeit_start: v.start_uhrzeit,
+      zeit_ende: v.end_uhrzeit,
       vorabendanreise_inklusive: !!v.anreise_datum,
       kennung: String(formData.get("kennung") || "").trim() || null,
       titel: String(formData.get("titel") || "").trim() || null,
@@ -262,8 +278,13 @@ export async function loescheBedarf(formData: FormData) {
 export async function legeFormatAn(formData: FormData) {
   await login();
   const wt = String(formData.get("start_wochentag") || "");
+  const modus = String(formData.get("ferien_gewichtung_modus") || "abschlag");
   const { error } = await getSupabaseAdmin().from("termin_formate").insert({
     name: String(formData.get("name") || "").trim(),
+    start_uhrzeit: zeit(formData, "start_uhrzeit") ?? null,
+    end_uhrzeit: zeit(formData, "end_uhrzeit") ?? null,
+    benoetigt_uebernachtung: formData.get("benoetigt_uebernachtung") === "on",
+    ferien_gewichtung_modus: ["abschlag", "neutral", "bonus"].includes(modus) ? modus : "abschlag",
     start_wochentag: wt ? Number(wt) : null,
     seminar_tage: Math.min(10, Math.max(1, Number(formData.get("seminar_tage") || 1))),
     halbtag: formData.get("halbtag") === "on",
@@ -272,6 +293,34 @@ export async function legeFormatAn(formData: FormData) {
     beschreibung: String(formData.get("beschreibung") || "").trim() || null,
     sortierung: 99,
   });
+  if (error) throw new Error(error.message);
+  zurueck("formate");
+}
+
+// Bestehende Formate vollstaendig bearbeiten. Bereits gespeicherte Kandidaten
+// behalten ihre Daten; neu bewertet wird mit dem geaenderten Format.
+export async function aktualisiereFormat(formData: FormData) {
+  await login();
+  const modus = String(formData.get("ferien_gewichtung_modus") || "abschlag");
+  const wt = String(formData.get("start_wochentag") || "");
+  const name = String(formData.get("name") || "").trim();
+  if (!name) throw new Error("Bitte einen Namen angeben.");
+  const { error } = await getSupabaseAdmin()
+    .from("termin_formate")
+    .update({
+      name,
+      start_wochentag: wt ? Number(wt) : null,
+      seminar_tage: Math.min(10, Math.max(1, Number(formData.get("seminar_tage") || 1))),
+      halbtag: formData.get("halbtag") === "on",
+      vorabend: formData.get("vorabend") === "on",
+      abendprogramm: formData.get("abendprogramm") === "on",
+      beschreibung: String(formData.get("beschreibung") || "").trim() || null,
+      ferien_gewichtung_modus: ["abschlag", "neutral", "bonus"].includes(modus) ? modus : "abschlag",
+      benoetigt_uebernachtung: formData.get("benoetigt_uebernachtung") === "on",
+      start_uhrzeit: zeit(formData, "start_uhrzeit") ?? null,
+      end_uhrzeit: zeit(formData, "end_uhrzeit") ?? null,
+    })
+    .eq("id", String(formData.get("id")));
   if (error) throw new Error(error.message);
   zurueck("formate");
 }

@@ -4965,3 +4965,68 @@ a.au-kliste-name:hover {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
+
+.au-tp-form .au-tp-zeit,
+.au-tp-zeit {
+  width: 110px;
+  min-width: 0;
+  flex: 0 0 110px;
+  margin: 0;
+}
+
+/* Terminplaner-Kalender: Hintergruende und Balken-Arten */
+.au-tp-kalender .au-planer-tag.ferien {
+  background: #fdecc8;
+}
+
+.au-tp-kalender .au-planer-tag.feiertag {
+  background: #f8d7d4;
+}
+
+.au-tp-kalender .au-planer-tag.konferenz {
+  background: repeating-linear-gradient(135deg, #e9e3f5 0 3px, var(--color-bg) 3px 6px);
+}
+
+.au-tp-kalender .au-planer-tag.konferenz-hart {
+  background: repeating-linear-gradient(135deg, #cdbdec 0 3px, #efe9f8 3px 6px);
+}
+
+.au-tp-kalender .au-planer-tag.blocker {
+  background: repeating-linear-gradient(135deg, #f1b7b1 0 3px, #fbeceb 3px 6px);
+}
+
+.au-tp-balken-pruefung {
+  background: var(--color-surface) !important;
+  color: var(--color-accent);
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+}
+
+.au-tp-balken-gemerkt {
+  background: var(--color-surface) !important;
+  color: var(--color-text-muted);
+  box-shadow: none;
+  outline: 2px dashed var(--color-border-strong);
+  outline-offset: -2px;
+}
+
+.au-tp-balken-vorschlag {
+  background: var(--color-success-soft) !important;
+  color: var(--color-success);
+  box-shadow: none;
+  outline: 2px dotted var(--color-success);
+  outline-offset: -2px;
+  justify-content: center;
+}
+
+.au-tp-legende .au-tp-leg {
+  border-radius: 3px;
+}
+
+.au-tp-leg.termin { background: var(--color-accent); }
+.au-tp-leg.pruefung { background: var(--color-surface); box-shadow: inset 0 0 0 2px var(--color-accent); }
+.au-tp-leg.gemerkt { background: var(--color-surface); outline: 2px dashed var(--color-border-strong); outline-offset: -2px; }
+.au-tp-leg.vorschlag { background: var(--color-success-soft); outline: 2px dotted var(--color-success); outline-offset: -2px; }
+.au-tp-leg.ferien { background: #fdecc8; }
+.au-tp-leg.feiertag { background: #f8d7d4; }
+.au-tp-leg.konferenz { background: repeating-linear-gradient(135deg, #cdbdec 0 3px, #efe9f8 3px 6px); }
+.au-tp-leg.blocker { background: repeating-linear-gradient(135deg, #f1b7b1 0 3px, #fbeceb 3px 6px); }

@@ -29,6 +29,7 @@ import {
   loescheBedarf,
   legeFormatAn,
   setzeFormatAktiv,
+  aktualisiereFormat,
   speichereEinstellungen,
   setzeOrtFuerPlanung,
 } from "@/lib/terminplaner-actions";
@@ -38,6 +39,7 @@ import TermineNav from "../TermineNav";
 import ManuellerKandidat from "./ManuellerKandidat";
 import BewertungAnzeige from "./BewertungAnzeige";
 import KopierText from "./KopierText";
+import PlanerKalender, { KalenderLegende, type KalenderBalken } from "./PlanerKalender";
 
 export const metadata = { title: "Terminplaner" };
 
@@ -46,11 +48,16 @@ const ZEITRAUM_LABEL: Record<string, string> = { jahr: "ganzes Jahr", H1: "1. Ha
 const STATUS_LABEL: Record<string, string> = { vorgeschlagen: "Kandidat", in_pruefung: "In Prüfung beim Hotel", bestaetigt: "Bestätigt", verworfen: "Verworfen" };
 
 // "Mi 14.04.27 – Fr 16.04.27 (Anreise Di 13.04.)"
-function spanne(b: { datum_start: string; datum_ende: string; anreise_datum?: string | null }) {
+function spanne(b: { datum_start: string; datum_ende: string; anreise_datum?: string | null; start_uhrzeit?: string | null; end_uhrzeit?: string | null }) {
   const kurz = (iso: string) => `${WT[wochentag(iso)]} ${formatDatum(iso)}`;
   const teil = b.datum_start === b.datum_ende ? kurz(b.datum_start) : `${kurz(b.datum_start)} – ${kurz(b.datum_ende)}`;
-  return b.anreise_datum ? `${teil} (Anreise ${kurz(b.anreise_datum)})` : teil;
+  const uhr = b.start_uhrzeit ? `, ${b.start_uhrzeit.slice(0, 5)}${b.end_uhrzeit ? `–${b.end_uhrzeit.slice(0, 5)}` : ""} Uhr` : "";
+  return b.anreise_datum ? `${teil}${uhr} (Anreise ${kurz(b.anreise_datum)})` : `${teil}${uhr}`;
 }
+
+const MODUS_LABEL: Record<string, string> = { abschlag: "Ferien meiden", neutral: "Ferien egal", bonus: "Ferien bevorzugen" };
+// Formate ohne Uebernachtung (Abend, Halbtag): keine Hotelanfrage, Location direkt
+const mitHotel = (f?: { benoetigt_uebernachtung?: boolean | null } | null) => f?.benoetigt_uebernachtung !== false;
 
 export default async function TerminplanerPage({
   searchParams,
@@ -89,19 +96,22 @@ export default async function TerminplanerPage({
   // Termine des Jahres pro Kategorie (fuer "offener Bedarf")
   const { data: termineJahr } = await supabase
     .from("seminartermine")
-    .select("seminartyp_id, datum_start")
+    .select("id, kennung, titel, seminartyp_id, datum_start, datum_ende, seminartypen(name, farbe)")
     .neq("status", "abgesagt")
     .gte("datum_start", `${jahr}-01-01`)
     .lte("datum_start", `${jahr}-12-31`);
 
-  const gemerkt = new Set((kandidaten || []).filter((k: any) => k.status !== "verworfen").map((k: any) => `${k.format_id}|${k.datum_start}`));
+  // Touring: derselbe Tag in einer anderen Stadt ist ein eigener Kandidat
+  const gemerkt = new Set(
+    (kandidaten || []).filter((k: any) => k.status !== "verworfen").map((k: any) => `${k.format_id}|${k.datum_start}|${k.veranstaltungsort_id || ""}`)
+  );
 
   const vorschlagZeile = (b: Bewertung, f: Format, typId?: string) => {
-    const schon = gemerkt.has(`${f.id}|${b.datum_start}`);
+    const schon = gemerkt.has(`${f.id}|${b.datum_start}|${ortId || ""}`);
     return (
       <li key={`${f.id}-${b.datum_start}`} className="au-tp-zeile">
         <div className="au-tp-zeile-kopf">
-          <strong>{spanne(b)}</strong>
+          <strong>{spanne({ ...b, start_uhrzeit: f.start_uhrzeit, end_uhrzeit: f.end_uhrzeit })}</strong>
           {schon ? (
             <span className="au-badge au-badge-neutral">schon unter Kandidaten</span>
           ) : (
@@ -112,7 +122,9 @@ export default async function TerminplanerPage({
               {ortId && <input type="hidden" name="veranstaltungsort_id" value={ortId} />}
               {typId && <input type="hidden" name="seminartyp_id" value={typId} />}
               <button type="submit" name="status" value="vorgeschlagen" className="au-btn au-btn-secondary au-btn-sm">Merken</button>
-              <button type="submit" name="status" value="in_pruefung" className="au-btn au-btn-primary au-btn-sm">Hotel anfragen</button>
+              <button type="submit" name="status" value="in_pruefung" className="au-btn au-btn-primary au-btn-sm">
+                {mitHotel(f) ? "Hotel anfragen" : "Location anfragen"}
+              </button>
             </AktionsFormular>
           )}
         </div>
@@ -223,7 +235,7 @@ export default async function TerminplanerPage({
         </div>
         <div style={{ padding: "1rem 1.15rem" }}>
           <ManuellerKandidat
-            formate={formate.map((f) => ({ id: f.id, name: f.name }))}
+            formate={formate.map((f) => ({ id: f.id, name: f.name, start_uhrzeit: f.start_uhrzeit || null, end_uhrzeit: f.end_uhrzeit || null, mitHotel: mitHotel(f) }))}
             orte={(orteAlle || []).map((o: any) => ({ id: o.id, name: o.name }))}
             typen={(typen || []) as any[]}
             jahr={jahr}
@@ -237,6 +249,7 @@ export default async function TerminplanerPage({
   const nachStatus = (s: string) => (kandidaten || []).filter((k: any) => k.status === s);
   const inPruefung = nachStatus("in_pruefung");
   const exportText = inPruefung
+    .filter((k: any) => mitHotel(k.termin_formate))
     .map((k: any) => `• ${spanne(k)} – ${k.termin_formate?.name || ""}${k.veranstaltungsorte?.name ? ` – ${k.veranstaltungsorte.name}` : ""}${k.seminartypen?.name ? ` (${k.seminartypen.name})` : ""}`)
     .join("\n");
 
@@ -259,7 +272,7 @@ export default async function TerminplanerPage({
               <form action={setzeKandidatStatus}>
                 <input type="hidden" name="id" value={k.id} />
                 <input type="hidden" name="status" value="in_pruefung" />
-                <button type="submit" className="au-btn au-btn-primary au-btn-sm">Hotel anfragen</button>
+                <button type="submit" className="au-btn au-btn-primary au-btn-sm">{mitHotel(k.termin_formate) ? "Hotel anfragen" : "Location anfragen"}</button>
               </form>
             )}
             {k.status === "in_pruefung" && (
@@ -295,7 +308,10 @@ export default async function TerminplanerPage({
 
         {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
           <details className="au-tp-details">
-            <summary className="au-klein">Ort, Kategorie, Notiz{k.status === "in_pruefung" ? " · Hotel hat bestätigt → übernehmen" : ""}</summary>
+            <summary className="au-klein">
+              Ort, Kategorie, {mitHotel(k.termin_formate) ? "" : "Uhrzeit, "}Notiz
+              {k.status === "in_pruefung" ? ` · ${mitHotel(k.termin_formate) ? "Hotel" : "Location"} hat bestätigt → übernehmen` : ""}
+            </summary>
             <form action={aktualisiereKandidat} className="au-tp-form">
               <input type="hidden" name="id" value={k.id} />
               <select className="au-select" name="veranstaltungsort_id" defaultValue={k.veranstaltungsort_id || ""}>
@@ -310,7 +326,13 @@ export default async function TerminplanerPage({
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
-              <input className="au-input" name="notiz" defaultValue={k.notiz || ""} placeholder="Notiz (z. B. Hotel angefragt am …)" />
+              {(!mitHotel(k.termin_formate) || k.start_uhrzeit) && (
+                <>
+                  <label className="au-klein au-tp-inline">von <input className="au-input au-tp-zeit" type="time" name="start_uhrzeit" defaultValue={k.start_uhrzeit?.slice(0, 5) || ""} /></label>
+                  <label className="au-klein au-tp-inline">bis <input className="au-input au-tp-zeit" type="time" name="end_uhrzeit" defaultValue={k.end_uhrzeit?.slice(0, 5) || ""} /></label>
+                </>
+              )}
+              <input className="au-input" name="notiz" defaultValue={k.notiz || ""} placeholder={mitHotel(k.termin_formate) ? "Notiz (z. B. Hotel angefragt am …)" : "Notiz (z. B. Location angefragt am …)"} />
               <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
             </form>
             {k.status === "in_pruefung" && (
@@ -330,7 +352,9 @@ export default async function TerminplanerPage({
                 </select>
                 <input className="au-input" name="kennung" placeholder="Kennung, z. B. ORG127" />
                 <input className="au-input" name="titel" placeholder="Titel (optional)" />
-                <button type="submit" className="au-btn au-btn-primary au-btn-sm">Hotel bestätigt – ins Terminverzeichnis übernehmen</button>
+                <button type="submit" className="au-btn au-btn-primary au-btn-sm">
+                  {mitHotel(k.termin_formate) ? "Hotel" : "Location"} bestätigt – ins Terminverzeichnis übernehmen
+                </button>
               </form>
             )}
           </details>
@@ -362,15 +386,19 @@ export default async function TerminplanerPage({
     <div className="au-tp-stapel">
       <section className="au-panel">
         <div className="au-panel-kopf">
-          <h2 style={{ margin: 0 }}>In Prüfung beim Hotel</h2>
+          <h2 style={{ margin: 0 }}>In Prüfung (Hotel bzw. Location)</h2>
           <span className="au-klein">{inPruefung.length}</span>
         </div>
         {inPruefung.length ? (
           <>
-            <div style={{ padding: "0.9rem 1.15rem 0" }}>
-              <span className="au-label">Text für die Hotelanfrage</span>
-              <KopierText text={`Anfrage Seminartermine ${jahr}:\n${exportText}`} />
-            </div>
+            {exportText ? (
+              <div style={{ padding: "0.9rem 1.15rem 0" }}>
+                <span className="au-label">Text für die Hotelanfrage <span className="au-klein">(nur Formate mit Übernachtung)</span></span>
+                <KopierText text={`Anfrage Seminartermine ${jahr}:\n${exportText}`} />
+              </div>
+            ) : (
+              <p className="au-klein" style={{ padding: "0.9rem 1.15rem 0", margin: 0 }}>Keine Hotelanfrage nötig – alles Formate ohne Übernachtung, Location direkt anfragen.</p>
+            )}
             <ul className="au-tp-liste" style={{ padding: "0.5rem 1.15rem 1rem" }}>{inPruefung.map(kandidatZeile)}</ul>
           </>
         ) : (
@@ -587,7 +615,39 @@ export default async function TerminplanerPage({
                   {" "}· Start {f.start_wochentag ? WT[f.start_wochentag] : "beliebiger Werktag"} · {f.halbtag ? "halber Tag" : `${f.seminar_tage} Seminartag${f.seminar_tage === 1 ? "" : "e"}`}
                   {f.vorabend && " · Anreise am Vorabend"}
                   {f.abendprogramm && " · Abendprogramm"}
+                  {f.start_uhrzeit && ` · ${f.start_uhrzeit.slice(0, 5)}${f.end_uhrzeit ? `–${f.end_uhrzeit.slice(0, 5)}` : ""} Uhr`}
+                  {` · ${f.benoetigt_uebernachtung ? "mit Übernachtung (Hotelanfrage)" : "ohne Übernachtung"}`}
                 </span>
+                <span className={`au-badge ${f.ferien_gewichtung_modus === "bonus" ? "au-badge-success" : f.ferien_gewichtung_modus === "neutral" ? "au-badge-neutral" : "au-badge-warning"}`} style={{ marginLeft: "0.4rem" }}>
+                  {MODUS_LABEL[f.ferien_gewichtung_modus] || f.ferien_gewichtung_modus}
+                </span>
+                <details className="au-tp-details">
+                  <summary className="au-klein">bearbeiten</summary>
+                  <form action={aktualisiereFormat} className="au-tp-form">
+                    <input type="hidden" name="id" value={f.id} />
+                    <input className="au-input" name="name" required defaultValue={f.name} aria-label="Name" />
+                    <select className="au-select" name="start_wochentag" defaultValue={f.start_wochentag || ""} aria-label="Starttag">
+                      <option value="">Start: beliebiger Werktag</option>
+                      {[1, 2, 3, 4, 5, 6, 7].map((w) => (
+                        <option key={w} value={w}>Start: {WT[w]}</option>
+                      ))}
+                    </select>
+                    <label className="au-klein au-tp-inline">Seminartage <input className="au-input" name="seminar_tage" type="number" min={1} max={10} defaultValue={f.seminar_tage} /></label>
+                    <label className="au-klein au-tp-inline">von <input className="au-input au-tp-zeit" type="time" name="start_uhrzeit" defaultValue={f.start_uhrzeit?.slice(0, 5) || ""} /></label>
+                    <label className="au-klein au-tp-inline">bis <input className="au-input au-tp-zeit" type="time" name="end_uhrzeit" defaultValue={f.end_uhrzeit?.slice(0, 5) || ""} /></label>
+                    <label className="au-klein au-tp-inline"><input type="checkbox" name="vorabend" defaultChecked={f.vorabend} /> Anreise Vorabend</label>
+                    <label className="au-klein au-tp-inline"><input type="checkbox" name="abendprogramm" defaultChecked={f.abendprogramm} /> Abendprogramm</label>
+                    <label className="au-klein au-tp-inline"><input type="checkbox" name="halbtag" defaultChecked={f.halbtag} /> Halbtag</label>
+                    <label className="au-klein au-tp-inline"><input type="checkbox" name="benoetigt_uebernachtung" defaultChecked={f.benoetigt_uebernachtung} /> braucht Übernachtung</label>
+                    <select className="au-select" name="ferien_gewichtung_modus" defaultValue={f.ferien_gewichtung_modus} aria-label="Ferien-Wertung">
+                      <option value="abschlag">Ferien meiden (Abschlag)</option>
+                      <option value="neutral">Ferien egal (neutral)</option>
+                      <option value="bonus">Ferien bevorzugen (Bonus)</option>
+                    </select>
+                    <input className="au-input" name="beschreibung" defaultValue={f.beschreibung || ""} placeholder="Beschreibung (optional)" />
+                    <button type="submit" className="au-btn au-btn-primary au-btn-sm">Speichern</button>
+                  </form>
+                </details>
                 {!f.aktiv && <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.4rem" }}>deaktiviert</span>}
               </span>
               <form action={setzeFormatAktiv}>
@@ -610,6 +670,14 @@ export default async function TerminplanerPage({
           <label className="au-klein au-tp-inline"><input type="checkbox" name="vorabend" /> Anreise Vorabend</label>
           <label className="au-klein au-tp-inline"><input type="checkbox" name="abendprogramm" /> Abendprogramm</label>
           <label className="au-klein au-tp-inline"><input type="checkbox" name="halbtag" /> Halbtag</label>
+          <label className="au-klein au-tp-inline">von <input className="au-input au-tp-zeit" type="time" name="start_uhrzeit" /></label>
+          <label className="au-klein au-tp-inline">bis <input className="au-input au-tp-zeit" type="time" name="end_uhrzeit" /></label>
+          <label className="au-klein au-tp-inline"><input type="checkbox" name="benoetigt_uebernachtung" defaultChecked /> braucht Übernachtung</label>
+          <select className="au-select" name="ferien_gewichtung_modus" defaultValue="abschlag" aria-label="Ferien-Wertung">
+            <option value="abschlag">Ferien meiden</option>
+            <option value="neutral">Ferien egal</option>
+            <option value="bonus">Ferien bevorzugen</option>
+          </select>
           <button type="submit" className="au-btn au-btn-primary au-btn-sm">Format anlegen</button>
         </form>
       </section>
@@ -652,6 +720,50 @@ export default async function TerminplanerPage({
 
   const offeneBedarfe = bedarfsGruppen.reduce((s, g) => s + g.offen, 0);
 
+  // ---------- Kalender ----------
+  const kurzGruende = (b: Bewertung) =>
+    b.gruende.length ? b.gruende.sort((x, y) => x.punkte - y.punkte).slice(0, 3).map((g) => `${g.punkte > 0 ? "+" : ""}${g.punkte} ${g.text}`).join("\n") : "keine Konflikte";
+  const kalenderBalken: KalenderBalken[] = [
+    ...(termineJahr || []).map((t: any) => ({
+      key: `t-${t.id}`,
+      von: t.datum_start,
+      bis: t.datum_ende || t.datum_start,
+      art: "termin" as const,
+      label: t.kennung || (t.seminartypen?.name || "").slice(0, 4),
+      titel: `${t.kennung || t.titel || t.seminartypen?.name || "Seminar"} · ${formatDatum(t.datum_start)}`,
+      farbe: t.seminartypen?.farbe,
+      href: `/termine/${t.id}`,
+    })),
+    ...(kandidaten || [])
+      .filter((k: any) => k.status === "in_pruefung" || k.status === "vorgeschlagen")
+      .map((k: any) => ({
+        key: `k-${k.id}`,
+        von: k.anreise_datum || k.datum_start,
+        bis: k.datum_ende,
+        art: (k.status === "in_pruefung" ? "pruefung" : "gemerkt") as KalenderBalken["art"],
+        label: k.seminartypen?.name?.slice(0, 4) || (k.status === "in_pruefung" ? "Prüf." : "Kand."),
+        titel: `${k.status === "in_pruefung" ? "In Prüfung" : "Gemerkt"}: ${spanne(k)}${k.veranstaltungsorte?.name ? ` · ${k.veranstaltungsorte.name}` : ""}`,
+        href: "#kandidaten",
+      })),
+  ];
+  // Vorschlaege (aktueller Filter + Bedarf), sofern nicht schon Kandidat
+  const vorschlagsBalken = new Map<string, KalenderBalken>();
+  const alsBalken = (b: Bewertung, f: Format) => {
+    if (gemerkt.has(`${f.id}|${b.datum_start}|${ortId || ""}`)) return;
+    vorschlagsBalken.set(`${f.id}-${b.datum_start}`, {
+      key: `v-${f.id}-${b.datum_start}`,
+      von: b.anreise_datum || b.datum_start,
+      bis: b.datum_ende,
+      art: "vorschlag",
+      label: String(b.score),
+      titel: `Vorschlag (${f.name}), Score ${b.score}: ${spanne(b)}\n${kurzGruende(b)}`,
+      href: "#vorschlaege",
+    });
+  };
+  if (format) beste.forEach((b) => alsBalken(b, format));
+  bedarfsGruppen.forEach((g) => g.f && g.liste.forEach((b) => alsBalken(b, g.f!)));
+  kalenderBalken.push(...vorschlagsBalken.values());
+
   return (
     <main>
       <header className="au-dash-kopf">
@@ -663,6 +775,26 @@ export default async function TerminplanerPage({
         </div>
       </header>
       <TermineNav aktiv="planer" />
+
+      <section className="au-panel au-panel-breit">
+        <div className="au-panel-kopf">
+          <h2 style={{ margin: 0 }}>Kalender {jahr}</h2>
+          <KalenderLegende />
+        </div>
+        <div className="au-panel-inhalt" style={{ overflowX: "auto" }}>
+          <PlanerKalender
+            jahr={jahr}
+            heute={heute}
+            balken={kalenderBalken}
+            ferien={(ferienJahr || []) as any[]}
+            konferenzen={(konferenzen || []) as any[]}
+            blocker={(blocker || []).filter((b: any) => b.aktiv) as any[]}
+          />
+          <p className="au-klein" style={{ margin: "0.6rem 0 0" }}>
+            Grün gepunktet = beste Vorschläge ({format?.name}, {ZEITRAUM_LABEL[zeitraum]}{bedarfsGruppen.length ? " und laut Bedarf" : ""}), Zahl = Score. Mit der Maus über einen Tag oder Balken fahren für Details.
+          </p>
+        </div>
+      </section>
 
       <SeitenTabs
         speicherSchluessel="terminplaner"

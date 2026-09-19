@@ -15,7 +15,7 @@ export default function ManuellerKandidat({
   typen,
   jahr,
 }: {
-  formate: { id: string; name: string }[];
+  formate: { id: string; name: string; start_uhrzeit: string | null; end_uhrzeit: string | null; mitHotel: boolean }[];
   orte: { id: string; name: string }[];
   typen: { id: string; name: string }[];
   jahr: number;
@@ -26,6 +26,7 @@ export default function ManuellerKandidat({
   const [meldung, setMeldung] = useState<{ fehler: string | null; info?: string } | null>(null);
   const [kollisionOk, setKollisionOk] = useState(false);
   const [laeuft, starte] = useTransition();
+  const format = formate.find((f) => f.id === formatId);
 
   useEffect(() => {
     setBewertung(null);
@@ -87,6 +88,14 @@ export default function ManuellerKandidat({
         </label>
       </div>
 
+      {format && (format.start_uhrzeit || !format.mitHotel) && (
+        <div className="au-tp-form" key={formatId}>
+          <label className="au-klein au-tp-inline">Beginn <input className="au-input au-tp-zeit" type="time" name="start_uhrzeit" defaultValue={format.start_uhrzeit?.slice(0, 5) || ""} /></label>
+          <label className="au-klein au-tp-inline">Ende <input className="au-input au-tp-zeit" type="time" name="end_uhrzeit" defaultValue={format.end_uhrzeit?.slice(0, 5) || ""} /></label>
+          <span className="au-klein">Touring: jede Stadt als eigenen Termin speichern (Ort wählen, merken, nächste Stadt).</span>
+        </div>
+      )}
+
       {bewertung && (
         <div className="au-tp-manuell-ergebnis">
           <BewertungAnzeige b={bewertung} />
@@ -107,7 +116,7 @@ export default function ManuellerKandidat({
           Als Kandidat merken
         </button>
         <button type="submit" name="status" value="in_pruefung" className="au-btn au-btn-primary au-btn-sm" disabled={laeuft || !start || (!!bewertung?.kollision && !kollisionOk)}>
-          Direkt „in Prüfung“ (Hotel anfragen)
+          Direkt „in Prüfung“ ({format?.mitHotel === false ? "Location anfragen" : "Hotel anfragen"})
         </button>
         {meldung && <span className="au-klein" style={{ color: meldung.fehler ? "var(--color-danger)" : "var(--color-success)" }}>{meldung.fehler || meldung.info}</span>}
       </div>
