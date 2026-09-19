@@ -4694,3 +4694,274 @@ a.au-kliste-name:hover {
 .au-bs-profil .au-input {
   margin: 0;
 }
+
+/* ---------- Terminplaner (/termine/planer) ---------- */
+.au-termine-nav {
+  margin-top: -0.5rem;
+}
+
+.au-tp-stapel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.au-tp-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.au-tp-filter label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.au-tp-filter .au-select {
+  margin: 0;
+  min-width: 140px;
+}
+
+.au-tp-bedarfe {
+  display: flex;
+  flex-direction: column;
+}
+
+.au-tp-bedarf {
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.au-tp-bedarf:first-child {
+  border-top: 0;
+}
+
+.au-tp-bedarf-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.au-tp-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.au-tp-zeile {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.au-tp-zeile-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.au-tp-knoepfe {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.au-tp-bewertung {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin-top: 0.45rem;
+}
+
+.au-tp-score {
+  flex-shrink: 0;
+  min-width: 2.4rem;
+  text-align: center;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-tp-score.gut {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.au-tp-score.mittel {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.au-tp-score.schlecht {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.au-tp-gruende {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.au-tp-gruende li {
+  font-size: 0.75rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.au-tp-gruende li.hart {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.au-tp-gruende li.plus {
+  border-color: var(--color-success-border);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.au-tp-punkte {
+  font-weight: 700;
+  margin-right: 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-tp-details {
+  margin-top: 0.5rem;
+}
+
+.au-tp-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.au-tp-form .au-input,
+.au-tp-form .au-select {
+  margin: 0;
+  width: auto;
+  min-width: 120px;
+  flex: 1 1 140px;
+}
+
+.au-tp-bestaetigen {
+  padding: 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-success-soft);
+  border: 1px solid var(--color-success-border);
+}
+
+.au-tp-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.au-tp-inline .au-input {
+  width: 64px;
+  min-width: 0;
+  flex: 0 0 64px;
+}
+
+.au-tp-mini {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.au-tp-export {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.au-tp-export .au-textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  min-height: 0;
+  margin: 0;
+}
+
+.au-tp-manuell-felder {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.au-tp-manuell-felder label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.au-tp-manuell-felder .au-input,
+.au-tp-manuell-felder .au-select {
+  margin: 0;
+}
+
+.au-tp-manuell-ergebnis {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.au-tp-manuell-ergebnis .au-tp-bewertung {
+  margin-top: 0;
+}
+
+.au-tp-kollision {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-soft);
+  border: 1px solid var(--color-danger-border);
+  color: var(--color-danger);
+}
+
+.au-tp-manuell-fuss {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 860px) {
+  .au-tp-manuell-felder {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}

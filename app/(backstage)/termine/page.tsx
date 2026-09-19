@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import TermineNav from "./TermineNav";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatDatumsspanne, monatsName } from "@/lib/format";
@@ -331,6 +332,7 @@ export default async function TerminePage({
           <Link href="/termine/neu" className="au-btn au-btn-primary au-btn-sm" prefetch={false}>+ Neuer Termin</Link>
         </div>
       </header>
+      <TermineNav aktiv="termine" />
 
       <Kalender
         monatsKarten={monatsKarten}
