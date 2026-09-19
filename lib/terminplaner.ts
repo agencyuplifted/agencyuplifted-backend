@@ -59,6 +59,47 @@ export type PlanerDaten = {
   einstellungen: { mindestabstand_tage: number; vorlauf_tage: number };
 };
 
+/** Ostersonntag (gregorianisch, Gauss/Anonymous-Algorithmus) */
+export function ostersonntag(jahr: number): string {
+  const a = jahr % 19, b = Math.floor(jahr / 100), c = jahr % 100;
+  const dd = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - dd - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const monat = Math.floor((h + l - 7 * m + 114) / 31), tag = ((h + l - 7 * m + 114) % 31) + 1;
+  return `${jahr}-${String(monat).padStart(2, "0")}-${String(tag).padStart(2, "0")}`;
+}
+
+/**
+ * Termine, die jedes Jahr automatisch gelten und nicht gepflegt werden muessen.
+ * Karneval (Weiberfastnacht bis Rosenmontag): kein gesetzlicher Feiertag und
+ * deshalb in keinem Ferienkalender, im Rheinland arbeiten Agenturen da aber
+ * kaum. Haengt am Osterdatum (Weiberfastnacht = Ostern −52, Rosenmontag = −48).
+ */
+export function automatischeTermine(jahre: number[]): { name: string; von: string; bis: string; gewicht: number; automatisch: true }[] {
+  return jahre.map((j) => {
+    const ostern = ostersonntag(j);
+    return { name: "Karneval (Weiberfastnacht bis Rosenmontag)", von: isoPlus(ostern, -52), bis: isoPlus(ostern, -48), gewicht: 2, automatisch: true as const };
+  });
+}
+
+// Ferien fuer ein Jahr, das noch fehlt, beim ersten Aufruf selbst laden --
+// hoechstens einmal pro Stunde und Server-Instanz versuchen, falls OpenHolidays
+// fuer weit entfernte Jahre noch nichts hat.
+const importVersuche = new Map<number, number>();
+export async function stelleFerienSicher(jahr: number): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { count } = await supabase.from("ferien_kalender").select("id", { count: "exact", head: true }).eq("jahr", jahr);
+  if (count) return;
+  const letzter = importVersuche.get(jahr) || 0;
+  if (Date.now() - letzter < 3_600_000) return;
+  importVersuche.set(jahr, Date.now());
+  try {
+    await importiereFerien(jahr);
+  } catch (e: any) {
+    console.error("Ferien-Import", jahr, e?.message);
+  }
+}
+
 export async function ladePlanerDaten(jahr: number): Promise<PlanerDaten> {
   const supabase = getSupabaseAdmin();
   const von = `${jahr - 1}-11-01`;
@@ -73,7 +114,7 @@ export async function ladePlanerDaten(jahr: number): Promise<PlanerDaten> {
   ]);
   return {
     ferien: (f.data || []).map((x: any) => ({ ...x, gewicht: Number(x.gewicht) })),
-    konferenzen: k.data || [],
+    konferenzen: [...(k.data || []), ...automatischeTermine([jahr - 1, jahr, jahr + 1]).filter((a) => a.bis >= von && a.von <= bis)],
     blocker: b.data || [],
     termine: t.data || [],
     vorschlaege: v.data || [],

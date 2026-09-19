@@ -11,6 +11,8 @@ import {
   zeitraumGrenzen,
   wochentag,
   abstandFuer,
+  automatischeTermine,
+  stelleFerienSicher,
   type Format,
   type Bewertung,
 } from "@/lib/terminplaner";
@@ -69,6 +71,8 @@ export default async function TerminplanerPage({
   const heute = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
   const jahr = Number(sp.jahr) || Math.max(2027, Number(heute.slice(0, 4)) + 1);
   const supabase = getSupabaseAdmin();
+  // Neues Jahr aufgerufen? Ferien/Feiertage einmalig selbst nachladen (auch Folgejahr fuer den Jahreswechsel)
+  await Promise.all([stelleFerienSicher(jahr), stelleFerienSicher(jahr + 1)]);
 
   const [{ data: formateAlle }, { data: orteAlle }, { data: typen }, { data: bedarf }, { data: kandidaten }, { data: konferenzen }, { data: blocker }, { data: ferienJahr }, daten] =
     await Promise.all([
@@ -103,6 +107,9 @@ export default async function TerminplanerPage({
     .lte("datum_start", `${jahr}-12-31`);
 
   // Touring: derselbe Tag in einer anderen Stadt ist ein eigener Kandidat
+  // Jedes Jahr automatisch (Karneval) -- in Liste und Kalender wie Konferenzen
+  const alleKonferenzen = [...(konferenzen || []), ...automatischeTermine([jahr])].sort((a: any, b: any) => a.von.localeCompare(b.von));
+
   const gemerkt = new Set(
     (kandidaten || []).filter((k: any) => k.status !== "verworfen").map((k: any) => `${k.format_id}|${k.datum_start}|${k.veranstaltungsort_id || ""}`)
   );
@@ -506,6 +513,7 @@ export default async function TerminplanerPage({
         <div style={{ padding: "0.9rem 1.15rem" }}>
           <p className="au-klein" style={{ marginTop: 0 }}>
             Quelle: openholidaysapi.org (alle deutschen Bundesländer, Österreich, Schweiz: ZH, BE, LU, BS, BL, AG, SG, ZG, SZ, TG). Bayern zählt dreifach, Schweiz halb.
+            Für jedes neue Jahr werden die Daten beim ersten Aufruf automatisch geladen; der Knopf ist nur zum manuellen Nachladen.
             Überschneidung = voller Abzug, 1–2 Tage davor/danach = leichter Abzug.
           </p>
           <div className="au-chips" style={{ marginBottom: "0.75rem" }}>
@@ -533,20 +541,24 @@ export default async function TerminplanerPage({
           <span className="au-klein">Gewicht 1–2 = weicher Abzug, 4–5 = quasi NOGO (±1 Tag)</span>
         </div>
         <ul className="au-tp-liste" style={{ padding: "0.5rem 1.15rem" }}>
-          {(konferenzen || []).map((c: any) => (
-            <li key={c.id} className="au-tp-zeile au-tp-zeile-kopf">
+          {alleKonferenzen.map((c: any) => (
+            <li key={c.id || c.name + c.von} className="au-tp-zeile au-tp-zeile-kopf">
               <span>
                 <strong>{c.name}</strong> · {formatDatum(c.von)}{c.bis !== c.von ? ` – ${formatDatum(c.bis)}` : ""}
                 {c.ort && ` · ${c.ort}`} <span className={`au-badge ${c.gewicht >= 4 ? "au-badge-danger" : "au-badge-neutral"}`}>Gewicht {c.gewicht}</span>
                 {c.quelle && <a href={c.quelle} target="_blank" rel="noreferrer" className="au-klein"> Quelle ↗</a>}
               </span>
-              <form action={loescheKonferenz}>
-                <input type="hidden" name="id" value={c.id} />
-                <button type="submit" className="au-link-danger">entfernen</button>
-              </form>
+              {c.automatisch ? (
+                <span className="au-badge au-badge-neutral" title="Wird jedes Jahr aus dem Osterdatum berechnet">automatisch jedes Jahr</span>
+              ) : (
+                <form action={loescheKonferenz}>
+                  <input type="hidden" name="id" value={c.id} />
+                  <button type="submit" className="au-link-danger">entfernen</button>
+                </form>
+              )}
             </li>
           ))}
-          {!konferenzen?.length && <li className="au-leer">Keine Konferenzen für {jahr}.</li>}
+          {!alleKonferenzen.length && <li className="au-leer">Keine Konferenzen für {jahr}.</li>}
         </ul>
         <form action={legeKonferenzAn} className="au-tp-form" style={{ padding: "0 1.15rem 1.15rem" }}>
           <input className="au-input" name="name" required placeholder="Name, z. B. Agentur-Gipfel" />
@@ -798,7 +810,7 @@ export default async function TerminplanerPage({
             heute={heute}
             balken={kalenderBalken}
             ferien={(ferienJahr || []) as any[]}
-            konferenzen={(konferenzen || []) as any[]}
+            konferenzen={alleKonferenzen as any[]}
             blocker={(blocker || []).filter((b: any) => b.aktiv) as any[]}
             formate={formate.map((f) => ({ id: f.id, name: f.name, mitHotel: mitHotel(f) }))}
             orte={(orteAlle || []).map((o: any) => ({ id: o.id, name: o.name }))}
