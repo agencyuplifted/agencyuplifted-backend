@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { pruefeKandidat, legeKandidatAn, pruefeVerschiebung, verschiebeKandidat } from "@/lib/terminplaner-actions";
 import type { Bewertung } from "@/lib/terminplaner";
 import BewertungAnzeige from "./BewertungAnzeige";
+import KategorieWahl from "./KategorieWahl";
 
 // Jahreskalender des Terminplaners -- gleiches Raster wie der Kalender auf
 // /termine (au-planer-*), zusaetzlich mit den Planungsdaten im Hintergrund
@@ -35,11 +36,12 @@ export type KalenderBalken = {
   start?: string;
   kandidatId?: string;
   formatId?: string;
+  kategorieId?: string | null;
 };
 
 type Auswahl =
   | { modus: "neu"; start: string; formatId: string }
-  | { modus: "verschieben"; start: string; kandidatId: string; label: string };
+  | { modus: "verschieben"; start: string; kandidatId: string; label: string; kategorieId?: string | null };
 
 type TagInfo = { klassen: Set<string>; hinweise: string[] };
 
@@ -52,6 +54,7 @@ export default function PlanerKalender({
   blocker,
   formate,
   orte,
+  typen,
   standardFormatId,
   standardOrtId,
 }: {
@@ -63,12 +66,13 @@ export default function PlanerKalender({
   blocker: { bezeichnung: string; monat: number; tag: number; puffer_vorher: number; puffer_nachher: number; hart: boolean }[];
   formate: { id: string; name: string; mitHotel: boolean }[];
   orte: { id: string; name: string }[];
+  typen: { id: string; name: string; farbe?: string | null }[];
   standardFormatId: string;
   standardOrtId: string;
 }) {
   const [auswahl, setAuswahl] = useState<Auswahl | null>(null);
   const [ziel, setZiel] = useState<string | null>(null);
-  const zug = useRef<{ kandidatId: string; label: string; versatz: number; startVersatz: number } | null>(null);
+  const zug = useRef<{ kandidatId: string; label: string; kategorieId?: string | null; versatz: number; startVersatz: number } | null>(null);
 
   // Hintergrund pro Tag vorberechnen
   const tage = new Map<string, TagInfo>();
@@ -157,7 +161,7 @@ export default function PlanerKalender({
                 setZiel(null);
                 if (!z || !d) return;
                 // Balken-Anfang (ggf. Anreise) folgt der Maus, der Seminarstart liegt startVersatz dahinter
-                setAuswahl({ modus: "verschieben", kandidatId: z.kandidatId, label: z.label, start: plus(d, z.startVersatz - z.versatz) });
+                setAuswahl({ modus: "verschieben", kandidatId: z.kandidatId, label: z.label, kategorieId: z.kategorieId, start: plus(d, z.startVersatz - z.versatz) });
               }}
             >
               <span className="au-planer-monat" role="rowheader" style={{ gridRow: `1 / span ${spuren}` }}>
@@ -180,7 +184,12 @@ export default function PlanerKalender({
                 );
               })}
               {gelegt.map(({ b, von, bis, spur }) => {
-                const stil = { gridColumn: `${von + 1} / ${bis + 2}`, gridRow: spur + 1, ...(b.art === "termin" ? { background: b.farbe || "var(--color-accent)" } : {}) };
+                // Kandidaten in der Farbe ihrer Kategorie (ueber --kat), feste Termine vollflaechig
+                const stil = {
+                  gridColumn: `${von + 1} / ${bis + 2}`,
+                  gridRow: spur + 1,
+                  ...(b.art === "termin" ? { background: b.farbe || "var(--color-accent)" } : b.farbe ? ({ "--kat": b.farbe } as React.CSSProperties) : {}),
+                };
                 const klasse = `au-planer-balken au-tp-balken-${b.art}${b.kandidatId ? " ziehbar" : ""}`;
                 if (b.art === "termin") {
                   return (
@@ -198,7 +207,7 @@ export default function PlanerKalender({
                     draggable={!!b.kandidatId}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (b.kandidatId && b.start) setAuswahl({ modus: "verschieben", kandidatId: b.kandidatId, label: b.label, start: b.start });
+                      if (b.kandidatId && b.start) setAuswahl({ modus: "verschieben", kandidatId: b.kandidatId, label: b.label, kategorieId: b.kategorieId, start: b.start });
                       else if (b.start) setAuswahl({ modus: "neu", start: b.start, formatId: b.formatId || standardFormatId });
                     }}
                     onDragStart={(e) => {
@@ -208,6 +217,7 @@ export default function PlanerKalender({
                       zug.current = {
                         kandidatId: b.kandidatId,
                         label: b.label,
+                        kategorieId: b.kategorieId,
                         versatz: Math.max(0, tageZwischen(b.von, gegriffen)),
                         startVersatz: tageZwischen(b.von, b.start),
                       };
@@ -234,6 +244,7 @@ export default function PlanerKalender({
           auswahl={auswahl}
           formate={formate}
           orte={orte}
+          typen={typen}
           standardOrtId={standardOrtId}
           onFormat={(formatId) => auswahl.modus === "neu" && setAuswahl({ ...auswahl, formatId })}
           onSchliessen={() => setAuswahl(null)}
@@ -247,6 +258,7 @@ function AuswahlKarte({
   auswahl,
   formate,
   orte,
+  typen,
   standardOrtId,
   onFormat,
   onSchliessen,
@@ -254,6 +266,7 @@ function AuswahlKarte({
   auswahl: Auswahl;
   formate: { id: string; name: string; mitHotel: boolean }[];
   orte: { id: string; name: string }[];
+  typen: { id: string; name: string; farbe?: string | null }[];
   standardOrtId: string;
   onFormat: (id: string) => void;
   onSchliessen: () => void;
@@ -264,6 +277,7 @@ function AuswahlKarte({
   const [kollisionOk, setKollisionOk] = useState(false);
   const [laeuft, starte] = useTransition();
   const [ortId, setOrtId] = useState(standardOrtId);
+  const [typId, setTypId] = useState("");
   const format = auswahl.modus === "neu" ? formate.find((f) => f.id === auswahl.formatId) : null;
 
   useEffect(() => {
@@ -291,6 +305,7 @@ function AuswahlKarte({
         fd.set("herkunft", "manuell");
         fd.set("status", status || "vorgeschlagen");
         if (ortId) fd.set("veranstaltungsort_id", ortId);
+        if (typId) fd.set("seminartyp_id", typId);
         r = await legeKandidatAn(fd);
       } else {
         fd.set("id", auswahl.kandidatId);
@@ -328,6 +343,18 @@ function AuswahlKarte({
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}
           </select>
+          <select className="au-select" value={typId} onChange={(e) => setTypId(e.target.value)} aria-label="Kategorie">
+            <option value="">Kategorie ?</option>
+            {typen.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {auswahl.modus === "verschieben" && (
+        <div className="au-tp-form" style={{ marginTop: 0 }}>
+          <span className="au-klein">Kategorie:</span>
+          <KategorieWahl kandidatId={auswahl.kandidatId} wert={auswahl.kategorieId || null} typen={typen} />
         </div>
       )}
 

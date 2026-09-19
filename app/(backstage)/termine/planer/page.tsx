@@ -42,6 +42,7 @@ import TermineNav from "../TermineNav";
 import ManuellerKandidat from "./ManuellerKandidat";
 import BewertungAnzeige from "./BewertungAnzeige";
 import KopierText from "./KopierText";
+import KategorieWahl from "./KategorieWahl";
 import PlanerKalender, { KalenderLegende, type KalenderBalken } from "./PlanerKalender";
 
 export const metadata = { title: "Terminplaner" };
@@ -78,11 +79,11 @@ export default async function TerminplanerPage({
     await Promise.all([
       supabase.from("termin_formate").select("*").order("sortierung").order("name"),
       supabase.from("veranstaltungsorte").select("id, name, ort, terminplanung_aktiv").order("name"),
-      supabase.from("seminartypen").select("id, name").order("name"),
+      supabase.from("seminartypen").select("id, name, farbe").order("name"),
       supabase.from("kategorie_bedarf").select("*, seminartypen(name), termin_formate(name)").eq("jahr", jahr).order("zeitraum"),
       supabase
         .from("terminvorschlaege")
-        .select("*, termin_formate(*), veranstaltungsorte(name), seminartypen(name), seminartermine(id, kennung)")
+        .select("*, termin_formate(*), veranstaltungsorte(name), seminartypen(name, farbe), seminartermine(id, kennung)")
         .gte("datum_start", `${jahr}-01-01`)
         .lte("datum_start", `${jahr}-12-31`)
         .order("datum_start"),
@@ -276,6 +277,9 @@ export default async function TerminplanerPage({
             </div>
           </div>
           <div className="au-tp-knoepfe">
+            {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
+              <KategorieWahl kandidatId={k.id} wert={k.seminartyp_id} typen={(typen || []) as any[]} />
+            )}
             {k.status === "vorgeschlagen" && (
               <form action={setzeKandidatStatus}>
                 <input type="hidden" name="id" value={k.id} />
@@ -762,7 +766,9 @@ export default async function TerminplanerPage({
         von: k.anreise_datum || k.datum_start,
         bis: k.datum_ende,
         art: (k.status === "in_pruefung" ? "pruefung" : "gemerkt") as KalenderBalken["art"],
-        label: k.seminartypen?.name?.slice(0, 4) || (k.status === "in_pruefung" ? "Prüf." : "Kand."),
+        label: `${k.seminartypen?.name?.slice(0, 4) || (k.status === "in_pruefung" ? "Prüf." : "Kand.")}?`,
+        farbe: k.seminartypen?.farbe || null,
+        kategorieId: k.seminartyp_id,
         titel: `${k.status === "in_pruefung" ? "In Prüfung" : "Gemerkt"}: ${spanne(k)}${k.veranstaltungsorte?.name ? ` · ${k.veranstaltungsorte.name}` : ""}`,
         start: k.datum_start,
         kandidatId: k.id,
@@ -814,6 +820,7 @@ export default async function TerminplanerPage({
             blocker={(blocker || []).filter((b: any) => b.aktiv) as any[]}
             formate={formate.map((f) => ({ id: f.id, name: f.name, mitHotel: mitHotel(f) }))}
             orte={(orteAlle || []).map((o: any) => ({ id: o.id, name: o.name }))}
+            typen={(typen || []) as any[]}
             standardFormatId={format?.id || ""}
             standardOrtId={ortId}
           />

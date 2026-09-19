@@ -89,6 +89,20 @@ function Jahresplaner({
               );
             })}
             {balken.map(({ t, von, bis, spur }) => {
+              // Vorgeplante Kandidaten aus dem Terminplaner: gestrichelt mit "?"
+              if (t.vorgeplant) {
+                return (
+                  <a
+                    key={t.id}
+                    href="/termine/planer#kandidaten"
+                    className={`au-planer-balken au-planer-vorgeplant${t.status === "in_pruefung" ? " pruefung" : ""}`}
+                    style={{ gridColumn: `${von + 1} / ${bis + 2}`, gridRow: spur + 1, ...(t.seminartypen?.farbe ? ({ "--kat": t.seminartypen.farbe } as React.CSSProperties) : {}) }}
+                    title={`Vorgeplant (${t.status === "in_pruefung" ? "in Prüfung" : "Kandidat"}): ${t.seminartypen?.name || "Kategorie offen"} · ${formatDatumsspanne(t.datum_start, t.datum_ende)}`}
+                  >
+                    {(t.seminartypen?.name || "").slice(0, 4)}?
+                  </a>
+                );
+              }
               const gebucht = gebuchtProTermin.get(t.id) || 0;
               return (
                 <a
@@ -251,6 +265,18 @@ export default async function TerminePage({
     .neq("status", "abgesagt")
     .order("datum_start", { ascending: true });
 
+  // Vorgeplante Kandidaten (Terminplaner) zusaetzlich im Kalender -- mit "?"
+  const { data: vorgeplant } = await supabase
+    .from("terminvorschlaege")
+    .select("id, datum_start, datum_ende, anreise_datum, status, seminartypen(name, farbe)")
+    .in("status", ["vorgeschlagen", "in_pruefung"])
+    .gte("datum_start", isoDatum(monatsFensterStart.getFullYear(), monatsFensterStart.getMonth(), 1))
+    .lte("datum_start", isoDatum(monatsFensterEnde.getFullYear(), monatsFensterEnde.getMonth(), monatsFensterEnde.getDate()));
+  const kalenderEintraege = [
+    ...(kalenderTermine || []),
+    ...(vorgeplant || []).map((v: any) => ({ ...v, id: `v-${v.id}`, vorgeplant: true })),
+  ];
+
   const monatsKarten: { jahr: number; monatIndex: number }[] = [];
   for (let i = 0; i < anzahlKalenderMonate; i++) {
     const d = new Date(heute.getFullYear(), heute.getMonth() + i, 1);
@@ -336,7 +362,7 @@ export default async function TerminePage({
 
       <Kalender
         monatsKarten={monatsKarten}
-        kalenderTermine={kalenderTermine || []}
+        kalenderTermine={kalenderEintraege}
         gebuchtProTermin={gebuchtProTermin}
         heuteISO={heuteISO}
       />
@@ -386,7 +412,7 @@ function Kalender({
   const bereich = (m: { jahr: number; monatIndex: number }[]) =>
     `${MONATSKURZ[m[0].monatIndex]} ${m[0].jahr} – ${MONATSKURZ[m[m.length - 1].monatIndex]} ${m[m.length - 1].jahr}`;
   const inWeiteren = weitere.length
-    ? kalenderTermine.filter((t: any) => t.datum_start >= isoDatum(weitere[0].jahr, weitere[0].monatIndex, 1)).length
+    ? kalenderTermine.filter((t: any) => !t.vorgeplant && t.datum_start >= isoDatum(weitere[0].jahr, weitere[0].monatIndex, 1)).length
     : 0;
 
   return (
@@ -397,6 +423,9 @@ function Kalender({
           {[...kategorien.entries()].map(([name, farbe]) => (
             <span key={name}><i style={{ background: farbe }} />{name}</span>
           ))}
+          {kalenderTermine.some((t: any) => t.vorgeplant) && (
+            <span><i className="au-planer-vorgeplant-leg" />? = vorgeplant (Terminplaner)</span>
+          )}
           <Link href="/seminartypen" className="au-panel-link" prefetch={false}>Farben →</Link>
         </span>
       </div>

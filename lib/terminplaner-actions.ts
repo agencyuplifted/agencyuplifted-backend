@@ -147,6 +147,21 @@ export async function pruefeVerschiebung(id: string, start: string): Promise<{ f
   return { fehler: null, bewertung: bewerte(start, v.termin_formate as unknown as Format, daten, heuteBerlin(), { vorschlagId: id }) };
 }
 
+/** Kategorie eines Kandidaten schnell setzen (Auswahl direkt in Liste/Kalender) */
+export async function setzeKandidatKategorie(id: string, seminartypId: string | null): Promise<Ergebnis> {
+  const f = await loginFehler();
+  if (f) return { fehler: f };
+  const { error } = await getSupabaseAdmin()
+    .from("terminvorschlaege")
+    .update({ seminartyp_id: seminartypId || null, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id)
+    .neq("status", "bestaetigt");
+  if (error) return { fehler: error.message };
+  revalidatePath("/termine/planer");
+  revalidatePath("/termine");
+  return { fehler: null };
+}
+
 export async function setzeKandidatStatus(formData: FormData) {
   await login();
   const status = String(formData.get("status"));
