@@ -792,9 +792,19 @@ export default async function TerminplanerPage({
       formatId: f.id,
     });
   };
-  if (format) beste.forEach((b) => alsBalken(b, format));
-  bedarfsGruppen.forEach((g) => g.f && g.liste.forEach((b) => alsBalken(b, g.f!, g.bd.seminartyp_id)));
-  kalenderBalken.push(...vorschlagsBalken.values());
+  const vorschlagsScore = new Map<string, number>();
+  if (format) beste.forEach((b) => (alsBalken(b, format), vorschlagsScore.set(`${format.id}-${b.datum_start}`, b.score)));
+  bedarfsGruppen.forEach((g) => g.f && g.liste.forEach((b) => (alsBalken(b, g.f!, g.bd.seminartyp_id), vorschlagsScore.set(`${g.f!.id}-${b.datum_start}`, b.score))));
+  // Vorschlaege aus "Beste" und Bedarf ueberlappen sich teils -- jede Ueberlappung
+  // bekam eine eigene Kalender-Spur (Juni war dreimal so hoch). Nur ueberschneidungs-
+  // freie zeigen, bei Konflikt den mit dem hoeheren Score; die Listen darunter bleiben vollstaendig.
+  const belegt = kalenderBalken.map((b) => [b.von, b.bis]);
+  for (const [key, balken] of [...vorschlagsBalken.entries()].sort((a, b) => (vorschlagsScore.get(b[0]) || 0) - (vorschlagsScore.get(a[0]) || 0))) {
+    if (belegt.some(([von, bis]) => balken.von <= bis && von <= balken.bis)) continue;
+    belegt.push([balken.von, balken.bis]);
+    kalenderBalken.push(balken);
+    void key;
+  }
 
   return (
     <main>
