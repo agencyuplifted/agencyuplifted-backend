@@ -470,7 +470,10 @@ export async function loescheBedarf(formData: FormData) {
 function formatZusatz(fd: FormData) {
   const art = String(fd.get("terminart") || "seminar");
   const farbe = String(fd.get("farbe") || "");
+  // Keine Ferienart angehakt = alle werten (wie bisher)
+  const ferienTypen = fd.getAll("ferien_typen").map(String).filter((t) => ["winter", "fasching", "ostern", "pfingsten", "sommer", "herbst", "sonstige"].includes(t));
   return {
+    ferien_typen: ferienTypen.length ? ferienTypen : null,
     terminart: ["seminar", "online", "praesenz"].includes(art) ? art : "seminar",
     farbe: /^#[0-9a-f]{6}$/i.test(farbe) && fd.get("farbe_aktiv") === "on" ? farbe : null,
     serien_regel: normalisiereSerienRegel({

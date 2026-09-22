@@ -18,6 +18,7 @@ import {
   istSeminarFormat,
   TERMINART_LABEL,
   RHYTHMUS_LABEL,
+  FERIEN_TYP_LABEL,
   type Format,
   type Bewertung,
 } from "@/lib/terminplaner";
@@ -744,6 +745,14 @@ export default async function TerminplanerPage({
           <input type="color" name="farbe" defaultValue={f?.farbe || "#2f7d6d"} className="au-tp-farbe" />
         </label>
         <fieldset className="au-tp-serie-felder">
+          <legend className="au-klein">Welche Ferien werten? (nichts angehakt = alle)</legend>
+          {Object.entries(FERIEN_TYP_LABEL).map(([k, v]) => (
+            <label key={k} className="au-klein au-tp-inline">
+              <input type="checkbox" name="ferien_typen" value={k} defaultChecked={(f?.ferien_typen || []).includes(k)} /> {v}
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className="au-tp-serie-felder">
           <legend className="au-klein">Serie pro Jahr (optional)</legend>
           <select className="au-select" name="serie_rhythmus" defaultValue={r?.rhythmus || ""} aria-label="Rhythmus">
             <option value="">keine Serie</option>
@@ -816,6 +825,9 @@ export default async function TerminplanerPage({
                   <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.4rem", ...(f.farbe ? { boxShadow: `inset 4px 0 0 ${f.farbe}` } : {}) }}>
                     {TERMINART_LABEL[f.terminart as keyof typeof TERMINART_LABEL]}
                   </span>
+                )}
+                {f.ferien_typen?.length > 0 && f.ferien_gewichtung_modus !== "neutral" && (
+                  <span className="au-klein"> · nur {f.ferien_typen.map((t: string) => FERIEN_TYP_LABEL[t] || t).join(", ")}</span>
                 )}
                 {f.serien_regel && <span className="au-klein"> · Serie: {serienRegelText(f.serien_regel)}</span>}
                 <details className="au-tp-details">

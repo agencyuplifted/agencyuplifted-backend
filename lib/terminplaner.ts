@@ -31,6 +31,8 @@ export type Format = {
   ferien_gewichtung_modus?: "abschlag" | "neutral" | "bonus";
   /** null/undefined = Standard aus den Einstellungen */
   mindestabstand_tage?: number | null;
+  /** nur diese Ferienarten werten (null = alle) -- z. B. Online nur "winter" */
+  ferien_typen?: string[] | null;
   /** seminar = wird zum seminartermin; online/praesenz = eigene Terminart, im Planer nur "fest eingeplant" */
   terminart?: Terminart;
   serien_regel?: SerienRegel | null;
@@ -38,6 +40,17 @@ export type Format = {
 };
 
 export type Terminart = "seminar" | "online" | "praesenz";
+
+/** Ferienarten wie von ferienTyp() vergeben (Reihenfolge = Anzeige) */
+export const FERIEN_TYP_LABEL: Record<string, string> = {
+  winter: "Weihnachten/Jahreswechsel",
+  fasching: "Winter-/Faschingsferien",
+  ostern: "Oster-/Frühlingsferien",
+  pfingsten: "Pfingstferien",
+  sommer: "Sommerferien",
+  herbst: "Herbstferien",
+  sonstige: "sonstige freie Tage",
+};
 export const TERMINART_LABEL: Record<Terminart, string> = { seminar: "Seminar", online: "Online", praesenz: "Präsenz (kein Seminar)" };
 
 export type Rhythmus = "monatlich" | "zweimonatlich" | "quartalsweise" | "halbjaehrlich" | "jaehrlich";
@@ -232,7 +245,10 @@ export function bewerte(start: string, format: Format, daten: PlanerDaten, heute
 
   // Persoenliche Blocker (jaehrlich wiederkehrend, mit Puffer)
   for (const b of daten.blocker) {
-    for (const jahr of [Number(belegtVon.slice(0, 4)), Number(belegtBis.slice(0, 4))]) {
+    // Auch das Vorjahr pruefen: ein Blocker am 24.12. mit 15 Tagen Puffer
+    // reicht bis in den Januar -- wurde vorher bei Januar-Terminen uebersehen.
+    const jahre = new Set([Number(belegtVon.slice(0, 4)) - 1, Number(belegtVon.slice(0, 4)), Number(belegtBis.slice(0, 4))]);
+    for (const jahr of jahre) {
       const tag = `${jahr}-${String(b.monat).padStart(2, "0")}-${String(b.tag).padStart(2, "0")}`;
       if (ueberlappt(belegtVon, belegtBis, isoPlus(tag, -b.puffer_vorher), isoPlus(tag, b.puffer_nachher))) {
         const text = `${b.bezeichnung}${b.puffer_vorher || b.puffer_nachher ? " (inkl. Puffer)" : ""}`;
@@ -255,8 +271,10 @@ export function bewerte(start: string, format: Format, daten: PlanerDaten, heute
   // Bayern als eigene, staerkere Gruppe (Standort Illschwang, Vorgabe "Bayern
   // hoeher gewichten") -- im Sammelabzug "Deutschland" ging es sonst unter.
   const proLand = new Map<string, { voll: string[]; nah: string[]; punkte: number }>();
+  const gewerteteTypen = format.ferien_typen?.length ? format.ferien_typen : null;
   for (const f of daten.ferien) {
     if (f.typ === "feiertag") continue;
+    if (gewerteteTypen && !gewerteteTypen.includes(f.typ)) continue;
     const voll = ueberlappt(belegtVon, belegtBis, f.von, f.bis);
     const nah = !voll && ueberlappt(belegtVon, belegtBis, isoPlus(f.von, -2), isoPlus(f.bis, 2));
     if (!voll && !nah) continue;
