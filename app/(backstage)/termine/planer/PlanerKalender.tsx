@@ -27,7 +27,8 @@ export type KalenderBalken = {
   key: string;
   von: string;
   bis: string;
-  art: "termin" | "pruefung" | "gemerkt" | "vorschlag";
+  /** fest = im Planer fest eingeplanter Online-/Praesenz-Termin (kein Seminar) */
+  art: "termin" | "fest" | "pruefung" | "gemerkt" | "vorschlag";
   label: string;
   titel: string;
   farbe?: string | null;
@@ -64,7 +65,7 @@ export default function PlanerKalender({
   ferien: { land: string; region: string | null; typ: string; bezeichnung: string; von: string; bis: string }[];
   konferenzen: { name: string; von: string; bis: string; gewicht: number }[];
   blocker: { bezeichnung: string; monat: number; tag: number; puffer_vorher: number; puffer_nachher: number; hart: boolean }[];
-  formate: { id: string; name: string; mitHotel: boolean }[];
+  formate: { id: string; name: string; mitHotel: boolean; seminar: boolean }[];
   orte: { id: string; name: string }[];
   typen: { id: string; name: string; farbe?: string | null }[];
   standardFormatId: string;
@@ -121,7 +122,7 @@ export default function PlanerKalender({
           const anzahlTage = new Date(jahr, monatIndex + 1, 0).getDate();
           const monatStart = iso(jahr, monatIndex, 1);
           const monatEnde = iso(jahr, monatIndex, anzahlTage);
-          const rang = { termin: 0, pruefung: 1, gemerkt: 2, vorschlag: 3 };
+          const rang = { termin: 0, fest: 1, pruefung: 2, gemerkt: 3, vorschlag: 4 };
           const imMonat = balken
             .filter((b) => b.von <= monatEnde && b.bis >= monatStart)
             .sort((a, b) => rang[a.art] - rang[b.art] || a.von.localeCompare(b.von));
@@ -188,9 +189,21 @@ export default function PlanerKalender({
                 const stil = {
                   gridColumn: `${von + 1} / ${bis + 2}`,
                   gridRow: spur + 1,
-                  ...(b.art === "termin" ? { background: b.farbe || "var(--color-accent)" } : b.farbe ? ({ "--kat": b.farbe } as React.CSSProperties) : {}),
+                  ...(b.art === "termin" || b.art === "fest"
+                    ? { background: b.farbe || "var(--color-accent)" }
+                    : b.farbe
+                      ? ({ "--kat": b.farbe } as React.CSSProperties)
+                      : {}),
                 };
                 const klasse = `au-planer-balken au-tp-balken-${b.art}${b.kandidatId ? " ziehbar" : ""}`;
+                // Fest eingeplant: nicht ziehbar -- erst "Festlegung aufheben" (Reiter Kandidaten)
+                if (b.art === "fest") {
+                  return (
+                    <span key={b.key} className={klasse} style={stil} title={`${b.titel}\n(zum Ändern unter „Kandidaten“ die Festlegung aufheben)`} onClick={(e) => e.stopPropagation()}>
+                      {b.label}
+                    </span>
+                  );
+                }
                 if (b.art === "termin") {
                   return (
                     <a key={b.key} href={b.href} className={klasse} style={stil} title={`${b.titel}\n(fester Termin – Änderungen in der Terminmaske)`} onClick={(e) => e.stopPropagation()}>
@@ -264,7 +277,7 @@ function AuswahlKarte({
   onSchliessen,
 }: {
   auswahl: Auswahl;
-  formate: { id: string; name: string; mitHotel: boolean }[];
+  formate: { id: string; name: string; mitHotel: boolean; seminar: boolean }[];
   orte: { id: string; name: string }[];
   typen: { id: string; name: string; farbe?: string | null }[];
   standardOrtId: string;
@@ -293,7 +306,7 @@ function AuswahlKarte({
     };
   }, [auswahl]);
 
-  const speichern = (status?: "vorgeschlagen" | "in_pruefung") =>
+  const speichern = (status?: "vorgeschlagen" | "in_pruefung" | "fest") =>
     starte(async () => {
       setFehler(null);
       const fd = new FormData();
@@ -374,9 +387,15 @@ function AuswahlKarte({
         {auswahl.modus === "neu" ? (
           <>
             <button type="button" className="au-btn au-btn-secondary au-btn-sm" disabled={laeuft || !bewertung || gesperrt} onClick={() => speichern("vorgeschlagen")}>Merken</button>
-            <button type="button" className="au-btn au-btn-primary au-btn-sm" disabled={laeuft || !bewertung || gesperrt} onClick={() => speichern("in_pruefung")}>
-              {format?.mitHotel === false ? "Location anfragen" : "Hotel anfragen"}
-            </button>
+            {format?.seminar === false ? (
+              <button type="button" className="au-btn au-btn-primary au-btn-sm" disabled={laeuft || !bewertung || gesperrt} onClick={() => speichern("fest")}>
+                Fest einplanen
+              </button>
+            ) : (
+              <button type="button" className="au-btn au-btn-primary au-btn-sm" disabled={laeuft || !bewertung || gesperrt} onClick={() => speichern("in_pruefung")}>
+                {format?.mitHotel === false ? "Location anfragen" : "Hotel anfragen"}
+              </button>
+            )}
           </>
         ) : (
           <button type="button" className="au-btn au-btn-primary au-btn-sm" disabled={laeuft || !bewertung || gesperrt} onClick={() => speichern()}>Hierhin verschieben</button>
@@ -391,6 +410,7 @@ export function KalenderLegende() {
   return (
     <span className="au-planer-legende au-tp-legende">
       <span><i className="au-tp-leg termin" />Seminar</span>
+      <span><i className="au-tp-leg fest" />fest eingeplant (Online/Präsenz)</span>
       <span><i className="au-tp-leg pruefung" />vorgeplant: in Prüfung</span>
       <span><i className="au-tp-leg gemerkt" />vorgeplant: gemerkt</span>
       <span><i className="au-tp-leg vorschlag" />Vorschlag (gepunktet)</span>

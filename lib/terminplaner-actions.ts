@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseAdmin } from "./supabase";
 import { getAktuellerBenutzer } from "./auth";
-import { bewerte, ladePlanerDaten, importiereFerien, type Bewertung, type Format } from "./terminplaner";
+import { bewerte, ladePlanerDaten, importiereFerien, istSeminarFormat, normalisiereSerienRegel, type Bewertung, type Format } from "./terminplaner";
 import { kopiereTerminInhalte, einstellungenAusQuelle, uebernahmeZusammenfassung, type UebernahmeBereiche } from "./termin-uebernahme";
 
 // Server Actions des Terminplaners (/termine/planer). Eigene Datei, weil das
@@ -52,15 +52,20 @@ export async function legeKandidatAn(formData: FormData): Promise<Ergebnis> {
   const start = String(formData.get("datum_start") || "");
   const formatId = String(formData.get("format_id") || "");
   const herkunft = formData.get("herkunft") === "algorithmisch" ? "algorithmisch" : "manuell";
-  const status = formData.get("status") === "in_pruefung" ? "in_pruefung" : "vorgeschlagen";
+  const statusRoh = String(formData.get("status") || "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !formatId) return { fehler: "Datum und Format sind Pflicht." };
   const format = await ladeFormat(formatId);
+  // "fest" nur fuer die neuen Terminarten (Online/Praesenz) -- Seminare werden
+  // ueber "Als Termin festlegen" zu echten Seminarterminen.
+  const status =
+    statusRoh === "fest" && !istSeminarFormat(format) ? "fest" : statusRoh === "in_pruefung" && istSeminarFormat(format) ? "in_pruefung" : "vorgeschlagen";
   const b = bewerte(start, format, await ladePlanerDaten(Number(start.slice(0, 4))), heuteBerlin());
   const bestaetigt = formData.get("kollision_bestaetigt") === "on";
   if (b.kollision && !bestaetigt) return { fehler: `${b.kollision}. Zum Speichern „Überschneidung bewusst in Kauf nehmen“ anhaken.` };
 
   const supabase = getSupabaseAdmin();
-  const ortId = String(formData.get("veranstaltungsort_id") || "") || null;
+  // Online-Termine haben keinen Ort (auch wenn im Filter einer gewaehlt ist)
+  const ortId = format.terminart === "online" ? null : String(formData.get("veranstaltungsort_id") || "") || null;
   // Touring: gleicher Tag/Format in einer anderen Stadt ist ein eigener Kandidat
   let doppeltAbfrage = supabase
     .from("terminvorschlaege")
@@ -91,7 +96,70 @@ export async function legeKandidatAn(formData: FormData): Promise<Ergebnis> {
   });
   if (error) return { fehler: error.message };
   revalidatePath("/termine/planer");
-  return { fehler: null, info: status === "in_pruefung" ? "Als „in Prüfung“ gespeichert." : "Als Kandidat gemerkt." };
+  return {
+    fehler: null,
+    info: status === "fest" ? "Fest eingeplant." : status === "in_pruefung" ? "Als „in Prüfung“ gespeichert." : "Als Kandidat gemerkt.",
+  };
+}
+
+/**
+ * Kandidat einer neuen Terminart (Online/Praesenz) fest einplanen: blockiert
+ * ab dann die Planung wie ein Seminar, wird aber (noch) kein seminartermin --
+ * die eigene Sektion dafuer folgt. Ueberschneidung nur mit Bestaetigung
+ * ("uebergehen").
+ */
+export async function setzeKandidatFest(formData: FormData): Promise<Ergebnis> {
+  const f = await loginFehler();
+  if (f) return { fehler: f };
+  const supabase = getSupabaseAdmin();
+  const id = String(formData.get("id") || "");
+  const { data: k } = await supabase.from("terminvorschlaege").select("*, termin_formate(*)").eq("id", id).maybeSingle();
+  if (!k || !k.termin_formate) return { fehler: "Kandidat nicht gefunden." };
+  if (istSeminarFormat(k.termin_formate)) return { fehler: "Seminare bitte über „Als Termin festlegen“ übernehmen." };
+  const b = bewerte(k.datum_start, k.termin_formate as Format, await ladePlanerDaten(Number(k.datum_start.slice(0, 4))), heuteBerlin(), { vorschlagId: id });
+  const bestaetigt = formData.get("kollision_bestaetigt") === "on";
+  if (b.kollision && !bestaetigt) return { fehler: `${b.kollision}. Zum Festlegen „Überschneidung bewusst in Kauf nehmen“ anhaken.` };
+  const { error } = await supabase
+    .from("terminvorschlaege")
+    .update({ status: "fest", kollision_bestaetigt: !!b.kollision, score: b.score, begruendung: b.gruende, aktualisiert_am: new Date().toISOString() })
+    .eq("id", id)
+    .in("status", ["vorgeschlagen", "in_pruefung"]);
+  if (error) return { fehler: error.message };
+  revalidatePath("/termine/planer");
+  return { fehler: null, info: "Fest eingeplant." };
+}
+
+/**
+ * Serie uebernehmen: alle ausgewaehlten Termine einer Serie auf einmal merken
+ * oder fest einplanen. Termine mit Ueberschneidung werden dabei uebersprungen
+ * (einzeln mit Bestaetigung moeglich) statt still uebergangen.
+ */
+export async function uebernehmeSerie(formData: FormData): Promise<Ergebnis> {
+  const f = await loginFehler();
+  if (f) return { fehler: f };
+  const formatId = String(formData.get("format_id") || "");
+  const status = formData.get("status") === "fest" ? "fest" : "vorgeschlagen";
+  const tage = String(formData.get("tage") || "")
+    .split(",")
+    .filter((t) => /^\d{4}-\d{2}-\d{2}$/.test(t));
+  if (!formatId || !tage.length) return { fehler: "Keine Termine ausgewählt." };
+  let ok = 0;
+  const uebersprungen: string[] = [];
+  for (const tag of tage) {
+    const fd = new FormData();
+    fd.set("datum_start", tag);
+    fd.set("format_id", formatId);
+    fd.set("herkunft", "algorithmisch");
+    fd.set("status", status);
+    const r = await legeKandidatAn(fd);
+    if (r.fehler) uebersprungen.push(`${tag.split("-").reverse().join(".")}: ${r.fehler.replace(/\. Zum Speichern.*$/, "")}`);
+    else ok += 1;
+  }
+  revalidatePath("/termine/planer");
+  const was = status === "fest" ? "fest eingeplant" : "als Kandidaten gemerkt";
+  return uebersprungen.length
+    ? { fehler: `${ok} ${was}, ${uebersprungen.length} übersprungen – ${uebersprungen.join("; ")}` }
+    : { fehler: null, info: `${ok} Termine ${was}.` };
 }
 
 // "" = Feld leer gelassen (null), fehlt = nicht im Formular (undefined -> Format-Wert)
@@ -398,6 +466,24 @@ export async function loescheBedarf(formData: FormData) {
   zurueck("bedarf");
 }
 
+// Terminart, Farbe und Serien-Regel eines Formats (Formate-Reiter)
+function formatZusatz(fd: FormData) {
+  const art = String(fd.get("terminart") || "seminar");
+  const farbe = String(fd.get("farbe") || "");
+  return {
+    terminart: ["seminar", "online", "praesenz"].includes(art) ? art : "seminar",
+    farbe: /^#[0-9a-f]{6}$/i.test(farbe) && fd.get("farbe_aktiv") === "on" ? farbe : null,
+    serien_regel: normalisiereSerienRegel({
+      rhythmus: fd.get("serie_rhythmus"),
+      start_monat: fd.get("serie_start_monat"),
+      modus: fd.get("serie_modus"),
+      woche_im_monat: fd.get("serie_woche"),
+      wochentag: fd.get("serie_wochentag"),
+      wochentage: fd.getAll("serie_wochentage").join(","),
+    }),
+  };
+}
+
 export async function legeFormatAn(formData: FormData) {
   await login();
   const wt = String(formData.get("start_wochentag") || "");
@@ -415,6 +501,7 @@ export async function legeFormatAn(formData: FormData) {
     abendprogramm: formData.get("abendprogramm") === "on",
     beschreibung: String(formData.get("beschreibung") || "").trim() || null,
     mindestabstand_tage: abstandAus(formData),
+    ...formatZusatz(formData),
     sortierung: 99,
   });
   if (error) throw new Error(error.message);
@@ -444,6 +531,7 @@ export async function aktualisiereFormat(formData: FormData) {
       benoetigt_uebernachtung: formData.get("benoetigt_uebernachtung") === "on",
       start_uhrzeit: zeit(formData, "start_uhrzeit") ?? null,
       end_uhrzeit: zeit(formData, "end_uhrzeit") ?? null,
+      ...formatZusatz(formData),
     })
     .eq("id", String(formData.get("id")));
   if (error) throw new Error(error.message);

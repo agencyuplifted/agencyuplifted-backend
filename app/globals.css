@@ -4950,6 +4950,114 @@ a.au-kliste-name:hover {
   margin-top: 0.75rem;
 }
 
+/* Serien (Online-Routinen, halbjaehrliche Praesenz-Formate) -- SerienPanel.tsx */
+.au-tp-serie {
+  padding: 0.5rem 1.15rem 0.75rem;
+}
+
+.au-tp-serie-zeile.erledigt {
+  background: var(--color-bg);
+}
+
+.au-tp-serie-wahl {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+
+.au-tp-serie-platzhalter {
+  display: inline-block;
+  width: 13px;
+}
+
+.au-tp-serie-periode {
+  min-width: 7.5rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.au-tp-serie-punkt {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+}
+
+.au-tp-serie-grund {
+  margin: 0.3rem 0 0;
+  padding-left: calc(13px + 0.6rem);
+}
+
+.au-tp-serie-grund.warnung {
+  color: var(--color-warning);
+}
+
+.au-tp-serie-fuss {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0 1.15rem 1rem;
+}
+
+.au-tp-format-zusatz {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin-top: 0.25rem;
+}
+
+.au-tp-farbe {
+  width: 34px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.au-tp-serie-felder {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.8rem;
+  margin: 0;
+  padding: 0.5rem 0.7rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.au-tp-serie-felder legend {
+  padding: 0 0.3rem;
+}
+
+.au-tp-format-zusatz .au-select,
+.au-tp-serie-felder .au-select {
+  width: auto;
+  min-width: 0;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* Fest eingeplante Online-/Praesenz-Termine: vollflaechig in Formatfarbe wie
+   Seminare, aber mit weissem Innenrand -- klar "fest", aber kein Seminar */
+.au-tp-balken-fest {
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
+.au-tp-leg.fest {
+  background: #2f7d6d;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
 .au-tp-inline {
   display: inline-flex;
   align-items: center;

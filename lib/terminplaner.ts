@@ -31,7 +31,41 @@ export type Format = {
   ferien_gewichtung_modus?: "abschlag" | "neutral" | "bonus";
   /** null/undefined = Standard aus den Einstellungen */
   mindestabstand_tage?: number | null;
+  /** seminar = wird zum seminartermin; online/praesenz = eigene Terminart, im Planer nur "fest eingeplant" */
+  terminart?: Terminart;
+  serien_regel?: SerienRegel | null;
+  farbe?: string | null;
 };
+
+export type Terminart = "seminar" | "online" | "praesenz";
+export const TERMINART_LABEL: Record<Terminart, string> = { seminar: "Seminar", online: "Online", praesenz: "Präsenz (kein Seminar)" };
+
+export type Rhythmus = "monatlich" | "zweimonatlich" | "quartalsweise" | "halbjaehrlich" | "jaehrlich";
+export const RHYTHMUS_MONATE: Record<Rhythmus, number> = { monatlich: 1, zweimonatlich: 2, quartalsweise: 3, halbjaehrlich: 6, jaehrlich: 12 };
+export const RHYTHMUS_LABEL: Record<Rhythmus, string> = {
+  monatlich: "monatlich",
+  zweimonatlich: "alle 2 Monate",
+  quartalsweise: "quartalsweise",
+  halbjaehrlich: "halbjährlich",
+  jaehrlich: "jährlich",
+};
+
+/**
+ * Serie eines Formats pro Kalenderjahr. modus "regel" = feste Routine (z. B.
+ * 2. Freitag im Monat), von der nur bei Konflikt abgewichen wird -- Teilnehmer
+ * koennen sich den Rhythmus merken. modus "bester_tag" = je Periode der
+ * bestbewertete Tag (fuer Praesenz-Formate ohne feste Routine).
+ */
+export type SerienRegel = {
+  rhythmus: Rhythmus;
+  start_monat: number;
+  modus: "regel" | "bester_tag";
+  woche_im_monat?: number | null; // 1-4, -1 = letzte
+  wochentag?: number | null; // ISO 1=Mo
+  wochentage?: number[] | null; // bester_tag: erlaubte Wochentage
+};
+
+export const istSeminarFormat = (f?: { terminart?: string | null } | null) => !f?.terminart || f.terminart === "seminar";
 
 /** Mindestabstand fuer dieses Format (eigener Wert oder Standard) */
 export const abstandFuer = (format: Format, daten: PlanerDaten) => format.mindestabstand_tage ?? daten.einstellungen.mindestabstand_tage;
@@ -56,6 +90,8 @@ export type PlanerDaten = {
   blocker: { bezeichnung: string; monat: number; tag: number; puffer_vorher: number; puffer_nachher: number; hart: boolean }[];
   termine: { id: string; kennung: string | null; titel: string | null; datum_start: string; datum_ende: string | null; vorabend_anreise_datum: string | null }[];
   vorschlaege: { id: string; datum_start: string; datum_ende: string; anreise_datum: string | null; status: string }[];
+  /** Im Planer fest eingeplante Termine der neuen Terminarten -- blockieren wie ein Seminar */
+  fest: { id: string; datum_start: string; datum_ende: string; anreise_datum: string | null; name: string }[];
   einstellungen: { mindestabstand_tage: number; vorlauf_tage: number };
 };
 
@@ -109,7 +145,12 @@ export async function ladePlanerDaten(jahr: number): Promise<PlanerDaten> {
     supabase.from("konferenz_kalender").select("name, von, bis, gewicht").lte("von", bis).gte("bis", von),
     supabase.from("persoenliche_blocker").select("bezeichnung, monat, tag, puffer_vorher, puffer_nachher, hart").eq("aktiv", true),
     supabase.from("seminartermine").select("id, kennung, titel, datum_start, datum_ende, vorabend_anreise_datum").neq("status", "abgesagt").is("deaktiviert_am", null).gte("datum_start", von).lte("datum_start", bis),
-    supabase.from("terminvorschlaege").select("id, datum_start, datum_ende, anreise_datum, status").in("status", ["in_pruefung"]),
+    supabase
+      .from("terminvorschlaege")
+      .select("id, datum_start, datum_ende, anreise_datum, status, termin_formate(name)")
+      .in("status", ["in_pruefung", "fest"])
+      .lte("datum_start", bis)
+      .gte("datum_ende", von),
     supabase.from("terminplaner_einstellungen").select("mindestabstand_tage, vorlauf_tage").eq("id", 1).maybeSingle(),
   ]);
   return {
@@ -117,7 +158,10 @@ export async function ladePlanerDaten(jahr: number): Promise<PlanerDaten> {
     konferenzen: [...(k.data || []), ...automatischeTermine([jahr - 1, jahr, jahr + 1]).filter((a) => a.bis >= von && a.von <= bis)],
     blocker: b.data || [],
     termine: t.data || [],
-    vorschlaege: v.data || [],
+    vorschlaege: (v.data || []).filter((x: any) => x.status === "in_pruefung"),
+    fest: (v.data || [])
+      .filter((x: any) => x.status === "fest")
+      .map((x: any) => ({ id: x.id, datum_start: x.datum_start, datum_ende: x.datum_ende, anreise_datum: x.anreise_datum, name: x.termin_formate?.name || "Termin" })),
     einstellungen: e.data || { mindestabstand_tage: 14, vorlauf_tage: 60 },
   };
 }
@@ -157,6 +201,17 @@ export function bewerte(start: string, format: Format, daten: PlanerDaten, heute
         gesperrt ||= text;
         gruende.push({ art: "termin", text, punkte: -30 });
       }
+    }
+  }
+  // Fest eingeplante Termine (Sparrings, Sessions, Uplift-Days …): Ueberschneidung
+  // wie bei einem Seminar = Kollision (manuell uebergehbar), aber kein
+  // Mindestabstand -- ein 3-Stunden-Online-Termin soll keine zwei Wochen sperren.
+  for (const f of daten.fest || []) {
+    if (f.id === ausser?.vorschlagId) continue;
+    if (ueberlappt(belegtVon, belegtBis, f.anreise_datum || f.datum_start, f.datum_ende)) {
+      const text = `Überschneidet sich mit fest eingeplantem ${f.name} (${fmt(f.datum_start)})`;
+      kollision ||= text;
+      gruende.push({ art: "termin", text, punkte: -100 });
     }
   }
   // Termine "in Prüfung" beim Hotel: noch nicht fest, aber praktisch belegt
@@ -363,4 +418,153 @@ export async function importiereFerien(jahr: number): Promise<{ neu: number }> {
     .select("id");
   if (error) throw new Error(error.message);
   return { neu: data?.length || 0 };
+}
+
+// ---------- Serien (Online-Routinen, halbjaehrliche Praesenz-Formate) ----------
+
+/** n-ter Wochentag (ISO 1=Mo) eines Monats, n = -1 fuer den letzten */
+export function nterWochentag(jahr: number, monat: number, n: number, wt: number): string {
+  const erster = `${jahr}-${String(monat).padStart(2, "0")}-01`;
+  if (n > 0) {
+    const versatz = (wt - wochentag(erster) + 7) % 7;
+    return isoPlus(erster, versatz + (n - 1) * 7);
+  }
+  const letzter = isoPlus(monat === 12 ? `${jahr + 1}-01-01` : `${jahr}-${String(monat + 1).padStart(2, "0")}-01`, -1);
+  return isoPlus(letzter, -((wochentag(letzter) - wt + 7) % 7));
+}
+
+const MONATE_KURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+const WT_KURZ = ["", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const WOCHE_TEXT: Record<string, string> = { "1": "1.", "2": "2.", "3": "3.", "4": "4.", "-1": "letzter" };
+
+export function serienRegelText(r: SerienRegel): string {
+  const basis = RHYTHMUS_LABEL[r.rhythmus] || r.rhythmus;
+  if (r.modus === "regel" && r.woche_im_monat && r.wochentag) {
+    const monate = RHYTHMUS_MONATE[r.rhythmus] > 1 ? ` (ab ${MONATE_KURZ[(r.start_monat || 1) - 1]})` : "";
+    return `${basis}, ${WOCHE_TEXT[String(r.woche_im_monat)]} ${WT_KURZ[r.wochentag]} im Monat${monate}`;
+  }
+  const tage = r.wochentage?.length ? r.wochentage.map((w) => WT_KURZ[w]).join("/") : "Mo–Fr";
+  return `${basis}, bester Tag je Periode (${tage})`;
+}
+
+/** Perioden eines Jahres, z. B. zweimonatlich ab Jan: Jan–Feb, Mär–Apr, … */
+export function serienPerioden(jahr: number, r: SerienRegel): { label: string; von: string; bis: string; monat: number }[] {
+  const schritt = RHYTHMUS_MONATE[r.rhythmus] || 1;
+  const erster = (((r.start_monat || 1) - 1) % schritt) + 1;
+  const perioden = [];
+  for (let m = erster; m <= 12; m += schritt) {
+    const bisMonat = Math.min(12, m + schritt - 1);
+    const von = `${jahr}-${String(m).padStart(2, "0")}-01`;
+    const bis = isoPlus(bisMonat === 12 ? `${jahr + 1}-01-01` : `${jahr}-${String(bisMonat + 1).padStart(2, "0")}-01`, -1);
+    perioden.push({ label: schritt === 1 ? `${MONATE_KURZ[m - 1]} ${jahr}` : `${MONATE_KURZ[m - 1]}–${MONATE_KURZ[bisMonat - 1]} ${jahr}`, von, bis, monat: m });
+  }
+  return perioden;
+}
+
+export type SerienZeile = {
+  periode: { label: string; von: string; bis: string };
+  /** Termin laut Regel (nur modus "regel") */
+  regeltag: Bewertung | null;
+  /** Vorschlag des Planers: Regeltag oder Ausweichtag bzw. bester Tag */
+  vorschlag: Bewertung | null;
+  ausgewichen: boolean;
+  /** schon vorhandener Kandidat/fester Termin dieses Formats in der Periode */
+  vorhanden: { id: string; status: string; datum_start: string } | null;
+};
+
+// Regeltag "passt nicht", wenn er gesperrt ist, kollidiert oder einen
+// spuerbaren Abzug hat (Feiertag -15, Blocker, Konferenz ab Gewicht 2 …).
+// Ferien zaehlen bei neutralen Formaten ohnehin nicht.
+const hatProblem = (b: Bewertung) => !!b.gesperrt || !!b.kollision || b.gruende.some((g) => g.punkte <= -15);
+
+export function planeSerie(
+  format: Format,
+  jahr: number,
+  daten: PlanerDaten,
+  heute: string,
+  bestehende: { id: string; format_id: string; status: string; datum_start: string }[]
+): SerienZeile[] {
+  const r = format.serien_regel;
+  if (!r) return [];
+  return serienPerioden(jahr, r).map((p) => {
+    const vorhanden =
+      bestehende
+        .filter((k) => k.format_id === format.id && k.status !== "verworfen" && k.datum_start >= p.von && k.datum_start <= p.bis)
+        .sort((a, b) => (a.status === "fest" ? -1 : b.status === "fest" ? 1 : 0))[0] || null;
+
+    if (r.modus === "regel" && r.woche_im_monat && r.wochentag) {
+      const tag = nterWochentag(jahr, p.monat, r.woche_im_monat, r.wochentag);
+      const regeltag = bewerte(tag, format, daten, heute);
+      if (!hatProblem(regeltag)) return { periode: p, regeltag, vorschlag: regeltag, ausgewichen: false, vorhanden };
+
+      // Ausweichen: zuerst derselbe Wochentag eine Woche frueher/spaeter (die
+      // Routine "freitags" bleibt), dann andere Werktage derselben Woche, dann
+      // derselbe Wochentag +/-2 Wochen -- jeweils nur innerhalb der Periode.
+      // (Erst "gleiche Woche" ergab in der Simulation oft einen Montag direkt
+      // vor der Seminar-Anreise.)
+      const montag = isoPlus(tag, 1 - wochentag(tag));
+      const stufen: string[][] = [
+        [isoPlus(tag, -7), isoPlus(tag, 7)],
+        [0, 1, 2, 3, 4].map((i) => isoPlus(montag, i)).filter((t) => t !== tag),
+        [isoPlus(tag, -14), isoPlus(tag, 14)],
+      ];
+      let fallback: Bewertung | null = null;
+      for (const stufe of stufen) {
+        const bewertet = stufe
+          .filter((t) => t >= p.von && t <= p.bis)
+          .map((t) => bewerte(t, format, daten, heute))
+          .filter((b) => !b.gesperrt && !b.kollision)
+          .sort((a, b) => b.score - a.score || Math.abs(tageZwischen(tag, a.datum_start)) - Math.abs(tageZwischen(tag, b.datum_start)));
+        const gut = bewertet.find((b) => !hatProblem(b));
+        if (gut) return { periode: p, regeltag, vorschlag: gut, ausgewichen: true, vorhanden };
+        fallback ||= bewertet[0] || null;
+      }
+      // Nichts Besseres gefunden: Regeltag behalten, wenn er zumindest nicht
+      // gesperrt ist -- sonst den am wenigsten schlechten Ausweichtag.
+      const vorschlag = !regeltag.gesperrt && !regeltag.kollision ? regeltag : fallback;
+      return { periode: p, regeltag, vorschlag, ausgewichen: !!vorschlag && vorschlag !== regeltag, vorhanden };
+    }
+
+    // bester_tag: alle passenden Tage der Periode bewerten, bester gewinnt
+    const erlaubt = r.wochentage?.length ? r.wochentage : null;
+    const beste = generiere(p.von, p.bis, format, daten, heute).filter((b) => !erlaubt || erlaubt.includes(wochentag(b.datum_start)));
+    // Unter den (fast) gleich guten Tagen den zur Periodenmitte naechsten --
+    // sonst landet z. B. ein halbjaehrlicher Uplift-Day immer Anfang Januar/Juli
+    // und die beiden Termine liegen nicht sinnvoll verteilt.
+    const mitte = isoPlus(p.von, Math.floor(tageZwischen(p.von, p.bis) / 2));
+    const spitze = beste.length ? beste[0].score : 0;
+    const vorschlag =
+      beste
+        .filter((b) => b.score >= spitze - 5)
+        .sort((a, b) => Math.abs(tageZwischen(mitte, a.datum_start)) - Math.abs(tageZwischen(mitte, b.datum_start)) || b.score - a.score)[0] || null;
+    return { periode: p, regeltag: null, vorschlag, ausgewichen: false, vorhanden };
+  });
+}
+
+export function normalisiereSerienRegel(roh: Record<string, FormDataEntryValue | null>): SerienRegel | null {
+  const rhythmus = String(roh.rhythmus || "");
+  if (!rhythmus || !(rhythmus in RHYTHMUS_MONATE)) return null;
+  const modus = roh.modus === "bester_tag" ? "bester_tag" : "regel";
+  const zahl = (v: FormDataEntryValue | null) => (v === null || v === "" ? null : Number(v));
+  const woche = zahl(roh.woche_im_monat);
+  const wt = zahl(roh.wochentag);
+  const regel: SerienRegel = {
+    rhythmus: rhythmus as Rhythmus,
+    start_monat: Math.min(12, Math.max(1, zahl(roh.start_monat) || 1)),
+    modus,
+  };
+  if (modus === "regel") {
+    if (!woche || ![1, 2, 3, 4, -1].includes(woche) || !wt || wt < 1 || wt > 7) {
+      throw new Error("Für eine feste Regel bitte Woche im Monat und Wochentag wählen.");
+    }
+    regel.woche_im_monat = woche;
+    regel.wochentag = wt;
+  } else {
+    const tage = String(roh.wochentage || "")
+      .split(",")
+      .map(Number)
+      .filter((n) => n >= 1 && n <= 7);
+    regel.wochentage = tage.length ? [...new Set(tage)].sort() : null;
+  }
+  return regel;
 }

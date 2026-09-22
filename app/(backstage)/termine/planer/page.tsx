@@ -13,12 +13,18 @@ import {
   abstandFuer,
   automatischeTermine,
   stelleFerienSicher,
+  planeSerie,
+  serienRegelText,
+  istSeminarFormat,
+  TERMINART_LABEL,
+  RHYTHMUS_LABEL,
   type Format,
   type Bewertung,
 } from "@/lib/terminplaner";
 import {
   legeKandidatAn,
   setzeKandidatStatus,
+  setzeKandidatFest,
   aktualisiereKandidat,
   speichereNachbewertung,
   legeKonferenzAn,
@@ -44,12 +50,15 @@ import KopierText from "./KopierText";
 import KategorieWahl from "./KategorieWahl";
 import { TerminFestlegenKnopf, TerminFestlegenPanel, type QuellTermin } from "./TerminFestlegen";
 import PlanerKalender, { KalenderLegende, type KalenderBalken } from "./PlanerKalender";
+import SerienPanel, { type SerienZeileDaten } from "./SerienPanel";
 
 export const metadata = { title: "Terminplaner" };
 
 const WT = ["", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const ZEITRAUM_LABEL: Record<string, string> = { jahr: "ganzes Jahr", H1: "1. Halbjahr", H2: "2. Halbjahr", Q1: "Q1", Q2: "Q2", Q3: "Q3", Q4: "Q4" };
-const STATUS_LABEL: Record<string, string> = { vorgeschlagen: "Kandidat", in_pruefung: "In Prüfung beim Hotel", bestaetigt: "Bestätigt", verworfen: "Verworfen" };
+const STATUS_LABEL: Record<string, string> = { vorgeschlagen: "Kandidat", in_pruefung: "In Prüfung beim Hotel", bestaetigt: "Bestätigt", fest: "Fest eingeplant", verworfen: "Verworfen" };
+const WOCHE_LABEL: Record<string, string> = { "1": "1.", "2": "2.", "3": "3.", "4": "4.", "-1": "letzter" };
+const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
 // "Mi 14.04.27 – Fr 16.04.27 (Anreise Di 13.04.)"
 function spanne(b: { datum_start: string; datum_ende: string; anreise_datum?: string | null; start_uhrzeit?: string | null; end_uhrzeit?: string | null }) {
@@ -159,9 +168,13 @@ export default async function TerminplanerPage({
               {ortId && <input type="hidden" name="veranstaltungsort_id" value={ortId} />}
               {typId && <input type="hidden" name="seminartyp_id" value={typId} />}
               <button type="submit" name="status" value="vorgeschlagen" className="au-btn au-btn-secondary au-btn-sm">Merken</button>
-              <button type="submit" name="status" value="in_pruefung" className="au-btn au-btn-primary au-btn-sm">
-                {mitHotel(f) ? "Hotel anfragen" : "Location anfragen"}
-              </button>
+              {istSeminarFormat(f) ? (
+                <button type="submit" name="status" value="in_pruefung" className="au-btn au-btn-primary au-btn-sm">
+                  {mitHotel(f) ? "Hotel anfragen" : "Location anfragen"}
+                </button>
+              ) : (
+                <button type="submit" name="status" value="fest" className="au-btn au-btn-primary au-btn-sm">Fest einplanen</button>
+              )}
             </AktionsFormular>
           )}
         </div>
@@ -272,7 +285,7 @@ export default async function TerminplanerPage({
         </div>
         <div style={{ padding: "1rem 1.15rem" }}>
           <ManuellerKandidat
-            formate={formate.map((f) => ({ id: f.id, name: f.name, start_uhrzeit: f.start_uhrzeit || null, end_uhrzeit: f.end_uhrzeit || null, mitHotel: mitHotel(f) }))}
+            formate={formate.map((f) => ({ id: f.id, name: f.name, start_uhrzeit: f.start_uhrzeit || null, end_uhrzeit: f.end_uhrzeit || null, mitHotel: mitHotel(f), seminar: istSeminarFormat(f) }))}
             orte={(orteAlle || []).map((o: any) => ({ id: o.id, name: o.name }))}
             typen={(typen || []) as any[]}
             jahr={jahr}
@@ -292,6 +305,8 @@ export default async function TerminplanerPage({
 
   const kandidatZeile = (k: any) => {
     const live = k.termin_formate && k.status !== "bestaetigt" && k.status !== "verworfen" ? bewerte(k.datum_start, k.termin_formate as Format, daten, heute, { vorschlagId: k.id }) : null;
+    const seminar = istSeminarFormat(k.termin_formate);
+    const online = k.termin_formate?.terminart === "online";
     return (
       <li key={k.id} className="au-tp-zeile">
         <div className="au-tp-zeile-kopf">
@@ -299,23 +314,42 @@ export default async function TerminplanerPage({
             <strong>{spanne(k)}</strong>
             <div className="au-klein">
               {k.termin_formate?.name} · {k.herkunft === "manuell" ? "selbst gewählt" : "vom Planer vorgeschlagen"}
+              {!seminar && ` · ${TERMINART_LABEL[k.termin_formate.terminart as keyof typeof TERMINART_LABEL]}`}
               {k.veranstaltungsorte?.name && ` · ${k.veranstaltungsorte.name}`}
               {k.seminartypen?.name && ` · ${k.seminartypen.name}`}
               {k.kollision_bestaetigt && " · Überschneidung bewusst bestätigt"}
             </div>
           </div>
           <div className="au-tp-knoepfe">
-            {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
+            {seminar && (k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
               <KategorieWahl kandidatId={k.id} wert={k.seminartyp_id} typen={(typen || []) as any[]} />
             )}
-            {k.status === "vorgeschlagen" && (
+            {seminar && k.status === "vorgeschlagen" && (
               <form action={setzeKandidatStatus}>
                 <input type="hidden" name="id" value={k.id} />
                 <input type="hidden" name="status" value="in_pruefung" />
                 <button type="submit" className="au-btn au-btn-secondary au-btn-sm">{mitHotel(k.termin_formate) ? "Hotel anfragen" : "Location anfragen"}</button>
               </form>
             )}
-            {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && <TerminFestlegenKnopf kandidatId={k.id} />}
+            {seminar && (k.status === "vorgeschlagen" || k.status === "in_pruefung") && <TerminFestlegenKnopf kandidatId={k.id} />}
+            {!seminar && (k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
+              <AktionsFormular action={setzeKandidatFest} className="au-tp-knoepfe">
+                <input type="hidden" name="id" value={k.id} />
+                {live?.kollision && (
+                  <label className="au-klein au-tp-inline" title={live.kollision}>
+                    <input type="checkbox" name="kollision_bestaetigt" /> Überschneidung übergehen
+                  </label>
+                )}
+                <button type="submit" className="au-btn au-btn-primary au-btn-sm">Fest einplanen</button>
+              </AktionsFormular>
+            )}
+            {k.status === "fest" && (
+              <form action={setzeKandidatStatus}>
+                <input type="hidden" name="id" value={k.id} />
+                <input type="hidden" name="status" value="vorgeschlagen" />
+                <button type="submit" className="au-link">Festlegung aufheben</button>
+              </form>
+            )}
             {k.status === "in_pruefung" && (
               <form action={setzeKandidatStatus}>
                 <input type="hidden" name="id" value={k.id} />
@@ -323,7 +357,7 @@ export default async function TerminplanerPage({
                 <button type="submit" className="au-link">zurück zu Kandidaten</button>
               </form>
             )}
-            {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
+            {(k.status === "vorgeschlagen" || k.status === "in_pruefung" || k.status === "fest") && (
               <form action={setzeKandidatStatus}>
                 <input type="hidden" name="id" value={k.id} />
                 <input type="hidden" name="status" value="verworfen" />
@@ -346,7 +380,7 @@ export default async function TerminplanerPage({
         </div>
         {live && <BewertungAnzeige b={live} kompakt />}
         {k.notiz && <p className="au-klein" style={{ margin: "0.3rem 0 0" }}>📝 {k.notiz}</p>}
-        {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
+        {seminar && (k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
           <TerminFestlegenPanel
             kandidat={{ id: k.id, seminartyp_id: k.seminartyp_id, veranstaltungsort_id: k.veranstaltungsort_id, spanne: spanne(k) }}
             typen={(typen || []) as any[]}
@@ -355,25 +389,33 @@ export default async function TerminplanerPage({
           />
         )}
 
-        {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
+        {(k.status === "vorgeschlagen" || k.status === "in_pruefung" || k.status === "fest") && (
           <details className="au-tp-details">
             <summary className="au-klein">
-              Ort, Kategorie, {mitHotel(k.termin_formate) ? "" : "Uhrzeit, "}Notiz
+              {online ? "Uhrzeit, Notiz" : `Ort, ${seminar ? "Kategorie, " : ""}${mitHotel(k.termin_formate) ? "" : "Uhrzeit, "}Notiz`}
             </summary>
             <form action={aktualisiereKandidat} className="au-tp-form">
               <input type="hidden" name="id" value={k.id} />
-              <select className="au-select" name="veranstaltungsort_id" defaultValue={k.veranstaltungsort_id || ""}>
-                <option value="">Ort offen</option>
-                {(orteAlle || []).map((o: any) => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
-              <select className="au-select" name="seminartyp_id" defaultValue={k.seminartyp_id || ""}>
-                <option value="">Kategorie offen</option>
-                {(typen || []).map((t: any) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+              {online ? (
+                <input type="hidden" name="veranstaltungsort_id" value="" />
+              ) : (
+                <select className="au-select" name="veranstaltungsort_id" defaultValue={k.veranstaltungsort_id || ""}>
+                  <option value="">Ort offen</option>
+                  {(orteAlle || []).map((o: any) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+              )}
+              {seminar ? (
+                <select className="au-select" name="seminartyp_id" defaultValue={k.seminartyp_id || ""}>
+                  <option value="">Kategorie offen</option>
+                  {(typen || []).map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input type="hidden" name="seminartyp_id" value="" />
+              )}
               {(!mitHotel(k.termin_formate) || k.start_uhrzeit) && (
                 <>
                   <label className="au-klein au-tp-inline">von <input className="au-input au-tp-zeit" type="time" name="start_uhrzeit" defaultValue={k.start_uhrzeit?.slice(0, 5) || ""} /></label>
@@ -434,6 +476,17 @@ export default async function TerminplanerPage({
 
       <section className="au-panel">
         <div className="au-panel-kopf">
+          <h2 style={{ margin: 0 }}>Fest eingeplant (Online &amp; Präsenz)</h2>
+          <span className="au-klein">{nachStatus("fest").length} · blockieren die Planung wie ein Seminar, eigene Sektion folgt</span>
+        </div>
+        <ul className="au-tp-liste" style={{ padding: "0.5rem 1.15rem 1rem" }}>
+          {nachStatus("fest").map(kandidatZeile)}
+          {!nachStatus("fest").length && <li className="au-leer">Noch nichts – unter „Serien“ planen und fest einplanen.</li>}
+        </ul>
+      </section>
+
+      <section className="au-panel">
+        <div className="au-panel-kopf">
           <h2 style={{ margin: 0 }}>Gemerkte Kandidaten</h2>
           <span className="au-klein">{nachStatus("vorgeschlagen").length}</span>
         </div>
@@ -460,6 +513,47 @@ export default async function TerminplanerPage({
           <ul className="au-tp-liste">{nachStatus("verworfen").map(kandidatZeile)}</ul>
         </details>
       )}
+    </div>
+  );
+
+  // ---------- Reiter "Serien" ----------
+  const kurzTag = (iso: string) => `${WT[wochentag(iso)]} ${formatDatum(iso)}`;
+  const serienFormate = formate.filter((f) => f.serien_regel);
+  const serien = serienFormate.map((f) => {
+    const zeilen = planeSerie(f, jahr, daten, heute, (kandidaten || []) as any[]);
+    const uhr = f.start_uhrzeit ? `, ${f.start_uhrzeit.slice(0, 5)}${f.end_uhrzeit ? `–${f.end_uhrzeit.slice(0, 5)}` : ""} Uhr` : "";
+    const daten_: SerienZeileDaten[] = zeilen.map((z) => ({
+      periode: z.periode.label,
+      regeltag: z.regeltag
+        ? { datum_start: z.regeltag.datum_start, score: z.regeltag.score, gruende: z.regeltag.gruende, gesperrt: z.regeltag.gesperrt, kollision: z.regeltag.kollision, text: kurzTag(z.regeltag.datum_start) }
+        : null,
+      vorschlag: z.vorschlag
+        ? { datum_start: z.vorschlag.datum_start, score: z.vorschlag.score, gruende: z.vorschlag.gruende, text: `${spanne({ ...z.vorschlag, start_uhrzeit: null })}${uhr}` }
+        : null,
+      ausgewichen: z.ausgewichen,
+      vorhanden: z.vorhanden ? { status: z.vorhanden.status, text: kurzTag(z.vorhanden.datum_start) } : null,
+    }));
+    return { f, zeilen: daten_, offen: daten_.filter((z) => !z.vorhanden).length };
+  });
+  const offeneSerienTermine = serien.reduce((n, s) => n + s.offen, 0);
+  const serienTab = (
+    <div className="au-tp-stapel">
+      <p className="au-klein" style={{ margin: 0 }}>
+        Wiederkehrende Termine {jahr} nach fester Regel: Passt der Regeltermin nicht (Seminar oder Anreise, Feiertag, Blocker, Konferenz), weicht der Planer
+        zuerst in dieselbe Woche aus, dann eine bzw. zwei Wochen – jeweils mit Begründung. Fest eingeplante Termine blockieren danach die übrige Planung.
+        Regeln unter „Formate &amp; Regeln“ anpassen.
+      </p>
+      {serien.map(({ f, zeilen }) => (
+        <SerienPanel
+          key={f.id}
+          formatId={f.id}
+          titel={f.name}
+          unterzeile={`${TERMINART_LABEL[(f.terminart || "seminar") as keyof typeof TERMINART_LABEL]} · ${serienRegelText(f.serien_regel!)}${f.start_uhrzeit ? ` · ${f.start_uhrzeit.slice(0, 5)}–${f.end_uhrzeit?.slice(0, 5) || ""} Uhr` : ""}`}
+          farbe={f.farbe || null}
+          zeilen={zeilen}
+        />
+      ))}
+      {!serien.length && <p className="au-leer">Noch kein Format mit Serien-Regel – unter „Formate &amp; Regeln“ bei einem Format eine Serie einstellen.</p>}
     </div>
   );
 
@@ -632,6 +726,71 @@ export default async function TerminplanerPage({
     </div>
   );
 
+  // Terminart, Farbe und Serie -- gleiche Felder beim Anlegen und Bearbeiten
+  const formatZusatzFelder = (f?: any) => {
+    const r = f?.serien_regel || null;
+    return (
+      <div className="au-tp-format-zusatz">
+        <label className="au-klein au-tp-inline">
+          Terminart
+          <select className="au-select" name="terminart" defaultValue={f?.terminart || "seminar"}>
+            <option value="seminar">Seminar (wird Seminartermin)</option>
+            <option value="online">Online (fest einplanen)</option>
+            <option value="praesenz">Präsenz, kein Seminar (fest einplanen)</option>
+          </select>
+        </label>
+        <label className="au-klein au-tp-inline" title="Farbe im Planer-Kalender (für Online/Präsenz-Formate)">
+          <input type="checkbox" name="farbe_aktiv" defaultChecked={!!f?.farbe} /> Farbe
+          <input type="color" name="farbe" defaultValue={f?.farbe || "#2f7d6d"} className="au-tp-farbe" />
+        </label>
+        <fieldset className="au-tp-serie-felder">
+          <legend className="au-klein">Serie pro Jahr (optional)</legend>
+          <select className="au-select" name="serie_rhythmus" defaultValue={r?.rhythmus || ""} aria-label="Rhythmus">
+            <option value="">keine Serie</option>
+            {Object.entries(RHYTHMUS_LABEL).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+          <label className="au-klein au-tp-inline">
+            ab
+            <select className="au-select" name="serie_start_monat" defaultValue={r?.start_monat || 1}>
+              {MONATE.map((m, i) => (
+                <option key={m} value={i + 1}>{m}</option>
+              ))}
+            </select>
+          </label>
+          <select className="au-select" name="serie_modus" defaultValue={r?.modus || "regel"} aria-label="Modus">
+            <option value="regel">feste Regel (Ausweichen nur bei Konflikt)</option>
+            <option value="bester_tag">bester Tag je Periode</option>
+          </select>
+          <span className="au-klein au-tp-inline">
+            Regel:
+            <select className="au-select" name="serie_woche" defaultValue={String(r?.woche_im_monat ?? 2)} aria-label="Woche im Monat">
+              {Object.entries(WOCHE_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+            <select className="au-select" name="serie_wochentag" defaultValue={String(r?.wochentag ?? 5)} aria-label="Wochentag">
+              {[1, 2, 3, 4, 5, 6, 7].map((w) => (
+                <option key={w} value={w}>{WT[w]}</option>
+              ))}
+            </select>
+            im Monat
+          </span>
+          <span className="au-klein au-tp-inline">
+            Bester Tag nur an:
+            {[1, 2, 3, 4, 5, 6, 7].map((w) => (
+              <label key={w} className="au-tp-inline">
+                <input type="checkbox" name="serie_wochentage" value={w} defaultChecked={(r?.wochentage || []).includes(w)} />
+                {WT[w]}
+              </label>
+            ))}
+          </span>
+        </fieldset>
+      </div>
+    );
+  };
+
   // ---------- Reiter "Formate & Einstellungen" ----------
   const formateTab = (
     <div className="au-tp-stapel">
@@ -653,6 +812,12 @@ export default async function TerminplanerPage({
                 <span className={`au-badge ${f.ferien_gewichtung_modus === "bonus" ? "au-badge-success" : f.ferien_gewichtung_modus === "neutral" ? "au-badge-neutral" : "au-badge-warning"}`} style={{ marginLeft: "0.4rem" }}>
                   {MODUS_LABEL[f.ferien_gewichtung_modus] || f.ferien_gewichtung_modus}
                 </span>
+                {f.terminart && f.terminart !== "seminar" && (
+                  <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.4rem", ...(f.farbe ? { boxShadow: `inset 4px 0 0 ${f.farbe}` } : {}) }}>
+                    {TERMINART_LABEL[f.terminart as keyof typeof TERMINART_LABEL]}
+                  </span>
+                )}
+                {f.serien_regel && <span className="au-klein"> · Serie: {serienRegelText(f.serien_regel)}</span>}
                 <details className="au-tp-details">
                   <summary className="au-klein">bearbeiten</summary>
                   <form action={aktualisiereFormat} className="au-tp-form">
@@ -680,6 +845,7 @@ export default async function TerminplanerPage({
                       <option value="bonus">Ferien bevorzugen (Bonus)</option>
                     </select>
                     <input className="au-input" name="beschreibung" defaultValue={f.beschreibung || ""} placeholder="Beschreibung (optional)" />
+                    {formatZusatzFelder(f)}
                     <button type="submit" className="au-btn au-btn-primary au-btn-sm">Speichern</button>
                   </form>
                 </details>
@@ -716,6 +882,7 @@ export default async function TerminplanerPage({
             <option value="neutral">Ferien egal</option>
             <option value="bonus">Ferien bevorzugen</option>
           </select>
+          {formatZusatzFelder()}
           <button type="submit" className="au-btn au-btn-primary au-btn-sm">Format anlegen</button>
         </form>
       </section>
@@ -774,6 +941,18 @@ export default async function TerminplanerPage({
       href: `/termine/${t.id}`,
     })),
     ...(kandidaten || [])
+      .filter((k: any) => k.status === "fest")
+      .map((k: any) => ({
+        key: `f-${k.id}`,
+        von: k.anreise_datum || k.datum_start,
+        bis: k.datum_ende,
+        art: "fest" as const,
+        label: (k.termin_formate?.name || "Fest").split(/[-\s]/).pop()!.slice(0, 6),
+        farbe: k.termin_formate?.farbe || null,
+        titel: `Fest eingeplant: ${k.termin_formate?.name || ""} · ${spanne(k)}`,
+        start: k.datum_start,
+      })),
+    ...(kandidaten || [])
       .filter((k: any) => k.status === "in_pruefung" || k.status === "vorgeschlagen")
       .map((k: any) => ({
         key: `k-${k.id}`,
@@ -781,7 +960,7 @@ export default async function TerminplanerPage({
         bis: k.datum_ende,
         art: (k.status === "in_pruefung" ? "pruefung" : "gemerkt") as KalenderBalken["art"],
         label: `${k.seminartypen?.name?.slice(0, 4) || (k.status === "in_pruefung" ? "Prüf." : "Kand.")}?`,
-        farbe: k.seminartypen?.farbe || null,
+        farbe: k.seminartypen?.farbe || k.termin_formate?.farbe || null,
         kategorieId: k.seminartyp_id,
         titel: `${k.status === "in_pruefung" ? "In Prüfung" : "Gemerkt"}: ${spanne(k)}${k.veranstaltungsorte?.name ? ` · ${k.veranstaltungsorte.name}` : ""}`,
         start: k.datum_start,
@@ -845,7 +1024,7 @@ export default async function TerminplanerPage({
             ferien={(ferienJahr || []) as any[]}
             konferenzen={alleKonferenzen as any[]}
             blocker={(blocker || []).filter((b: any) => b.aktiv) as any[]}
-            formate={formate.map((f) => ({ id: f.id, name: f.name, mitHotel: mitHotel(f) }))}
+            formate={formate.map((f) => ({ id: f.id, name: f.name, mitHotel: mitHotel(f), seminar: istSeminarFormat(f) }))}
             orte={(orteAlle || []).map((o: any) => ({ id: o.id, name: o.name }))}
             typen={(typen || []) as any[]}
             standardFormatId={format?.id || ""}
@@ -862,6 +1041,7 @@ export default async function TerminplanerPage({
         ariaLabel="Terminplaner"
         tabs={[
           { key: "vorschlaege", label: "Vorschläge", inhalt: vorschlaegeTab },
+          { key: "serien", label: "Serien", anzahl: offeneSerienTermine || null, warnung: offeneSerienTermine > 0, inhalt: serienTab },
           { key: "kandidaten", label: "Kandidaten", anzahl: inPruefung.length + nachStatus("vorgeschlagen").length, inhalt: kandidatenTab },
           { key: "bedarf", label: "Bedarf", anzahl: bedarfsGruppen.length || null, warnung: offeneBedarfe > 0, inhalt: bedarfTab },
           { key: "daten", label: "Ferien, Konferenzen, Blocker", inhalt: datenTab },

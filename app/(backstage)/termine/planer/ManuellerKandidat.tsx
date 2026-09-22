@@ -15,7 +15,7 @@ export default function ManuellerKandidat({
   typen,
   jahr,
 }: {
-  formate: { id: string; name: string; start_uhrzeit: string | null; end_uhrzeit: string | null; mitHotel: boolean }[];
+  formate: { id: string; name: string; start_uhrzeit: string | null; end_uhrzeit: string | null; mitHotel: boolean; seminar: boolean }[];
   orte: { id: string; name: string }[];
   typen: { id: string; name: string }[];
   jahr: number;
@@ -115,9 +115,15 @@ export default function ManuellerKandidat({
         <button type="submit" name="status" value="vorgeschlagen" className="au-btn au-btn-secondary au-btn-sm" disabled={laeuft || !start || (!!bewertung?.kollision && !kollisionOk)}>
           Als Kandidat merken
         </button>
-        <button type="submit" name="status" value="in_pruefung" className="au-btn au-btn-primary au-btn-sm" disabled={laeuft || !start || (!!bewertung?.kollision && !kollisionOk)}>
-          Direkt „in Prüfung“ ({format?.mitHotel === false ? "Location anfragen" : "Hotel anfragen"})
-        </button>
+        {format?.seminar === false ? (
+          <button type="submit" name="status" value="fest" className="au-btn au-btn-primary au-btn-sm" disabled={laeuft || !start || (!!bewertung?.kollision && !kollisionOk)}>
+            Direkt fest einplanen
+          </button>
+        ) : (
+          <button type="submit" name="status" value="in_pruefung" className="au-btn au-btn-primary au-btn-sm" disabled={laeuft || !start || (!!bewertung?.kollision && !kollisionOk)}>
+            Direkt „in Prüfung“ ({format?.mitHotel === false ? "Location anfragen" : "Hotel anfragen"})
+          </button>
+        )}
         {meldung && <span className="au-klein" style={{ color: meldung.fehler ? "var(--color-danger)" : "var(--color-success)" }}>{meldung.fehler || meldung.info}</span>}
       </div>
     </form>
