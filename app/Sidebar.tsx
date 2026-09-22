@@ -12,7 +12,7 @@ import { logoutAction } from "@/lib/actions";
 // alle Seiten. Vorher waren es 7 Gruppen mit 30 gleichrangigen Links.
 
 type NavLink = { href: string; label: string; stichworte?: string };
-type IconName = "home" | "clock" | "inbox" | "calendar" | "network" | "megaphone" | "mail" | "settings";
+type IconName = "home" | "clock" | "inbox" | "calendar" | "layers" | "network" | "megaphone" | "mail" | "settings";
 type NavBereich = { key: string; titel: string; icon: IconName; links: NavLink[]; standardOffen?: boolean };
 
 const SCHNELLZUGRIFF: (NavLink & { icon: IconName })[] = [
@@ -34,6 +34,17 @@ const BEREICHE: NavBereich[] = [
       { href: "/organisationen", label: "Organisationen", stichworte: "agenturen firmen" },
       { href: "/warteliste", label: "Warteliste" },
       { href: "/leads", label: "Leads", stichworte: "interessenten" },
+    ],
+  },
+  // Kuenftige Angebote -- inhaltlich keine Seminare, deshalb eigener Bereich
+  {
+    key: "programme",
+    titel: "Programme",
+    icon: "layers",
+    links: [
+      { href: "/programme/foundation", label: "Foundation", stichworte: "sparring programm kalender" },
+      { href: "/programme/uplift", label: "Uplift", stichworte: "session day retreat programm kalender" },
+      { href: "/programme/advance", label: "Advance", stichworte: "programm" },
     ],
   },
   {
@@ -113,6 +124,7 @@ function Icon({ name }: { name: IconName }) {
     clock: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
     inbox: (<><path d="M3 13h5l1.5 3h5L16 13h5" /><path d="M5 5h14l2 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z" /></>),
     calendar: (<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>),
+    layers: (<><path d="m12 3 9 5-9 5-9-5z" /><path d="m3 13 9 5 9-5" /></>),
     network: (<><circle cx="12" cy="5" r="2.5" /><circle cx="5" cy="18" r="2.5" /><circle cx="19" cy="18" r="2.5" /><path d="M10.8 7.2 6.2 15.8M13.2 7.2l4.6 8.6M7.5 18h9" /></>),
     megaphone: (<><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M15 8.5a5 5 0 0 1 0 7M18 6a8.5 8.5 0 0 1 0 12" /></>),
     mail: (<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>),

@@ -2,6 +2,19 @@ export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createSeminartyp, updateSeminartyp } from "@/lib/actions";
+import { PROGRAMME, PROGRAMM_KEYS } from "@/lib/programme";
+
+// Auswahl "Programm" (Foundation/Uplift/Advance) -- bestimmt den Programm-Kalender
+function ProgrammAuswahl({ wert, form }: { wert?: string | null; form?: string }) {
+  return (
+    <select name="programm" form={form} defaultValue={wert || ""} className="au-select" style={{ marginBottom: 0 }}>
+      <option value="">kein Programm</option>
+      {PROGRAMM_KEYS.map((k) => (
+        <option key={k} value={k}>{PROGRAMME[k].titel}</option>
+      ))}
+    </select>
+  );
+}
 
 export default async function SeminartypenPage() {
   const supabase = getSupabaseAdmin();
@@ -11,7 +24,8 @@ export default async function SeminartypenPage() {
     <main>
       <h1>Seminarkategorien &amp; Farben</h1>
       <p style={{ color: "var(--color-text-muted)", marginTop: "-0.75rem" }}>
-        Jede Kategorie bekommt eine Farbe – wird in der Monatsübersicht der Termine zur schnellen Einordnung genutzt.
+        Jede Kategorie bekommt eine Farbe – wird in der Monatsübersicht der Termine zur schnellen Einordnung genutzt. Das Programm legt fest, in welchem
+        Programm-Kalender (Foundation, Uplift, Advance) ihre Seminare erscheinen.
       </p>
 
       <div className="au-card">
@@ -34,6 +48,10 @@ export default async function SeminartypenPage() {
               style={{ display: "block", width: 44, height: 32, padding: 0, border: "1px solid var(--color-border-strong)", borderRadius: 6, cursor: "pointer" }}
             />
           </div>
+          <div>
+            <label className="au-label">Programm</label>
+            <ProgrammAuswahl />
+          </div>
           <button type="submit" className="au-btn au-btn-primary au-btn-sm">Anlegen</button>
         </form>
       </div>
@@ -45,6 +63,7 @@ export default async function SeminartypenPage() {
               <th>Farbe</th>
               <th>Kategorie</th>
               <th>Kurzbeschreibung</th>
+              <th>Programm</th>
               <th>Aktiv</th>
               <th>Speichern</th>
             </tr>
@@ -72,6 +91,9 @@ export default async function SeminartypenPage() {
                   <td>
                     <input type="text" name="kurzbeschreibung" form={formId} defaultValue={t.kurzbeschreibung || ""} className="au-input" placeholder="optional" />
                   </td>
+                  <td>
+                    <ProgrammAuswahl wert={t.programm} form={formId} />
+                  </td>
                   <td style={{ textAlign: "center" }}>
                     <input type="checkbox" name="aktiv" form={formId} defaultChecked={t.aktiv} />
                   </td>
@@ -82,7 +104,7 @@ export default async function SeminartypenPage() {
               );
             })}
             {!typen?.length && (
-              <tr className="au-table-empty"><td colSpan={5}>Keine Seminarkategorien vorhanden.</td></tr>
+              <tr className="au-table-empty"><td colSpan={6}>Keine Seminarkategorien vorhanden.</td></tr>
             )}
           </tbody>
         </table>

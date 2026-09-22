@@ -130,6 +130,13 @@ export async function updateSeminartypFarbe(formData: FormData) {
   redirect("/seminartypen");
 }
 
+// Programm-Zuordnung einer Seminarkategorie (Foundation/Uplift/Advance) --
+// steuert, in welchem Programm-Kalender ihre Seminare erscheinen.
+function programmAus(formData: FormData): string | null {
+  const p = String(formData.get("programm") || "");
+  return ["foundation", "uplift", "advance"].includes(p) ? p : null;
+}
+
 export async function createSeminartyp(formData: FormData) {
   await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
@@ -137,6 +144,7 @@ export async function createSeminartyp(formData: FormData) {
     name: String(formData.get("name")),
     kurzbeschreibung: formData.get("kurzbeschreibung") || null,
     farbe: String(formData.get("farbe") || "#102A4C"),
+    programm: programmAus(formData),
   });
   if (error) throw new Error(error.message);
   revalidatePath("/seminartypen");
@@ -154,6 +162,7 @@ export async function updateSeminartyp(formData: FormData) {
       kurzbeschreibung: formData.get("kurzbeschreibung") || null,
       farbe: String(formData.get("farbe") || "#102A4C"),
       aktiv: formData.get("aktiv") === "on",
+      programm: programmAus(formData),
     })
     .eq("id", id);
   if (error) throw new Error(error.message);

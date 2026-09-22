@@ -472,7 +472,9 @@ function formatZusatz(fd: FormData) {
   const farbe = String(fd.get("farbe") || "");
   // Keine Ferienart angehakt = alle werten (wie bisher)
   const ferienTypen = fd.getAll("ferien_typen").map(String).filter((t) => ["winter", "fasching", "ostern", "pfingsten", "sommer", "herbst", "sonstige"].includes(t));
+  const programm = String(fd.get("programm") || "");
   return {
+    programm: ["foundation", "uplift", "advance"].includes(programm) ? programm : null,
     ferien_typen: ferienTypen.length ? ferienTypen : null,
     terminart: ["seminar", "online", "praesenz"].includes(art) ? art : "seminar",
     farbe: /^#[0-9a-f]{6}$/i.test(farbe) && fd.get("farbe_aktiv") === "on" ? farbe : null,

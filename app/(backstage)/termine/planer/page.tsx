@@ -740,6 +740,15 @@ export default async function TerminplanerPage({
             <option value="praesenz">Präsenz, kein Seminar (fest einplanen)</option>
           </select>
         </label>
+        <label className="au-klein au-tp-inline" title="In welchem Programm-Kalender Termine dieses Formats erscheinen (Online/Präsenz; Seminare über die Kategorie)">
+          Programm
+          <select className="au-select" name="programm" defaultValue={f?.programm || ""}>
+            <option value="">kein Programm</option>
+            <option value="foundation">Foundation</option>
+            <option value="uplift">Uplift</option>
+            <option value="advance">Advance</option>
+          </select>
+        </label>
         <label className="au-klein au-tp-inline" title="Farbe im Planer-Kalender (für Online/Präsenz-Formate)">
           <input type="checkbox" name="farbe_aktiv" defaultChecked={!!f?.farbe} /> Farbe
           <input type="color" name="farbe" defaultValue={f?.farbe || "#2f7d6d"} className="au-tp-farbe" />
