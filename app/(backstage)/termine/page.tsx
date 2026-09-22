@@ -8,6 +8,44 @@ import { duplicateSeminartermin } from "@/lib/actions";
 import { ladeWebsiteVerfuegbarkeit, type WebsiteVerfuegbarkeit } from "@/lib/verfuegbarkeit";
 import WebsiteAnzeigeHinweis from "./WebsiteAnzeigeHinweis";
 import Jahresplaner, { isoDatum, MONATSKURZ } from "./Jahresplaner";
+import { naechsterPreiswechsel, tageZwischen, type Preiswechsel } from "@/lib/preisstaffeln";
+import { formatEUR } from "@/lib/format";
+
+const WT_KURZ = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+// "Fr 02.10." fuer einen Kalendertag (YYYY-MM-DD)
+const kurzTag = (iso: string) => `${WT_KURZ[new Date(`${iso}T12:00:00Z`).getUTCDay()]} ${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+
+// Naechster Preiswechsel eines Termins ueber alle aktiven Optionen: der
+// frueheste Wechsel zaehlt; Optionen mit anderem Stichtag werden gezaehlt und
+// im Tooltip einzeln aufgefuehrt (meist haben alle Optionen dieselben Stichtage).
+type TerminPreiswechsel = { frueh: Preiswechsel; abweichend: number; details: string[] };
+
+function preiswechselFuer(t: any): TerminPreiswechsel | null {
+  const proOption = (t.seminartermin_optionen || [])
+    .filter((o: any) => !o.deaktiviert_am && o.preisstaffeln?.length)
+    .map((o: any) => ({ titel: o.titel as string, w: naechsterPreiswechsel(o.preisstaffeln, t.datum_start) }));
+  const mitWechsel = proOption.filter((o: any) => o.w) as { titel: string; w: Preiswechsel }[];
+  if (!mitWechsel.length) return null;
+  const erster = [...mitWechsel].sort((a, b) => a.w.letzterTag.localeCompare(b.w.letzterTag))[0].w;
+  // Stufen heissen je Option teils anders ("Stufe 1" vs. "Frühbucherpreis") --
+  // dann neutral benennen, die Namen stehen im Tooltip
+  const gleichzeitig = mitWechsel.filter((o) => o.w.letzterTag === erster.letzterTag);
+  const einName = gleichzeitig.every((o) => o.w.stufe === erster.stufe);
+  const frueh = einName ? erster : { ...erster, stufe: "Aktuelle Preisstufe", naechsteStufe: "nächste Stufe" };
+  return {
+    frueh,
+    abweichend: proOption.filter((o: any) => !o.w || o.w.letzterTag !== frueh.letzterTag).length,
+    details: proOption.map((o: any) =>
+      o.w
+        ? `${o.titel}: ${o.w.stufe} ${formatEUR(o.w.preis)} bis ${kurzTag(o.w.letzterTag)}, danach ${o.w.naechsteStufe} ${formatEUR(o.w.naechsterPreis)}`
+        : `${o.titel}: letzte Stufe (kein Wechsel mehr)`
+    ),
+  };
+}
+
+function restText(tage: number): string {
+  return tage <= 0 ? "nur noch heute" : tage === 1 ? "bis morgen" : `noch ${tage} Tage`;
+}
 
 function gruppeProMonat(liste: any[]) {
   const proMonat = new Map<string, any[]>();
@@ -35,12 +73,14 @@ function TerminListe({
   gesamtProTermin,
   websiteAnzeigeProTermin,
   heuteISO,
+  heuteBerlin,
 }: {
   termine: any[];
   gebuchtProTermin: Map<string, number>;
   gesamtProTermin: Map<string, number>;
   websiteAnzeigeProTermin: Map<string, WebsiteVerfuegbarkeit>;
   heuteISO: string;
+  heuteBerlin: string;
 }) {
   const proMonat = gruppeProMonat(termine);
   return (
@@ -80,6 +120,20 @@ function TerminListe({
                       <span className="au-klein">
                         {[t.kennung, formatDatumsspanne(t.datum_start, t.datum_ende), t.titel && t.seminartypen?.name !== t.titel ? t.seminartypen?.name : null].filter(Boolean).join(" · ")}
                       </span>
+                      {!vergangen && t.status !== "abgesagt" && (() => {
+                        const pw = preiswechselFuer(t);
+                        if (!pw) return null;
+                        const rest = tageZwischen(heuteBerlin, pw.frueh.letzterTag);
+                        return (
+                          <span
+                            className={`au-preiswechsel${rest <= 3 ? " dringend" : ""}`}
+                            title={`Danach ${pw.frueh.naechsteStufe}\n${pw.details.join("\n")}`}
+                          >
+                            {pw.frueh.stufe} bis {kurzTag(pw.frueh.letzterTag)} · {restText(rest)}
+                            {pw.abweichend > 0 && <span className="au-preiswechsel-hinweis"> · {pw.abweichend} Option{pw.abweichend === 1 ? "" : "en"} abweichend</span>}
+                          </span>
+                        );
+                      })()}
                     </span>
                   </Link>
                   <div className="au-tliste-ort">
@@ -136,7 +190,13 @@ export default async function TerminePage({
   // Liste pro Kalenderjahr gefiltert -- am Jahreswechsel, wenn 2026 und 2027
   // parallel laufen, musste man staendig umschalten.
   const [{ data: anstehendDaten }, { data: vergangeneOderAbgesagt }] = await Promise.all([
-    supabase.from("seminartermine").select(auswahl).gte("datum_start", heuteISO).neq("status", "abgesagt").order("datum_start", { ascending: true }),
+    // Anstehende zusaetzlich mit Optionen/Preisstaffeln fuer "Preisstufe X bis …"
+    supabase
+      .from("seminartermine")
+      .select(`${auswahl}, seminartermin_optionen(titel, deaktiviert_am, preisstaffeln(name, preis, stichtag_tage_vor_start, stichtag_datum))`)
+      .gte("datum_start", heuteISO)
+      .neq("status", "abgesagt")
+      .order("datum_start", { ascending: true }),
     supabase.from("seminartermine").select(auswahl).or(`datum_start.lt.${heuteISO},status.eq.abgesagt`).order("datum_start", { ascending: false }),
   ]);
 
@@ -230,6 +290,12 @@ export default async function TerminePage({
   const websiteAnzeigeProTermin = ansicht === "anstehend" ? await ladeWebsiteVerfuegbarkeit(supabase, anstehend) : new Map();
 
   const naechster = anstehend[0];
+  const heuteBerlin = heute.toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+  // Preiserhoehungen der naechsten 30 Tage (fuer Mailing-Aktionen), frueheste zuerst
+  const baldTeurer = anstehend
+    .map((t: any) => ({ t, pw: preiswechselFuer(t) }))
+    .filter((x): x is { t: any; pw: TerminPreiswechsel } => !!x.pw && tageZwischen(heuteBerlin, x.pw.frueh.letzterTag) <= 30)
+    .sort((a, b) => a.pw.frueh.letzterTag.localeCompare(b.pw.frueh.letzterTag));
   const tab = (a: Ansicht, label: string, anzahl: number) => (
     <Link
       href={a === "anstehend" ? "/termine" : `/termine?ansicht=${a}`}
@@ -264,6 +330,35 @@ export default async function TerminePage({
         heuteISO={heuteISO}
       />
 
+      {ansicht === "anstehend" && baldTeurer.length > 0 && (
+        <section className="au-panel">
+          <div className="au-panel-kopf">
+            <h2>Preiserhöhungen in den nächsten 30 Tagen</h2>
+            <span className="au-klein">Stufe gilt bis einschließlich des genannten Tages</span>
+          </div>
+          <ul className="au-preiswechsel-liste">
+            {baldTeurer.map(({ t, pw }) => {
+              const rest = tageZwischen(heuteBerlin, pw.frueh.letzterTag);
+              return (
+                <li key={t.id} className={rest <= 3 ? "dringend" : undefined}>
+                  <span className="au-preiswechsel-datum">
+                    <strong>{kurzTag(pw.frueh.letzterTag)}</strong>
+                    <span>{restText(rest)}</span>
+                  </span>
+                  <Link href={`/termine/${t.id}`} prefetch={false}>
+                    {t.kennung ? `${t.kennung} · ` : ""}{t.titel || t.seminartypen?.name}
+                  </Link>
+                  <span className="au-klein" title={pw.details.join("\n")}>
+                    {pw.frueh.stufe} → {pw.frueh.naechsteStufe}
+                    {pw.abweichend > 0 && ` · ${pw.abweichend} Option${pw.abweichend === 1 ? "" : "en"} abweichend`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       <div className="au-tliste-leiste">
         <nav className="au-seitentabs" aria-label="Termin-Ansichten" style={{ marginBottom: 0, flex: 1 }}>
           {tab("anstehend", "Anstehend", anstehend.length)}
@@ -279,6 +374,7 @@ export default async function TerminePage({
           gesamtProTermin={gesamtProTermin}
           websiteAnzeigeProTermin={websiteAnzeigeProTermin}
           heuteISO={heuteISO}
+          heuteBerlin={heuteBerlin}
         />
       ) : (
         <div className="au-panel"><div className="au-panel-inhalt au-leer">

@@ -543,3 +543,42 @@ export function uebertrageStaffelnAufTermin(
     weggelassen: umgerechnet.filter((u) => !behalten.includes(u)).map((u) => u.staffel.name),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Naechster Preiswechsel einer Option (Terminuebersicht: "Preisstufe 2 bis
+// Fr 02.10. · noch 10 Tage") -- fuer Mailing-Aktionen vor Preiserhoehungen.
+// Nutzt dieselbe Stichtag-Logik wie Website/Buchung (stichtagAlsZeitpunkt).
+
+export type Preiswechsel = {
+  stufe: string;
+  preis: number;
+  naechsteStufe: string;
+  naechsterPreis: number;
+  /** letzter Kalendertag (Berlin, YYYY-MM-DD), an dem die aktuelle Stufe noch gilt */
+  letzterTag: string;
+};
+
+export function naechsterPreiswechsel<T extends Preisstaffel & { name: string }>(
+  staffeln: T[],
+  datumStart: string,
+  jetzt: number = Date.now()
+): Preiswechsel | null {
+  if (!staffeln.length) return null;
+  const sortiert = sortierteStaffeln(staffeln, datumStart);
+  const idx = sortiert.findIndex((p) => jetzt <= stichtagAlsZeitpunkt(p, datumStart));
+  // Letzte Stufe (Normalpreis) aktiv oder alles verstrichen: kein Wechsel mehr
+  if (idx === -1 || idx === sortiert.length - 1) return null;
+  const aktuell = sortiert[idx];
+  const naechste = sortiert[idx + 1];
+  // 3 Stunden zurueck: relative Stufen enden um 00:00 UTC (= 1-2 Uhr nachts in
+  // Berlin) des Folgetags, feste um 23:59 Berlin -- so ergibt beides den
+  // letzten vollen Tag, an dem der Preis noch gilt.
+  const letzterTag = berlinKalendertag(new Date(stichtagAlsZeitpunkt(aktuell, datumStart) - 3 * 3600_000).toISOString());
+  return {
+    stufe: aktuell.name,
+    preis: Number(aktuell.preis),
+    naechsteStufe: naechste.name,
+    naechsterPreis: Number(naechste.preis),
+    letzterTag,
+  };
+}
