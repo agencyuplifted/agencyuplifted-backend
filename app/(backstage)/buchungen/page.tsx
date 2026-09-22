@@ -9,6 +9,8 @@ export default async function BuchungenPage() {
   const { data: buchungen } = await supabase
     .from("buchungen")
     .select("*, organisationen(name), teilnehmer:rechnungsempfaenger_teilnehmer_id(vorname, nachname), buchungspositionen(preis, seminartermine(datum_start, seminartypen(name)))")
+    // Programm-Buchungen (Uplift …) stehen unter Programme, nicht bei den Seminaren
+    .or("metadata->>buchungsart.is.null,metadata->>buchungsart.neq.programm")
     .order("gebucht_am", { ascending: false });
 
   return (

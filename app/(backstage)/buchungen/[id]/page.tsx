@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { stornoBuchung, umbuchenBuchung, bestaetigeBuchung } from "@/lib/actions";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
+import { quizProfil } from "@/lib/programm-buchung";
+import Link from "next/link";
 
 export default async function BuchungDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,7 +18,7 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
 
   const { data: positionen } = await supabase
     .from("buchungspositionen")
-    .select("*, teilnehmer(vorname, nachname, email), seminartermine(id, datum_start, seminartypen(name)), seminartermin_optionen(titel)")
+    .select("*, teilnehmer(vorname, nachname, email), seminartermine(id, datum_start, seminartypen(name)), seminartermin_optionen(titel), programme(name, schluessel)")
     .eq("buchung_id", id);
 
   const { data: protokoll } = await supabase
@@ -32,10 +34,21 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
     .order("datum_start");
 
   if (!buchung) return <main><p>Buchung nicht gefunden.</p></main>;
+  // Programm-Buchung (Uplift-Mitgliedschaft …): gleiche Maske, plus Quiz-Profil
+  const programmPosition: any = positionen?.find((p: any) => p.programm_id);
+  const profil = quizProfil((buchung.metadata as any)?.quiz_antworten);
 
   return (
     <main>
-      <h1>Buchung {buchung.buchungsnummer}</h1>
+      {programmPosition?.programme?.schluessel && (
+        <p className="au-brotkrumen">
+          <Link href={`/programme/${programmPosition.programme.schluessel}#buchungen`}>{programmPosition.programme.name} · Buchungen</Link>
+        </p>
+      )}
+      <h1>
+        Buchung {buchung.buchungsnummer}
+        {programmPosition && <span className="au-badge au-badge-gold" style={{ marginLeft: "0.6rem", fontSize: "0.8rem", verticalAlign: "middle" }}>{programmPosition.programme?.name || "Programm"}</span>}
+      </h1>
       <p style={{ color: "var(--color-text-muted)" }}>
         Status: <strong>{buchung.status}</strong> · Rechnungsempfänger: {buchung.organisationen?.name || (buchung.teilnehmer ? `${buchung.teilnehmer.vorname} ${buchung.teilnehmer.nachname}` : "—")} · Gebucht am {formatDatum(buchung.gebucht_am)}
       </p>
@@ -71,6 +84,8 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
                 <td>
                   {p.seminartermine
                     ? `${p.seminartermine.seminartypen?.name} – ${formatDatum(p.seminartermine.datum_start)}${p.seminartermin_optionen?.titel ? ` (${p.seminartermin_optionen.titel})` : ""}`
+                    : p.programm_id
+                    ? `${p.beschreibung} (${p.metadata?.programm_zahlweise === "monthly" ? "monatlich" : "jährlich"}, Laufzeit ${p.metadata?.laufzeit_monate || 12} Monate)`
                     : `${p.beschreibung} (individuell${p.startdatum ? `, ab ${formatDatum(p.startdatum)}` : ""})`}
                 </td>
                 <td>{formatEUR(Number(p.preis || 0))}</td>
@@ -105,12 +120,27 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
         ))}
       </div>
 
+      {profil.length > 0 && (
+        <div className="au-card">
+          <h2>Quiz-Profil</h2>
+          <dl className="au-dl">
+            {profil.map((z) => (
+              <div key={z.label} style={{ display: "contents" }}>
+                <dt className="au-dt">{z.label}</dt>
+                <dd style={{ margin: 0 }}>{z.wert}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
       {buchung.status === "angefragt" && (
         <div className="au-card">
           <h2>Bestätigen</h2>
           <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
-            Setzt die Buchung auf „bestätigt" und verschickt sofort die Zahlungsbestätigungs-Mail an alle
-            Teilnehmer:innen dieser Buchung. Erst nach Zahlungseingang bestätigen.
+            {programmPosition
+              ? "Setzt die Buchung auf „bestätigt“ und verschickt sofort die Mail „Mitgliedschaft bestätigt“ an alle Teilnehmer:innen und den Rechnungsempfänger. Erst nach Zahlungseingang (bei Monatszahlung: erste Rate) bestätigen."
+              : "Setzt die Buchung auf „bestätigt“ und verschickt sofort die Zahlungsbestätigungs-Mail an alle Teilnehmer:innen dieser Buchung. Erst nach Zahlungseingang bestätigen."}
           </p>
           <form action={bestaetigeBuchung}>
             <input type="hidden" name="buchung_id" value={buchung.id} />

@@ -6,8 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getResend, ABSENDER } from "@/lib/email";
 import { formatDatum, effektiveTerminNaechte } from "@/lib/format";
 import { renderPlatzhalter } from "@/lib/funnel";
-import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "@/lib/organisationsverknuepfung";
-import { schaetzeAnredeAusVorname } from "@/lib/geschlecht";
+import { ermittleKontakte, verknuepfeMitOrganisation, type Teilnehmerangabe } from "@/lib/buchung-kontakte";
 import { aktuellerPreisNetto } from "@/lib/preisstaffeln";
 import { berechneRatenbetrag } from "@/lib/ratenzahlung";
 
@@ -54,14 +53,6 @@ function preisFuerTeilnehmer(
   return preisNettoVoll;
 }
 
-type Teilnehmerangabe = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  company?: string;
-  roomOption?: string;
-};
 
 export async function POST(request: NextRequest) {
   let body: any;
@@ -156,111 +147,14 @@ export async function POST(request: NextRequest) {
     return withCors(NextResponse.json({ error: "no_participants" }, { status: 400 }));
   }
 
-  // Organisation anlegen/wiedererkennen (nur beim Hauptkontakt abgefragt).
-  let organisationId: string | null = null;
-  if (personen[0].company) {
-    const { data: bestehendeOrga } = await supabase
-      .from("organisationen")
-      .select("id, rechnungsadresse_strasse, rechnungsadresse_plz, rechnungsadresse_ort")
-      .ilike("name", personen[0].company)
-      .maybeSingle();
-    if (bestehendeOrga) {
-      organisationId = bestehendeOrga.id;
-      // Rechnungsadresse nur nachtragen, wenn noch keine hinterlegt ist -
-      // eine bereits gepflegte Adresse wird durch eine neue Buchung nicht ueberschrieben.
-      if (!bestehendeOrga.rechnungsadresse_strasse && !bestehendeOrga.rechnungsadresse_plz && !bestehendeOrga.rechnungsadresse_ort) {
-        await supabase
-          .from("organisationen")
-          .update({
-            rechnungsadresse_strasse: rechnungsadresse.strasse,
-            rechnungsadresse_plz: rechnungsadresse.plz,
-            rechnungsadresse_ort: rechnungsadresse.ort,
-          })
-          .eq("id", organisationId);
-      }
-    } else {
-      const { data: neueOrga, error: orgaError } = await supabase
-        .from("organisationen")
-        .insert({
-          name: personen[0].company,
-          rechnungsadresse_strasse: rechnungsadresse.strasse,
-          rechnungsadresse_plz: rechnungsadresse.plz,
-          rechnungsadresse_ort: rechnungsadresse.ort,
-        })
-        .select("id")
-        .single();
-      if (orgaError) {
-        return withCors(NextResponse.json({ error: "organisation_fehler", detail: orgaError.message }, { status: 500 }));
-      }
-      organisationId = neueOrga.id;
-    }
+  // Organisation + Teilnehmer anlegen/wiedererkennen -- gemeinsame Logik mit
+  // der Programm-Buchungsstrecke (lib/buchung-kontakte.ts)
+  const kontakte = await ermittleKontakte(supabase, personen, rechnungsadresse, "onepage_buchungsformular");
+  if (kontakte.fehler) {
+    return withCors(NextResponse.json({ error: kontakte.fehler.code, detail: kontakte.fehler.detail }, { status: 500 }));
   }
-
-  // Teilnehmer je Person anlegen/wiedererkennen (Abgleich per E-Mail).
-  const teilnehmerIds: { id: string; email: string; vorname: string; roomOption?: string }[] = [];
-  for (let i = 0; i < personen.length; i++) {
-    const person = personen[i];
-    // Die Rechnungsadresse aus dem Formular gilt fuer die gesamte Buchung und
-    // wird - falls keine Organisation/Firma angegeben ist - beim Hauptkontakt
-    // (erste Person) als Privatadresse hinterlegt. Weitere Teilnehmer:innen
-    // bekommen keine eigene Adresse (kein Feld im Formular).
-    const istHauptkontaktOhneOrganisation = i === 0 && !organisationId;
-
-    const { data: bestehenderTeilnehmer } = await supabase
-      .from("teilnehmer")
-      .select("id, privatadresse_strasse, privatadresse_plz, privatadresse_ort")
-      .ilike("email", person.email)
-      .maybeSingle();
-
-    if (bestehenderTeilnehmer) {
-      teilnehmerIds.push({ id: bestehenderTeilnehmer.id, email: person.email, vorname: person.firstName, roomOption: person.roomOption });
-      if (
-        istHauptkontaktOhneOrganisation &&
-        !bestehenderTeilnehmer.privatadresse_strasse &&
-        !bestehenderTeilnehmer.privatadresse_plz &&
-        !bestehenderTeilnehmer.privatadresse_ort
-      ) {
-        await supabase
-          .from("teilnehmer")
-          .update({
-            privatadresse_strasse: rechnungsadresse.strasse,
-            privatadresse_plz: rechnungsadresse.plz,
-            privatadresse_ort: rechnungsadresse.ort,
-            privatadresse_land: "Deutschland",
-          })
-          .eq("id", bestehenderTeilnehmer.id);
-      }
-      continue;
-    }
-
-    const { data: neuerTeilnehmer, error: teilnehmerError } = await supabase
-      .from("teilnehmer")
-      .insert({
-        vorname: person.firstName,
-        nachname: person.lastName,
-        email: person.email,
-        telefon: person.phone || null,
-        firma_freitext: person.company || null,
-        marketing_consent_status: "unbekannt",
-        marketing_consent_quelle: "onepage_buchungsformular",
-        anrede: schaetzeAnredeAusVorname(person.firstName) || "keine_angabe",
-        anrede_quelle: schaetzeAnredeAusVorname(person.firstName) ? "automatisch" : null,
-        ...(istHauptkontaktOhneOrganisation
-          ? {
-              privatadresse_strasse: rechnungsadresse.strasse,
-              privatadresse_plz: rechnungsadresse.plz,
-              privatadresse_ort: rechnungsadresse.ort,
-              privatadresse_land: "Deutschland",
-            }
-          : {}),
-      })
-      .select("id")
-      .single();
-    if (teilnehmerError) {
-      return withCors(NextResponse.json({ error: "teilnehmer_fehler", detail: teilnehmerError.message }, { status: 500 }));
-    }
-    teilnehmerIds.push({ id: neuerTeilnehmer.id, email: person.email, vorname: person.firstName, roomOption: person.roomOption });
-  }
+  const organisationId = kontakte.organisationId;
+  const teilnehmerIds = kontakte.teilnehmer;
 
   const hauptkontaktTeilnehmerId = teilnehmerIds[0].id;
 
@@ -335,14 +229,7 @@ export async function POST(request: NextRequest) {
     return withCors(NextResponse.json({ error: "positionen_fehler", detail: positionenError.message }, { status: 500 }));
   }
 
-  // Bei Buchung ueber eine Organisation: alle beteiligten Teilnehmer
-  // automatisch mit dieser Organisation verknuepfen (siehe
-  // teilnehmer_organisationen), damit die Stammdaten nicht wieder veralten.
-  if (organisationId) {
-    for (const t of teilnehmerIds) {
-      await verknuepfeTeilnehmerMitOrganisationAutomatisch(supabase, t.id, organisationId);
-    }
-  }
+  await verknuepfeMitOrganisation(supabase, organisationId, teilnehmerIds);
 
   // Reservierungsbestaetigung sofort an alle Teilnehmer verschicken (transaktional,
   // nicht ueber den taeglichen Funnel-Cron, damit sie direkt beim Absenden ankommt).

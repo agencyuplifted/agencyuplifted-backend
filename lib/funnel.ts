@@ -11,6 +11,8 @@ import { ladeBausteine, schalterAus, baueMailHtml, abmeldeUrl, abmeldeHeader, la
 export const SYSTEM_FUNNEL_IDS: Record<string, string> = {
   "95628e52-7ba8-4987-a10b-4fb02c7db4e1": "wird automatisch direkt beim Buchungseingang verschickt",
   "b8c1927c-c660-454c-bb02-e6db2d93e8c0": "wird automatisch beim Bestätigen einer Buchung (Zahlung) verschickt",
+  "3f1a6c2e-5b7d-4e8a-9c01-2d4b6e8f0a11": "wird automatisch beim Eingang einer Programm-Buchung (z. B. Uplift) verschickt – Platzhalter {{vorname}}, {{programm}}, {{option}}, {{zahlweise}}",
+  "7c2d9e4b-1a3f-4b6c-8d20-5e7f9a1b3c22": "wird automatisch beim Bestätigen einer Programm-Buchung (Zahlung) verschickt – Platzhalter {{vorname}}, {{programm}}, {{option}}",
 };
 
 export type TriggerTyp =
@@ -127,6 +129,10 @@ async function sammleFaelligeEmpfaenger(
       // "Buchung erstellt"-Mail (z.B. Reservierungsbestaetigung) rausgehen.
       // Markierung erfolgt in bestaetigeFastbillZuordnung() (lib/actions.ts).
       if ((b as any).metadata?.quelle === "fastbill") continue;
+      // Programm-Buchungen (Uplift-Mitgliedschaft …) sind keine Seminarbuchung --
+      // "Buchung erstellt"-Funnel-Mails sprechen vom Seminar und gehen dort
+      // nicht raus; Programme haben eigene System-Mails.
+      if ((b as any).metadata?.buchungsart === "programm") continue;
       const anchor = tageVerschieben(String(b.gebucht_am).slice(0, 10), funnel.versatz_tage);
       if (!imFenster(anchor)) continue;
       const { data: positionen } = await supabase

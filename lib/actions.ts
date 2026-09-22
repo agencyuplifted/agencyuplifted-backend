@@ -7,6 +7,8 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getResend, ABSENDER } from "./email";
+import { sendeSystemMail } from "./systemmail";
+import { PROGRAMM_SYSTEM_MAIL_BESTAETIGT } from "./programm-buchung";
 import { signSession, SESSION_COOKIE_NAME, SESSION_TTL } from "./session";
 import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
@@ -1272,6 +1274,39 @@ export async function bestaetigeBuchung(formData: FormData) {
     beschreibung: "Zahlung erhalten, Buchung endgültig bestätigt.",
     bearbeiter: benutzer?.name || "Unbekannt",
   });
+
+  // Programm-Buchungen (Uplift-Mitgliedschaft …) bekommen statt der
+  // Seminar-Zahlungsbestaetigung ("das Seminar am …") ihre eigene System-Mail.
+  const { data: programmPositionen } = await supabase
+    .from("buchungspositionen")
+    .select("teilnehmer(vorname, email), programme(name), programm_optionen(titel)")
+    .eq("buchung_id", buchungId)
+    .not("programm_id", "is", null);
+  if (programmPositionen?.length) {
+    const { data: buchungMeta } = await supabase
+      .from("buchungen")
+      .select("rechnungsempfaenger:rechnungsempfaenger_teilnehmer_id(vorname, email)")
+      .eq("id", buchungId)
+      .maybeSingle();
+    const erste: any = programmPositionen[0];
+    const empfaenger = new Map<string, string>();
+    for (const p of programmPositionen as any[]) if (p.teilnehmer?.email) empfaenger.set(p.teilnehmer.email, p.teilnehmer.vorname || "");
+    const re: any = (buchungMeta as any)?.rechnungsempfaenger;
+    if (re?.email) empfaenger.set(re.email, re.vorname || "");
+    await sendeSystemMail(
+      supabase,
+      PROGRAMM_SYSTEM_MAIL_BESTAETIGT,
+      [...empfaenger.entries()].map(([email, vorname]) => ({
+        email,
+        werte: { vorname, programm: erste.programme?.name || "", option: erste.programm_optionen?.titel || "" },
+      })),
+      { typ: "buchung", id: buchungId }
+    );
+    revalidatePath("/buchungen");
+    revalidatePath(`/buchungen/${buchungId}`);
+    revalidatePath("/programme/[programm]", "page");
+    redirect(`/buchungen/${buchungId}`);
+  }
 
   // Zahlungsbestaetigungs-Mail sofort an alle Teilnehmer dieser Buchung verschicken.
   const { data: positionen } = await supabase

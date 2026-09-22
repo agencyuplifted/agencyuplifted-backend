@@ -5456,3 +5456,24 @@ a.au-kliste-name:hover {
     gap: 0.15rem;
   }
 }
+
+/* Programme: Optionen & Preise (Formularraster) */
+.au-programm-felder {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.6rem 0.9rem;
+}
+
+.au-programm-felder .au-input,
+.au-programm-felder .au-textarea {
+  margin-bottom: 0;
+}
+
+.au-programm-felder .au-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.au-programm-breit {
+  grid-column: 1 / -1;
+}
