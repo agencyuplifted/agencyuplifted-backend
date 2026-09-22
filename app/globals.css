@@ -5390,3 +5390,9 @@ a.au-kliste-name:hover {
   border-style: dashed;
   background: var(--color-bg);
 }
+
+/* Direktsprung aus Programm-Kalender/Terminkalender: Zeile kurz hervorheben */
+.au-tp-zeile-fokus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}

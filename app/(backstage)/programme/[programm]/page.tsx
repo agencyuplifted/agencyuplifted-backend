@@ -82,7 +82,8 @@ export default async function ProgrammSeite({ params }: { params: Promise<{ prog
         <p className="au-klein" style={{ padding: "0 1.15rem 1rem", margin: 0 }}>
           Befüllt sich automatisch: Seminare über die Zuordnung der{" "}
           <Link href="/seminartypen" prefetch={false}>Seminarkategorien</Link>, Online- und Präsenz-Termine über die Formate im{" "}
-          <Link href="/termine/planer#formate" prefetch={false}>Terminplaner</Link> (dort planen und fest einplanen).
+          <Link href="/termine/planer#formate" prefetch={false}>Terminplaner</Link>. Geändert wird nur im Planer – ein Klick auf einen
+          Online-/Präsenz-Termin öffnet ihn dort direkt (Datum ändern oder im Kalender ziehen).
         </p>
       </section>
     </main>

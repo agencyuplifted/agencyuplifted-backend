@@ -6,6 +6,14 @@ import { formatDatumsspanne } from "@/lib/format";
 // Eintraege: Seminartermine (Standard), vorgeplante Kandidaten ({ vorgeplant })
 // und im Terminplaner fest eingeplante Online-/Praesenz-Termine ({ fest }).
 
+// Direktsprung in den Terminplaner zu genau diesem Kandidaten/festen Termin
+// (richtiges Jahr, Reiter "Kandidaten", Zeile markiert und aufgeklappt) --
+// Termine werden nur dort geaendert, weil nur der Planer alle Konflikte kennt.
+function planerLink(t: { id: string; datum_start: string }): string {
+  const id = String(t.id).replace(/^v-/, "");
+  return `/termine/planer?jahr=${t.datum_start.slice(0, 4)}&kandidat=${id}#kandidaten`;
+}
+
 // "Foundation-Sparring" -> "Sparring", "Uplift-Day" -> "Day"
 function kurzname(name?: string | null): string {
   if (!name) return "";
@@ -89,7 +97,7 @@ export default function Jahresplaner({
                 return (
                   <a
                     key={t.id}
-                    href="/termine/planer#kandidaten"
+                    href={planerLink(t)}
                     className="au-planer-balken au-planer-fest"
                     style={{ gridColumn: `${von + 1} / ${bis + 2}`, gridRow: spur + 1, background: t.termin_formate?.farbe || "var(--color-accent)" }}
                     title={`Fest eingeplant: ${t.termin_formate?.name || ""} · ${formatDatumsspanne(t.datum_start, t.datum_ende)}${t.start_uhrzeit ? `, ${t.start_uhrzeit.slice(0, 5)} Uhr` : ""}`}
@@ -105,7 +113,7 @@ export default function Jahresplaner({
                 return (
                   <a
                     key={t.id}
-                    href="/termine/planer#kandidaten"
+                    href={planerLink(t)}
                     className={`au-planer-balken au-planer-vorgeplant${t.status === "in_pruefung" ? " pruefung" : ""}`}
                     style={{ gridColumn: `${von + 1} / ${bis + 2}`, gridRow: spur + 1, ...(farbe ? ({ "--kat": farbe } as React.CSSProperties) : {}) }}
                     title={`Vorgeplant (${t.status === "in_pruefung" ? "in Prüfung" : "Kandidat"}): ${name || "Kategorie offen"} · ${formatDatumsspanne(t.datum_start, t.datum_ende)}`}

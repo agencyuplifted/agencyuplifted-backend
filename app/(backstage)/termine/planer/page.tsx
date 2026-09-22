@@ -26,6 +26,7 @@ import {
   legeKandidatAn,
   setzeKandidatStatus,
   setzeKandidatFest,
+  verschiebeKandidat,
   aktualisiereKandidat,
   speichereNachbewertung,
   legeKonferenzAn,
@@ -52,6 +53,7 @@ import KategorieWahl from "./KategorieWahl";
 import { TerminFestlegenKnopf, TerminFestlegenPanel, type QuellTermin } from "./TerminFestlegen";
 import PlanerKalender, { KalenderLegende, type KalenderBalken } from "./PlanerKalender";
 import SerienPanel, { type SerienZeileDaten } from "./SerienPanel";
+import KandidatFokus from "./KandidatFokus";
 
 export const metadata = { title: "Terminplaner" };
 
@@ -76,7 +78,7 @@ const mitHotel = (f?: { benoetigt_uebernachtung?: boolean | null } | null) => f?
 export default async function TerminplanerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ jahr?: string; format?: string; zeitraum?: string; ort?: string }>;
+  searchParams: Promise<{ jahr?: string; format?: string; zeitraum?: string; ort?: string; kandidat?: string }>;
 }) {
   const sp = await searchParams;
   const heute = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
@@ -309,7 +311,7 @@ export default async function TerminplanerPage({
     const seminar = istSeminarFormat(k.termin_formate);
     const online = k.termin_formate?.terminart === "online";
     return (
-      <li key={k.id} className="au-tp-zeile">
+      <li key={k.id} id={`kandidat-${k.id}`} className={`au-tp-zeile${k.id === sp.kandidat ? " au-tp-zeile-fokus" : ""}`}>
         <div className="au-tp-zeile-kopf">
           <div>
             <strong>{spanne(k)}</strong>
@@ -391,10 +393,23 @@ export default async function TerminplanerPage({
         )}
 
         {(k.status === "vorgeschlagen" || k.status === "in_pruefung" || k.status === "fest") && (
-          <details className="au-tp-details">
+          <details className="au-tp-details" open={k.id === sp.kandidat}>
             <summary className="au-klein">
-              {online ? "Uhrzeit, Notiz" : `Ort, ${seminar ? "Kategorie, " : ""}${mitHotel(k.termin_formate) ? "" : "Uhrzeit, "}Notiz`}
+              Datum, {online ? "Uhrzeit, Notiz" : `Ort, ${seminar ? "Kategorie, " : ""}${mitHotel(k.termin_formate) ? "" : "Uhrzeit, "}Notiz`}
             </summary>
+            {/* Datum direkt aendern -- neu bewertet, fest eingeplante bleiben fest */}
+            <AktionsFormular action={verschiebeKandidat} className="au-tp-form">
+              <input type="hidden" name="id" value={k.id} />
+              <label className="au-klein au-tp-inline">
+                Neuer Start
+                <input className="au-input" type="date" name="datum_start" defaultValue={k.datum_start} required />
+              </label>
+              <label className="au-klein au-tp-inline">
+                <input type="checkbox" name="kollision_bestaetigt" /> Überschneidung übergehen
+              </label>
+              <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Datum ändern</button>
+              <span className="au-klein">oder im Kalender unten ziehen</span>
+            </AktionsFormular>
             <form action={aktualisiereKandidat} className="au-tp-form">
               <input type="hidden" name="id" value={k.id} />
               {online ? (
@@ -981,6 +996,8 @@ export default async function TerminplanerPage({
         farbe: k.termin_formate?.farbe || null,
         titel: `Fest eingeplant: ${k.termin_formate?.name || ""} · ${spanne(k)}`,
         start: k.datum_start,
+        // ziehbar wie Kandidaten -- bleibt beim Verschieben fest eingeplant
+        kandidatId: k.id,
       })),
     ...(kandidaten || [])
       .filter((k: any) => k.status === "in_pruefung" || k.status === "vorgeschlagen")
@@ -1066,6 +1083,7 @@ export default async function TerminplanerPage({
         </div>
       </section>
 
+      {sp.kandidat && <KandidatFokus id={sp.kandidat} />}
       <SeitenTabs
         speicherSchluessel="terminplaner"
         ariaLabel="Terminplaner"

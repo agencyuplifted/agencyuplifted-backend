@@ -196,14 +196,6 @@ export default function PlanerKalender({
                       : {}),
                 };
                 const klasse = `au-planer-balken au-tp-balken-${b.art}${b.kandidatId ? " ziehbar" : ""}`;
-                // Fest eingeplant: nicht ziehbar -- erst "Festlegung aufheben" (Reiter Kandidaten)
-                if (b.art === "fest") {
-                  return (
-                    <span key={b.key} className={klasse} style={stil} title={`${b.titel}\n(zum Ändern unter „Kandidaten“ die Festlegung aufheben)`} onClick={(e) => e.stopPropagation()}>
-                      {b.label}
-                    </span>
-                  );
-                }
                 if (b.art === "termin") {
                   return (
                     <a key={b.key} href={b.href} className={klasse} style={stil} title={`${b.titel}\n(fester Termin – Änderungen in der Terminmaske)`} onClick={(e) => e.stopPropagation()}>

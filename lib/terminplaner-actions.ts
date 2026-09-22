@@ -184,7 +184,9 @@ export async function verschiebeKandidat(formData: FormData): Promise<Ergebnis> 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return { fehler: "Ungültiges Datum." };
   const supabase = getSupabaseAdmin();
   const { data: v } = await supabase.from("terminvorschlaege").select("id, status, format_id, termin_formate(*)").eq("id", id).maybeSingle();
-  if (!v || !["vorgeschlagen", "in_pruefung"].includes(v.status)) return { fehler: "Nur gemerkte oder angefragte Kandidaten lassen sich verschieben." };
+  // Fest eingeplante Termine (Online/Praesenz) lassen sich direkt verschieben
+  // und bleiben dabei fest -- vorher musste man die Festlegung erst aufheben.
+  if (!v || !["vorgeschlagen", "in_pruefung", "fest"].includes(v.status)) return { fehler: "Nur gemerkte, angefragte oder fest eingeplante Termine lassen sich verschieben." };
   const format = v.termin_formate as unknown as Format;
   const b = bewerte(start, format, await ladePlanerDaten(Number(start.slice(0, 4))), heuteBerlin(), { vorschlagId: id });
   const bestaetigt = formData.get("kollision_bestaetigt") === "on";
@@ -203,7 +205,8 @@ export async function verschiebeKandidat(formData: FormData): Promise<Ergebnis> 
     .eq("id", id);
   if (error) return { fehler: error.message };
   revalidatePath("/termine/planer");
-  return { fehler: null, info: "Verschoben." };
+  revalidatePath("/programme/[programm]", "page");
+  return { fehler: null, info: v.status === "fest" ? "Verschoben – bleibt fest eingeplant." : "Verschoben." };
 }
 
 /** Bewertung fuer einen bestehenden Kandidaten an einem anderen Tag (Vorschau beim Verschieben) */
