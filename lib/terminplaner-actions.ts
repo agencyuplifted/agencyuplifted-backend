@@ -483,6 +483,7 @@ function formatZusatz(fd: FormData) {
       woche_im_monat: fd.get("serie_woche"),
       wochentag: fd.get("serie_wochentag"),
       wochentage: fd.getAll("serie_wochentage").join(","),
+      monate: fd.getAll("serie_monate").join(","),
     }),
   };
 }

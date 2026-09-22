@@ -53,14 +53,15 @@ export const FERIEN_TYP_LABEL: Record<string, string> = {
 };
 export const TERMINART_LABEL: Record<Terminart, string> = { seminar: "Seminar", online: "Online", praesenz: "Präsenz (kein Seminar)" };
 
-export type Rhythmus = "monatlich" | "zweimonatlich" | "quartalsweise" | "halbjaehrlich" | "jaehrlich";
-export const RHYTHMUS_MONATE: Record<Rhythmus, number> = { monatlich: 1, zweimonatlich: 2, quartalsweise: 3, halbjaehrlich: 6, jaehrlich: 12 };
+export type Rhythmus = "monatlich" | "zweimonatlich" | "quartalsweise" | "halbjaehrlich" | "jaehrlich" | "wunschmonate";
+export const RHYTHMUS_MONATE: Record<Rhythmus, number> = { monatlich: 1, zweimonatlich: 2, quartalsweise: 3, halbjaehrlich: 6, jaehrlich: 12, wunschmonate: 1 };
 export const RHYTHMUS_LABEL: Record<Rhythmus, string> = {
   monatlich: "monatlich",
   zweimonatlich: "alle 2 Monate",
   quartalsweise: "quartalsweise",
   halbjaehrlich: "halbjährlich",
   jaehrlich: "jährlich",
+  wunschmonate: "in Wunschmonaten",
 };
 
 /**
@@ -75,7 +76,10 @@ export type SerienRegel = {
   modus: "regel" | "bester_tag";
   woche_im_monat?: number | null; // 1-4, -1 = letzte
   wochentag?: number | null; // ISO 1=Mo
-  wochentage?: number[] | null; // bester_tag: erlaubte Wochentage
+  /** bester_tag: erlaubte Wochentage; regel: erlaubte Ausweichtage (leer = Mo–Fr) */
+  wochentage?: number[] | null;
+  /** nur bei rhythmus "wunschmonate": je gewaehltem Monat ein Termin (z. B. Jan + Sep) */
+  monate?: number[] | null;
 };
 
 export const istSeminarFormat = (f?: { terminart?: string | null } | null) => !f?.terminart || f.terminart === "seminar";
@@ -456,10 +460,12 @@ const WT_KURZ = ["", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const WOCHE_TEXT: Record<string, string> = { "1": "1.", "2": "2.", "3": "3.", "4": "4.", "-1": "letzter" };
 
 export function serienRegelText(r: SerienRegel): string {
-  const basis = RHYTHMUS_LABEL[r.rhythmus] || r.rhythmus;
+  const basis =
+    r.rhythmus === "wunschmonate" && r.monate?.length ? r.monate.map((m) => MONATE_KURZ[m - 1]).join(" + ") : RHYTHMUS_LABEL[r.rhythmus] || r.rhythmus;
   if (r.modus === "regel" && r.woche_im_monat && r.wochentag) {
-    const monate = RHYTHMUS_MONATE[r.rhythmus] > 1 ? ` (ab ${MONATE_KURZ[(r.start_monat || 1) - 1]})` : "";
-    return `${basis}, ${WOCHE_TEXT[String(r.woche_im_monat)]} ${WT_KURZ[r.wochentag]} im Monat${monate}`;
+    const monate = r.rhythmus !== "wunschmonate" && RHYTHMUS_MONATE[r.rhythmus] > 1 ? ` (ab ${MONATE_KURZ[(r.start_monat || 1) - 1]})` : "";
+    const ausweichen = r.wochentage?.length ? `, ausweichen nur ${r.wochentage.map((w) => WT_KURZ[w]).join("/")}` : "";
+    return `${basis}, ${WOCHE_TEXT[String(r.woche_im_monat)]} ${WT_KURZ[r.wochentag]} im Monat${monate}${ausweichen}`;
   }
   const tage = r.wochentage?.length ? r.wochentage.map((w) => WT_KURZ[w]).join("/") : "Mo–Fr";
   return `${basis}, bester Tag je Periode (${tage})`;
@@ -467,6 +473,19 @@ export function serienRegelText(r: SerienRegel): string {
 
 /** Perioden eines Jahres, z. B. zweimonatlich ab Jan: Jan–Feb, Mär–Apr, … */
 export function serienPerioden(jahr: number, r: SerienRegel): { label: string; von: string; bis: string; monat: number }[] {
+  // Wunschmonate: je gewaehltem Monat eine Periode (z. B. Uplift-Day Jan + Sep
+  // statt starr halbjaehrlich)
+  if (r.rhythmus === "wunschmonate") {
+    return [...new Set(r.monate || [])]
+      .filter((m) => m >= 1 && m <= 12)
+      .sort((a, b) => a - b)
+      .map((m) => ({
+        label: `${MONATE_KURZ[m - 1]} ${jahr}`,
+        von: `${jahr}-${String(m).padStart(2, "0")}-01`,
+        bis: isoPlus(m === 12 ? `${jahr + 1}-01-01` : `${jahr}-${String(m + 1).padStart(2, "0")}-01`, -1),
+        monat: m,
+      }));
+  }
   const schritt = RHYTHMUS_MONATE[r.rhythmus] || 1;
   const erster = (((r.start_monat || 1) - 1) % schritt) + 1;
   const perioden = [];
@@ -520,10 +539,12 @@ export function planeSerie(
       // derselbe Wochentag +/-2 Wochen -- jeweils nur innerhalb der Periode.
       // (Erst "gleiche Woche" ergab in der Simulation oft einen Montag direkt
       // vor der Seminar-Anreise.)
+      // Ausweichtage einschraenkbar (z. B. Session nur Mi/Do statt Mo/Fr)
+      const ausweichTage = r.wochentage?.length ? r.wochentage : [1, 2, 3, 4, 5];
       const montag = isoPlus(tag, 1 - wochentag(tag));
       const stufen: string[][] = [
         [isoPlus(tag, -7), isoPlus(tag, 7)],
-        [0, 1, 2, 3, 4].map((i) => isoPlus(montag, i)).filter((t) => t !== tag),
+        [0, 1, 2, 3, 4, 5, 6].map((i) => isoPlus(montag, i)).filter((t) => t !== tag && ausweichTage.includes(wochentag(t))),
         [isoPlus(tag, -14), isoPlus(tag, 14)],
       ];
       let fallback: Bewertung | null = null;
@@ -571,18 +592,25 @@ export function normalisiereSerienRegel(roh: Record<string, FormDataEntryValue |
     start_monat: Math.min(12, Math.max(1, zahl(roh.start_monat) || 1)),
     modus,
   };
+  if (rhythmus === "wunschmonate") {
+    const monate = String(roh.monate || "")
+      .split(",")
+      .map(Number)
+      .filter((n) => n >= 1 && n <= 12);
+    if (!monate.length) throw new Error("Bei „in Wunschmonaten“ bitte mindestens einen Monat ankreuzen.");
+    regel.monate = [...new Set(monate)].sort((a, b) => a - b);
+  }
+  const erlaubteTage = String(roh.wochentage || "")
+    .split(",")
+    .map(Number)
+    .filter((n) => n >= 1 && n <= 7);
   if (modus === "regel") {
     if (!woche || ![1, 2, 3, 4, -1].includes(woche) || !wt || wt < 1 || wt > 7) {
       throw new Error("Für eine feste Regel bitte Woche im Monat und Wochentag wählen.");
     }
     regel.woche_im_monat = woche;
     regel.wochentag = wt;
-  } else {
-    const tage = String(roh.wochentage || "")
-      .split(",")
-      .map(Number)
-      .filter((n) => n >= 1 && n <= 7);
-    regel.wochentage = tage.length ? [...new Set(tage)].sort() : null;
   }
+  regel.wochentage = erlaubteTage.length ? [...new Set(erlaubteTage)].sort() : null;
   return regel;
 }

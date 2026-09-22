@@ -787,7 +787,16 @@ export default async function TerminplanerPage({
             im Monat
           </span>
           <span className="au-klein au-tp-inline">
-            Bester Tag nur an:
+            Wunschmonate:
+            {MONATE.map((m, i) => (
+              <label key={m} className="au-tp-inline" title="nur bei Rhythmus „in Wunschmonaten“">
+                <input type="checkbox" name="serie_monate" value={i + 1} defaultChecked={(r?.monate || []).includes(i + 1)} />
+                {m.slice(0, 3)}
+              </label>
+            ))}
+          </span>
+          <span className="au-klein au-tp-inline" title="Bester Tag: nur an diesen Tagen · Feste Regel: nur auf diese Tage ausweichen (leer = Mo–Fr)">
+            Bester Tag bzw. Ausweichen nur an:
             {[1, 2, 3, 4, 5, 6, 7].map((w) => (
               <label key={w} className="au-tp-inline">
                 <input type="checkbox" name="serie_wochentage" value={w} defaultChecked={(r?.wochentage || []).includes(w)} />
