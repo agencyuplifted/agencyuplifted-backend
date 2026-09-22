@@ -460,3 +460,86 @@ export function formatKalendertag(iso: string): string {
   const [j, m, t] = iso.slice(0, 10).split("-");
   return `${WOCHENTAG_KURZ[wochentagVon(iso)]} ${t}.${m}.${j}`;
 }
+
+export function tageZwischen(vonISO: string, bisISO: string): number {
+  return Math.round((tagZuDate(bisISO).getTime() - tagZuDate(vonISO).getTime()) / 86400000);
+}
+
+// ---------------------------------------------------------------------------
+// Preisstaffeln eines bestehenden Termins auf einen neuen Termin uebertragen
+// (Terminplaner "Als Termin festlegen" -> "Einstellungen uebernehmen aus").
+// - Relative Stufen ("X Tage vor Start") bleiben unveraendert.
+// - Stufen mit festem Datum behalten ihren Abstand zum Start und bleiben auf
+//   dem Wochentag der Quelle (lag der Stichtag dort auf einem Donnerstag, dann
+//   auch hier -- naechstgelegener Donnerstag, max. +/- 3 Tage, keine Feiertage
+//   DE/AT/CH). Ein fester Stichtag wurde ja meist bewusst gewaehlt.
+// - Stufen, deren Stichtag beim neuen Termin schon verstrichen ist, entfallen
+//   (keine nachtraeglich guenstigeren Stufen, wie bei
+//   wendePreisstaffelVorlageAn) -- die spaeteste Stufe bleibt aber immer, sonst
+//   haette die Option gar keinen Preis.
+
+type QuellStaffel = Preisstaffel & { name: string; waehrung?: string | null; sortierung?: number | null };
+
+export type UebertrageneStaffel = {
+  name: string;
+  stichtag_tage_vor_start: number | null;
+  stichtag_datum: string | null;
+  preis: number | string;
+  waehrung: string;
+  sortierung: number;
+};
+
+export function uebertrageStaffelnAufTermin(
+  staffeln: QuellStaffel[],
+  quelleStart: string,
+  zielStart: string,
+  heuteISO: string
+): { staffeln: UebertrageneStaffel[]; weggelassen: string[] } {
+  const ziel = zielStart.slice(0, 10);
+  const umgerechnet = staffeln.map((s) => {
+    if (!s.stichtag_datum) {
+      const tage = s.stichtag_tage_vor_start ?? 0;
+      return {
+        staffel: {
+          name: s.name,
+          stichtag_tage_vor_start: tage,
+          stichtag_datum: null,
+          preis: s.preis,
+          waehrung: s.waehrung || "EUR",
+          sortierung: s.sortierung ?? tage,
+        },
+        // Relativ endet die Stufe um 00:00 UTC des Tages -> an diesem Tag schon vorbei
+        tag: tagePlus(ziel, -tage),
+        abgelaufen: (heute: string) => tagePlus(ziel, -tage) <= heute,
+      };
+    }
+    const quellTag = berlinKalendertag(s.stichtag_datum);
+    const abstand = tageZwischen(quellTag, quelleStart.slice(0, 10));
+    const regel: StichtagRegel = { wochentage: [wochentagVon(quellTag)], feiertage_laender: ["DE", "AT", "CH"], max_verschiebung_tage: 3 };
+    const b = abstand > 0 ? berechneStichtagMitRegel(ziel, abstand, regel) : null;
+    const tag = b && b.gefunden && !b.ausserhalbMax ? b.stichtag : tagePlus(ziel, -abstand);
+    return {
+      staffel: {
+        name: s.name,
+        stichtag_tage_vor_start: null,
+        stichtag_datum: stichtagsDatumEndeDesTages(tag),
+        preis: s.preis,
+        waehrung: s.waehrung || "EUR",
+        sortierung: s.sortierung ?? 0,
+      },
+      tag,
+      abgelaufen: (heute: string) => tag < heute,
+    };
+  });
+
+  // Spaeteste Stufe (Normalpreis) immer behalten
+  const spaeteste = umgerechnet.reduce<(typeof umgerechnet)[number] | null>(
+    (max, u) => (!max || u.tag > max.tag || (u.tag === max.tag && u.staffel.stichtag_datum === null) ? u : max),
+    null
+  );
+  const behalten = umgerechnet.filter((u) => u === spaeteste || !u.abgelaufen(heuteISO));
+  return {
+    staffeln: behalten.map((u) => u.staffel),
+    weggelassen: umgerechnet.filter((u) => !behalten.includes(u)).map((u) => u.staffel.name),
+  };
+}

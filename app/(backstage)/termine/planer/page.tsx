@@ -20,7 +20,6 @@ import {
   legeKandidatAn,
   setzeKandidatStatus,
   aktualisiereKandidat,
-  bestaetigeKandidat,
   speichereNachbewertung,
   legeKonferenzAn,
   loescheKonferenz,
@@ -43,6 +42,7 @@ import ManuellerKandidat from "./ManuellerKandidat";
 import BewertungAnzeige from "./BewertungAnzeige";
 import KopierText from "./KopierText";
 import KategorieWahl from "./KategorieWahl";
+import { TerminFestlegenKnopf, TerminFestlegenPanel, type QuellTermin } from "./TerminFestlegen";
 import PlanerKalender, { KalenderLegende, type KalenderBalken } from "./PlanerKalender";
 
 export const metadata = { title: "Terminplaner" };
@@ -106,6 +106,34 @@ export default async function TerminplanerPage({
     .neq("status", "abgesagt")
     .gte("datum_start", `${jahr}-01-01`)
     .lte("datum_start", `${jahr}-12-31`);
+
+  // Moegliche Quellen fuer "Einstellungen uebernehmen aus" (alle Termine,
+  // nicht nur dieses Jahr) mit Anzahl der uebernehmbaren Inhalte
+  const { data: quellTermineRoh } = await supabase
+    .from("seminartermine")
+    .select(
+      "id, kennung, titel, datum_start, seminartyp_id, seminartypen(name), seminartermin_optionen(id, deaktiviert_am, preisstaffeln(id)), urgency_stufen(id), seminartermin_mitarbeiter(id), seminar_unterlagen(id)"
+    )
+    .neq("status", "abgesagt")
+    .order("datum_start", { ascending: false });
+  const quellTermine: QuellTermin[] = (quellTermineRoh || []).map((t: any) => {
+    const aktiveOptionen = (t.seminartermin_optionen || []).filter((o: any) => !o.deaktiviert_am);
+    return {
+      id: t.id,
+      label: `${t.kennung ? `${t.kennung} · ` : ""}${t.titel || t.seminartypen?.name || "Ohne Titel"} (${formatDatum(t.datum_start)}) – ${aktiveOptionen.length} Opt.`,
+      seminartyp_id: t.seminartyp_id,
+      kategorie: t.seminartypen?.name || "Ohne Kategorie",
+      datum_start: t.datum_start,
+      titel: t.titel,
+      anzahl: {
+        optionen: aktiveOptionen.length,
+        staffeln: aktiveOptionen.reduce((n: number, o: any) => n + (o.preisstaffeln?.length || 0), 0),
+        urgency: t.urgency_stufen?.length || 0,
+        mitarbeiter: t.seminartermin_mitarbeiter?.length || 0,
+        unterlagen: t.seminar_unterlagen?.length || 0,
+      },
+    };
+  });
 
   // Touring: derselbe Tag in einer anderen Stadt ist ein eigener Kandidat
   // Jedes Jahr automatisch (Karneval) -- in Liste und Kalender wie Konferenzen
@@ -284,9 +312,10 @@ export default async function TerminplanerPage({
               <form action={setzeKandidatStatus}>
                 <input type="hidden" name="id" value={k.id} />
                 <input type="hidden" name="status" value="in_pruefung" />
-                <button type="submit" className="au-btn au-btn-primary au-btn-sm">{mitHotel(k.termin_formate) ? "Hotel anfragen" : "Location anfragen"}</button>
+                <button type="submit" className="au-btn au-btn-secondary au-btn-sm">{mitHotel(k.termin_formate) ? "Hotel anfragen" : "Location anfragen"}</button>
               </form>
             )}
+            {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && <TerminFestlegenKnopf kandidatId={k.id} />}
             {k.status === "in_pruefung" && (
               <form action={setzeKandidatStatus}>
                 <input type="hidden" name="id" value={k.id} />
@@ -317,12 +346,19 @@ export default async function TerminplanerPage({
         </div>
         {live && <BewertungAnzeige b={live} kompakt />}
         {k.notiz && <p className="au-klein" style={{ margin: "0.3rem 0 0" }}>📝 {k.notiz}</p>}
+        {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
+          <TerminFestlegenPanel
+            kandidat={{ id: k.id, seminartyp_id: k.seminartyp_id, veranstaltungsort_id: k.veranstaltungsort_id, spanne: spanne(k) }}
+            typen={(typen || []) as any[]}
+            orte={(orteAlle || []) as any[]}
+            quellen={quellTermine}
+          />
+        )}
 
         {(k.status === "vorgeschlagen" || k.status === "in_pruefung") && (
           <details className="au-tp-details">
             <summary className="au-klein">
               Ort, Kategorie, {mitHotel(k.termin_formate) ? "" : "Uhrzeit, "}Notiz
-              {k.status === "in_pruefung" ? ` · ${mitHotel(k.termin_formate) ? "Hotel" : "Location"} hat bestätigt → übernehmen` : ""}
             </summary>
             <form action={aktualisiereKandidat} className="au-tp-form">
               <input type="hidden" name="id" value={k.id} />
@@ -347,28 +383,6 @@ export default async function TerminplanerPage({
               <input className="au-input" name="notiz" defaultValue={k.notiz || ""} placeholder={mitHotel(k.termin_formate) ? "Notiz (z. B. Hotel angefragt am …)" : "Notiz (z. B. Location angefragt am …)"} />
               <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
             </form>
-            {k.status === "in_pruefung" && (
-              <form action={bestaetigeKandidat} className="au-tp-form au-tp-bestaetigen">
-                <input type="hidden" name="id" value={k.id} />
-                <select className="au-select" name="seminartyp_id" defaultValue={k.seminartyp_id || ""} required>
-                  <option value="">Kategorie wählen *</option>
-                  {(typen || []).map((t: any) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-                <select className="au-select" name="veranstaltungsort_id" defaultValue={k.veranstaltungsort_id || ""} required>
-                  <option value="">Ort wählen *</option>
-                  {(orteAlle || []).map((o: any) => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
-                <input className="au-input" name="kennung" placeholder="Kennung, z. B. ORG127" />
-                <input className="au-input" name="titel" placeholder="Titel (optional)" />
-                <button type="submit" className="au-btn au-btn-primary au-btn-sm">
-                  {mitHotel(k.termin_formate) ? "Hotel" : "Location"} bestätigt – ins Terminverzeichnis übernehmen
-                </button>
-              </form>
-            )}
           </details>
         )}
 

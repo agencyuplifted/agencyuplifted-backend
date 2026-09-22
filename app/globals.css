@@ -4866,11 +4866,88 @@ a.au-kliste-name:hover {
   flex: 1 1 140px;
 }
 
-.au-tp-bestaetigen {
-  padding: 0.6rem;
+/* "Als Termin festlegen" (TerminFestlegen.tsx) -- gruen getoent wie der
+   frühere Übernahme-Kasten, weil hier aus einem Kandidaten ein echter Termin wird */
+.au-tp-festlegen {
+  margin-top: 0.6rem;
+  padding: 0.75rem 0.85rem;
   border-radius: var(--radius-sm);
   background: var(--color-success-soft);
   border: 1px solid var(--color-success-border);
+}
+
+.au-tp-festlegen-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.au-tp-festlegen-raster {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.6rem;
+}
+
+.au-tp-festlegen .au-input,
+.au-tp-festlegen .au-select {
+  margin: 0;
+  background: #fff;
+}
+
+.au-tp-festlegen .au-label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.au-tp-festlegen-quelle {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-success-border);
+}
+
+.au-tp-festlegen-quelle > label {
+  display: block;
+  max-width: 560px;
+}
+
+.au-tp-festlegen-bereiche {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.35rem 1rem;
+}
+
+.au-tp-festlegen-bereiche label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.au-tp-festlegen-bereiche input {
+  margin-top: 0.2rem;
+}
+
+.au-tp-festlegen-bereiche li.gesperrt {
+  opacity: 0.5;
+}
+
+.au-tp-festlegen-hinweis {
+  display: block;
+  margin-top: 0.1rem;
+}
+
+.au-tp-festlegen-fuss {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
 }
 
 .au-tp-inline {

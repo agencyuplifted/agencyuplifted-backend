@@ -150,10 +150,10 @@ export default async function TerminDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ importVon?: string }>;
+  searchParams: Promise<{ importVon?: string; uebernahme?: string }>;
 }) {
   const { id } = await params;
-  const { importVon } = await searchParams;
+  const { importVon, uebernahme } = await searchParams;
   const supabase = getSupabaseAdmin();
 
   // Alle folgenden Abfragen sind voneinander unabhaengig (jede filtert direkt
@@ -512,6 +512,12 @@ export default async function TerminDetailPage({
 
   return (
     <main>
+      {/* Rueckmeldung nach "Als Termin festlegen" im Terminplaner (was aus welchem Termin uebernommen wurde) */}
+      {uebernahme && (
+        <div className={`au-banner ${uebernahme.includes("Probleme:") ? "au-banner-warning" : "au-banner-success"}`}>
+          <strong>Aus dem Terminplaner angelegt.</strong> {uebernahme.slice(0, 1500)}
+        </div>
+      )}
       <p className="au-brotkrumen"><Link href="/termine">Seminartermine</Link> <span>›</span> {termin.kennung || titelAnzeige}</p>
       <header className="au-dash-kopf">
         <div style={{ minWidth: 0 }}>

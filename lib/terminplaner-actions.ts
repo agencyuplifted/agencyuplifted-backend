@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSupabaseAdmin } from "./supabase";
 import { getAktuellerBenutzer } from "./auth";
 import { bewerte, ladePlanerDaten, importiereFerien, type Bewertung, type Format } from "./terminplaner";
+import { kopiereTerminInhalte, einstellungenAusQuelle, uebernahmeZusammenfassung, type UebernahmeBereiche } from "./termin-uebernahme";
 
 // Server Actions des Terminplaners (/termine/planer). Eigene Datei, weil das
 // Modul in sich geschlossen ist; jede Action prueft den Backstage-Login selbst.
@@ -191,43 +192,103 @@ export async function aktualisiereKandidat(formData: FormData) {
   zurueck("kandidaten");
 }
 
-/** Hotel hat bestaetigt: Kandidat wird echter Seminartermin (volle Maske ab dann unter /termine) */
-export async function bestaetigeKandidat(formData: FormData) {
-  await login();
+/**
+ * Kandidat wird echter Seminartermin -- direkt aus "Kandidat" oder nach
+ * "Hotel anfragen" (Markus klaert Termine teils vorab mit dem Hotel, der
+ * Zwischenschritt ist deshalb optional). Optional werden Optionen,
+ * Preisstaffeln (relativ zum neuen Start), Termin-Einstellungen, Urgency-
+ * Stufen, Mitarbeiter und Unterlagen aus einem bestehenden Termin uebernommen
+ * (lib/termin-uebernahme.ts). Gibt die neue Termin-ID zurueck statt zu
+ * redirecten, damit das Panel Fehler inline zeigen kann.
+ */
+export async function legeTerminAusKandidatAn(formData: FormData): Promise<Ergebnis & { terminId?: string }> {
+  const f = await loginFehler();
+  if (f) return { fehler: f };
   const supabase = getSupabaseAdmin();
-  const id = String(formData.get("id"));
+  const id = String(formData.get("id") || "");
   const seminartypId = String(formData.get("seminartyp_id") || "");
   const ortId = String(formData.get("veranstaltungsort_id") || "");
-  if (!seminartypId || !ortId) throw new Error("Für die Übernahme braucht es Kategorie und Veranstaltungsort.");
-  const { data: v } = await supabase.from("terminvorschlaege").select("*, termin_formate(seminar_tage, halbtag, vorabend)").eq("id", id).single();
-  if (!v || v.status === "bestaetigt") throw new Error("Kandidat nicht gefunden oder schon übernommen.");
+  const quelleId = String(formData.get("quelle_id") || "");
+  if (!seminartypId || !ortId) return { fehler: "Für den Termin braucht es Kategorie und Veranstaltungsort." };
+
+  const bereiche: UebernahmeBereiche = {
+    optionen: formData.get("uebernahme_optionen") === "on",
+    preisstaffeln: formData.get("uebernahme_optionen") === "on" && formData.get("uebernahme_preisstaffeln") === "on",
+    einstellungen: formData.get("uebernahme_einstellungen") === "on",
+    urgency: formData.get("uebernahme_urgency") === "on",
+    mitarbeiter: formData.get("uebernahme_mitarbeiter") === "on",
+    unterlagen: formData.get("uebernahme_unterlagen") === "on",
+  };
+
+  let quelle: Record<string, any> | null = null;
+  if (quelleId) {
+    const { data, error } = await supabase.from("seminartermine").select("*").eq("id", quelleId).single();
+    if (error || !data) return { fehler: "Quell-Termin nicht gefunden." };
+    quelle = data;
+  }
+
+  // Kandidat zuerst "beanspruchen" (nur wenn noch nicht bestaetigt) -- ein
+  // Doppelklick legt so keinen zweiten Termin an.
+  const { data: v } = await supabase
+    .from("terminvorschlaege")
+    .update({ status: "bestaetigt", aktualisiert_am: new Date().toISOString() })
+    .eq("id", id)
+    .neq("status", "bestaetigt")
+    .select("*, termin_formate(seminar_tage)")
+    .maybeSingle();
+  if (!v) return { fehler: "Kandidat nicht gefunden oder schon als Termin angelegt." };
+
+  const titel = String(formData.get("titel") || "").trim() || (quelle && bereiche.einstellungen ? quelle.titel : null) || null;
   const { data: termin, error } = await supabase
     .from("seminartermine")
     .insert({
+      ...(quelle && bereiche.einstellungen ? einstellungenAusQuelle(quelle) : {}),
       seminartyp_id: seminartypId,
       veranstaltungsort_id: ortId,
       datum_start: v.datum_start,
       datum_ende: v.datum_ende,
-      dauer_tage: v.termin_formate?.seminar_tage || null,
+      dauer_tage: v.termin_formate?.seminar_tage || quelle?.dauer_tage || null,
       vorabend_anreise_datum: v.anreise_datum,
-      zeit_start: v.start_uhrzeit,
-      zeit_ende: v.end_uhrzeit,
       vorabendanreise_inklusive: !!v.anreise_datum,
+      // Uhrzeit vom Kandidaten (Abendformate), sonst die des Quelltermins
+      zeit_start: v.start_uhrzeit || (bereiche.einstellungen ? quelle?.zeit_start : null) || null,
+      zeit_ende: v.end_uhrzeit || (bereiche.einstellungen ? quelle?.zeit_ende : null) || null,
       kennung: String(formData.get("kennung") || "").trim() || null,
-      titel: String(formData.get("titel") || "").trim() || null,
+      titel,
       status: "geplant",
-      metadata: { terminvorschlag_id: v.id },
+      metadata: { terminvorschlag_id: v.id, ...(quelle ? { einstellungen_aus_termin_id: quelle.id } : {}) },
     })
-    .select("id")
+    .select("id, datum_start")
     .single();
-  if (error) throw new Error(error.message);
+  if (error || !termin) {
+    // Kandidat wieder freigeben, sonst stuende er als "bestaetigt" ohne Termin da
+    await supabase.from("terminvorschlaege").update({ status: v.status }).eq("id", id);
+    // Kennung ist eindeutig (seminartermine_kennung_key) -- war vorher der
+    // haeufigste Grund fuer die leere "Application error"-Seite bei der Uebernahme.
+    if (error?.code === "23505" && error.message.includes("kennung")) {
+      const kennung = String(formData.get("kennung") || "").trim();
+      const { data: vorhanden } = await supabase.from("seminartermine").select("titel, datum_start").eq("kennung", kennung).maybeSingle();
+      return {
+        fehler: `Die Kennung „${kennung}“ ist schon vergeben${vorhanden ? ` (Termin ${vorhanden.titel ? `„${vorhanden.titel}“ ` : ""}vom ${vorhanden.datum_start.split("-").reverse().join(".")})` : ""}. Bitte eine andere Kennung wählen oder das Feld leer lassen.`,
+      };
+    }
+    return { fehler: error?.message || "Termin konnte nicht angelegt werden." };
+  }
+
   await supabase
     .from("terminvorschlaege")
-    .update({ status: "bestaetigt", seminartermin_id: termin.id, seminartyp_id: seminartypId, veranstaltungsort_id: ortId, aktualisiert_am: new Date().toISOString() })
+    .update({ seminartermin_id: termin.id, seminartyp_id: seminartypId, veranstaltungsort_id: ortId })
     .eq("id", id);
+
+  let info = "Leerer Termin angelegt.";
+  if (quelle) {
+    const e = await kopiereTerminInhalte(supabase, { id: quelle.id, datum_start: quelle.datum_start }, termin, bereiche, heuteBerlin());
+    info = uebernahmeZusammenfassung(e, bereiche.einstellungen);
+  }
+
   revalidatePath("/termine");
   revalidatePath("/termine/planer");
-  redirect(`/termine/${termin.id}`);
+  return { fehler: null, info, terminId: termin.id };
 }
 
 export async function speichereNachbewertung(formData: FormData) {
