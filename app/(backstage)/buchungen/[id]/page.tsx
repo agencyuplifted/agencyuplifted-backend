@@ -120,6 +120,13 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
         ))}
       </div>
 
+      {buchung.status === "angefragt" && (
+        <div className="au-banner au-banner-warning">
+          <strong>Platz ist belegt, Mailstrecke wartet.</strong> Die Buchung zählt sofort auf die Kapazität (intern und in der Restplatz-Anzeige).
+          Funnel-Mails – „nach Buchungseingang“, „vor Seminarstart“, „nach Seminarende“ – starten erst nach dem Bestätigen der Zahlung.
+        </div>
+      )}
+
       {profil.length > 0 && (
         <div className="au-card">
           <h2>Quiz-Profil</h2>
@@ -139,7 +146,7 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
           <h2>Bestätigen</h2>
           <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
             {programmPosition
-              ? "Setzt die Buchung auf „bestätigt“ und verschickt sofort die Mail „Mitgliedschaft bestätigt“ an alle Teilnehmer:innen und den Rechnungsempfänger. Erst nach Zahlungseingang (bei Monatszahlung: erste Rate) bestätigen."
+              ? "Setzt die Buchung auf „bestätigt“, startet die Funnel-Strecke ab heute und verschickt sofort die Mail „Mitgliedschaft bestätigt“ an alle Teilnehmer:innen und den Rechnungsempfänger. Erst nach Zahlungseingang (bei Monatszahlung: erste Rate) bestätigen."
               : "Setzt die Buchung auf „bestätigt“ und verschickt sofort die Zahlungsbestätigungs-Mail an alle Teilnehmer:innen dieser Buchung. Erst nach Zahlungseingang bestätigen."}
           </p>
           <form action={bestaetigeBuchung}>

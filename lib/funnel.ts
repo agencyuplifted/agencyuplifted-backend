@@ -119,10 +119,14 @@ async function sammleFaelligeEmpfaenger(
   const ergebnis: { bezugTyp: string; bezugId: string; empfaenger: Empfaenger[] }[] = [];
 
   if (funnel.trigger_typ === "buchung_erstellt") {
+    // Nur bezahlte Buchungen: der Platz ist zwar ab Buchungseingang belegt,
+    // die Mailstrecke startet aber erst mit der Zahlungsbestaetigung
+    // (Markus). Stichtag ist deshalb bestaetigt_am, nicht gebucht_am --
+    // sonst waeren bei spaeter Zahlung sofort mehrere Mails faellig.
     const { data: buchungen } = await supabase
       .from("buchungen")
-      .select("id, gebucht_am, status, metadata, organisationen(name)")
-      .neq("status", "storniert");
+      .select("id, gebucht_am, bestaetigt_am, status, metadata, organisationen(name)")
+      .eq("status", "bestaetigt");
     for (const b of buchungen || []) {
       // Retroaktiv per FastBill zugeordnete Buchungen sind kein echter
       // Online-Buchungseingang -- dafuer soll keine automatische
@@ -133,7 +137,7 @@ async function sammleFaelligeEmpfaenger(
       // "Buchung erstellt"-Funnel-Mails sprechen vom Seminar und gehen dort
       // nicht raus; Programme haben eigene System-Mails.
       if ((b as any).metadata?.buchungsart === "programm") continue;
-      const anchor = tageVerschieben(String(b.gebucht_am).slice(0, 10), funnel.versatz_tage);
+      const anchor = tageVerschieben(String(b.bestaetigt_am || b.gebucht_am).slice(0, 10), funnel.versatz_tage);
       if (!imFenster(anchor)) continue;
       const { data: positionen } = await supabase
         .from("buchungspositionen")
@@ -183,10 +187,12 @@ async function sammleFaelligeEmpfaenger(
       const ortLang = [t.veranstaltungsorte?.name, t.veranstaltungsorte?.adresse || t.veranstaltungsorte?.ort].filter(Boolean).join(", ");
       const teilnehmerliste = await teilnehmerlisteText(supabase, t.id);
 
+      // Wie bei "buchung_erstellt": Seminar-Mails gehen nur an bezahlte
+      // Buchungen; unbezahlte haben ihren Platz, aber noch keine Strecke.
       const empfaenger: Empfaenger[] = (positionen || [])
         .filter(
           (p: any) =>
-            p.buchungen?.status !== "storniert" &&
+            p.buchungen?.status === "bestaetigt" &&
             p.teilnehmer?.email &&
             p.teilnehmer?.marketing_consent_status !== "abgemeldet"
         )

@@ -1153,6 +1153,9 @@ export async function createBuchung(formData: FormData) {
       organisation_id: organisationId || null,
       rechnungsempfaenger_teilnehmer_id: organisationId ? null : ersterTeilnehmerId,
       status: "bestaetigt",
+      // Von Hand angelegte Buchung gilt sofort als bestaetigt -- Stichtag der
+      // Funnel-Strecke ist damit heute
+      bestaetigt_am: new Date().toISOString(),
     })
     .select()
     .single();
@@ -1264,7 +1267,8 @@ export async function bestaetigeBuchung(formData: FormData) {
   const buchungId = String(formData.get("buchung_id"));
   const benutzer = await getAktuellerBenutzer();
 
-  const { error } = await supabase.from("buchungen").update({ status: "bestaetigt" }).eq("id", buchungId);
+  // bestaetigt_am ist der Stichtag der Funnel-Strecke (siehe lib/funnel.ts)
+  const { error } = await supabase.from("buchungen").update({ status: "bestaetigt", bestaetigt_am: new Date().toISOString() }).eq("id", buchungId);
   if (error) throw new Error(error.message);
 
   await supabase.from("aenderungsprotokoll").insert({
@@ -4423,6 +4427,7 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
       .insert({
         rechnungsempfaenger_teilnehmer_id: teilnehmerIds[0],
         status: "bestaetigt",
+        bestaetigt_am: new Date().toISOString(),
         // Retroaktiv per FastBill zugeordnete Buchung -- kein regulaerer
         // Online-Buchungsvorgang. Der Funnel-Versand (buchung_erstellt,
         // z.B. "Reservierung bestaetigt") soll dafuer NICHT ausgeloest
