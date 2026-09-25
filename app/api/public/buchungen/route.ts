@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
   const { data: option } = await supabase
     .from("seminartermin_optionen")
     .select(
-      "id, titel, zimmerupgrade_zusatznaechte, deaktiviert_am, ratenzahlung_aktiv, ratenzahlung_anzahl_raten, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis)"
+      "id, titel, seminartermin_id, zimmerupgrade_zusatznaechte, deaktiviert_am, ratenzahlung_aktiv, ratenzahlung_anzahl_raten, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis)"
     )
     .eq("id", tierId)
     .single();
@@ -107,6 +107,15 @@ export async function POST(request: NextRequest) {
   // Fehler wie bei einer nicht existierenden Option.
   if (!option || option.deaktiviert_am) {
     return withCors(NextResponse.json({ error: "option_not_found" }, { status: 404 }));
+  }
+
+  // Die Option MUSS zu diesem Termin gehoeren (Fix vom 25.09.2026): Zeigt eine
+  // Onepage-Seite mangels eigener Optionen ihre statischen Vorlagen-Werte an
+  // (z.B. frisch duplizierte Seminarseite), schickt sie Options-IDs eines
+  // voellig anderen Termins mit. Bisher wurde das anstandslos gebucht -- mit
+  // dem Preis der fremden Option, belegtem Platz und Reservierungsmail.
+  if (option.seminartermin_id !== seminarterminId) {
+    return withCors(NextResponse.json({ error: "option_gehoert_nicht_zum_termin" }, { status: 400 }));
   }
 
   const preisNetto =
