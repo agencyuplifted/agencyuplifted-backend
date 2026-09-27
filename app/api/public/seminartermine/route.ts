@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
 import { ladeWebsiteVerfuegbarkeit } from "@/lib/verfuegbarkeit";
-import { aktuellerPreisNetto } from "@/lib/preisstaffeln";
+import { aktuellerPreisNetto, naechstePreisstufe } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Liste kuenftiger Seminartermine fuer die
 // Onepage-Website - z.B. fuer eine Terminuebersicht auf einer Kategorieseite
@@ -92,6 +92,22 @@ export async function GET(request: NextRequest) {
       .filter((p: number | null): p is number => p !== null);
     const abPreisNetto = preiseProOption.length ? Math.min(...preiseProOption) : null;
 
+    // Naechste Preiserhoehung der Option, aus der der "ab"-Preis stammt --
+    // der Terminwaehler baut daraus seinen Dringlichkeitshinweis ("Steigt in
+    // X Tagen auf Y €") und staffelt die Formulierung nach Restzeit. Die
+    // Pricing-Karte rechnet dasselbe aus den vollen preisstaffeln der
+    // Detail-API; hier reicht ein Feld pro Termin, weil die Liste keine
+    // Optionen ausgibt.
+    const abPreisOption =
+      abPreisNetto === null
+        ? null
+        : aktiveOptionen.find(
+            (o: any) => aktuellerPreisNetto(o.preisstaffeln || [], t.datum_start) === abPreisNetto
+          ) || null;
+    const naechsteStufe = abPreisOption
+      ? naechstePreisstufe(abPreisOption.preisstaffeln || [], t.datum_start)
+      : null;
+
     return {
       id: t.id,
       kennung: t.kennung || null,
@@ -121,6 +137,7 @@ export async function GET(request: NextRequest) {
       ab_preis_netto: abPreisNetto,
       ab_preis_brutto: abPreisNetto !== null ? brutto(abPreisNetto) : null,
       hat_preisdaten: alleStaffeln.length > 0,
+      naechste_preisstufe: naechsteStufe,
     };
   });
 

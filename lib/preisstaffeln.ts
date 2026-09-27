@@ -545,6 +545,44 @@ export function uebertrageStaffelnAufTermin(
 }
 
 // ---------------------------------------------------------------------------
+// Naechste Preisstufe einer Option als Zeitpunkt -- fuer die oeffentliche
+// Listen-API (Terminwaehler auf Onepage: "Steigt in X Tagen auf Y €"). Anders
+// als naechsterPreiswechsel() liefert das hier den vollen Zeitstempel statt
+// des letzten Gueltigkeitstags, weil die Onepage-Sektion daraus selbst
+// Wochentag und Stunden ableitet (4-Stufen-Dringlichkeit).
+
+export type NaechstePreisstufe = {
+  /** Zeitpunkt, an dem die aktuelle Stufe ablaeuft -- ISO (UTC) */
+  stichtag_datum: string;
+  naechster_preis_netto: number;
+};
+
+export function naechstePreisstufe(
+  staffeln: Preisstaffel[],
+  datumStart: string,
+  jetzt: number = Date.now()
+): NaechstePreisstufe | null {
+  if (!staffeln.length) return null;
+  const sortiert = sortierteStaffeln(staffeln, datumStart);
+  // Aktive Stufe ueber den Stichtag bestimmen, NICHT ueber einen Preisvergleich:
+  // zwei Stufen derselben Option duerfen denselben Preis haben (z.B. wenn eine
+  // Erhoehung ausfaellt), ein Preisvergleich traefe dann die falsche Stufe.
+  // Identische Auswahl wie aktuellePreisstaffel() -- Website, Buchung und
+  // dieser Hinweis sollen nie auseinanderlaufen.
+  const idx = sortiert.findIndex((p) => jetzt <= stichtagAlsZeitpunkt(p, datumStart));
+  // Kein Wechsel mehr: alle Stichtage verstrichen (idx === -1) oder die
+  // letzte Stufe (i.d.R. Normalpreis) gilt bereits.
+  if (idx === -1 || idx === sortiert.length - 1) return null;
+  return {
+    // Bei relativen Stufen ("N Tage vor Start") gibt es kein gespeichertes
+    // Datum -- der Zeitpunkt wird dann aus dem Seminarstart berechnet, damit
+    // die Sektion in beiden Faellen dasselbe Feld auswerten kann.
+    stichtag_datum: new Date(stichtagAlsZeitpunkt(sortiert[idx], datumStart)).toISOString(),
+    naechster_preis_netto: Number(sortiert[idx + 1].preis),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Naechster Preiswechsel einer Option (Terminuebersicht: "Preisstufe 2 bis
 // Fr 02.10. · noch 10 Tage") -- fuer Mailing-Aktionen vor Preiserhoehungen.
 // Nutzt dieselbe Stichtag-Logik wie Website/Buchung (stichtagAlsZeitpunkt).
