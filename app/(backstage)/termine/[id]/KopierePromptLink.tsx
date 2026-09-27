@@ -4,9 +4,12 @@ import { useState } from "react";
 
 // Kopiert die Anweisung fuer ChatGPT/Claude in die Zwischenablage, damit ein
 // dort erzeugter Options-Entwurf direkt der "Schnelleinfuegen"-Konvention
-// entspricht (Titel, dann Beschreibung, dann "-"-Feature-Liste).
+// entspricht (Titel, dann Beschreibung, dann "-"-Feature-Liste). Der Hinweis
+// auf den Codeblock am Ende ist noetig, weil ChatGPT den Export sonst
+// gerendert ausgibt -- dann fehlen genau die **, - und +, die der Parser
+// braucht (Markus, 27.09.2026).
 const PROMPT_TEXT =
-  "Bereite die Option jetzt für den Export vor: erste Zeile der Titel, danach ein Beschreibungsabsatz (wichtige Begriffe mit **fett**), optional danach eine eigene Zeile 'Vorspann: <Text>' (z. B. 'Alles aus Move, plus:', nur falls diese Option auf einer günstigeren Option aufbaut), danach eine Liste der Features: '-' pro Zeile für normale Features, '+' pro Zeile für neue/hervorgehobene Features (ebenfalls mit **fett** wo sinnvoll). Optional kann eine Feature-Zeile mit ' — ' (Leerzeichen, Gedankenstrich, Leerzeichen) in einen kurzen Label-Teil und den Erläuterungstext getrennt werden, z. B. '- Unterkunft & Verpflegung — 3 Nächte im Einzelzimmer inkl. Frühstück'. Kein Text davor oder danach.";
+  "Bereite die Option jetzt für den Export vor: erste Zeile der Titel, danach ein Beschreibungsabsatz (wichtige Begriffe mit **fett**), optional danach eine eigene Zeile 'Vorspann: <Text>' (z. B. 'Alles aus Move, plus:', nur falls diese Option auf einer günstigeren Option aufbaut), danach eine Liste der Features: '-' pro Zeile für normale Features, '+' pro Zeile für neue/hervorgehobene Features (ebenfalls mit **fett** wo sinnvoll). Optional kann eine Feature-Zeile mit ' — ' (Leerzeichen, Gedankenstrich, Leerzeichen) in einen kurzen Label-Teil und den Erläuterungstext getrennt werden, z. B. '- Unterkunft & Verpflegung — 3 Nächte im Einzelzimmer inkl. Frühstück'. Kein Text davor oder danach. Gib den Export immer als ungerenderten Markdown-Rohtext in einem einzigen Codeblock aus, damit Zeichen wie **, - und + sichtbar und direkt kopierbar bleiben. Keine zusätzliche Erklärung vor oder nach dem Codeblock.";
 
 export default function KopierePromptLink() {
   const [kopiert, setKopiert] = useState(false);
