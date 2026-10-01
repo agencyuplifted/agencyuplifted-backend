@@ -9,6 +9,7 @@ import {
   setzeFastbillOffen,
 } from "@/lib/actions";
 import FastbillZuordnenForm from "./FastbillZuordnenForm";
+import ImportButton from "./ImportButton";
 import { parseRechnung, type ParserTermin, type RechnungsVorschlag } from "@/lib/fastbill-parser";
 import Link from "next/link";
 
@@ -153,9 +154,7 @@ export default async function FastbillAbgleichPage({
             defaultValue={new Date().getFullYear()}
             style={{ width: 100 }}
           />
-          <button type="submit" className="au-btn au-btn-primary">
-            Rechnungen importieren
-          </button>
+          <ImportButton />
         </form>
       </div>
 
