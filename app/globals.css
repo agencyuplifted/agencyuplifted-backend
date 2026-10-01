@@ -2147,7 +2147,7 @@ a.au-kennzahl:hover {
 .au-tliste-kopf,
 .au-tliste-zeile {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px 115px 115px 96px 92px;
+  grid-template-columns: minmax(0, 1fr) 132px 96px 96px 84px 84px;
   gap: 1rem;
   align-items: center;
   padding: 0 1.15rem;

@@ -33,7 +33,7 @@ export default function WebsiteAnzeigeHinweis({
     return (
       <span className="au-tliste-websitezeile" title={`${balken} · ${quelle}`}>
         Website: {anzeige.dringlichkeitstext ? `„${anzeige.dringlichkeitstext}“` : "kein Platz-Hinweis"}
-        {anzeige.restplaetzeUeberschrieben && (
+        {anzeige.restplaetzeUeberschrieben && anzeige.freiePlaetze !== anzeige.freiRechnerisch && (
           <span className="au-tliste-ueberschrieben" title="Onepage rechnet mit einer manuell festgelegten Restplatzzahl statt der echten Buchungen">
             {" "}· überschrieben ({anzeige.freiePlaetze} statt {anzeige.freiRechnerisch})
           </span>

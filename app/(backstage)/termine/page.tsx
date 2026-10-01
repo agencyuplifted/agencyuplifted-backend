@@ -11,7 +11,7 @@ import { ladeWebsiteVerfuegbarkeit, type WebsiteVerfuegbarkeit } from "@/lib/ver
 import WebsiteAnzeigeHinweis from "./WebsiteAnzeigeHinweis";
 import Jahresplaner, { isoDatum, MONATSKURZ } from "./Jahresplaner";
 import { naechsterPreiswechsel, tageZwischen, type Preiswechsel } from "@/lib/preisstaffeln";
-import { formatEUR } from "@/lib/format";
+import { formatEUR, formatEURGanz } from "@/lib/format";
 
 const WT_KURZ = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 // "Fr 02.10." fuer einen Kalendertag (YYYY-MM-DD)
@@ -171,8 +171,8 @@ function TerminListe({
                     <span className="au-tliste-mobil-label">Umsatz</span>
                     {deckung && (deckung.umsatz > 0 || deckung.personen > 0) ? (
                       <>
-                        <strong>{formatEUR(deckung.umsatz)}</strong>
-                        {deckung.umsatzUnbezahlt > 0 && <span className="au-tliste-warnung">{formatEUR(deckung.umsatzUnbezahlt)} offen</span>}
+                        <strong>{formatEURGanz(deckung.umsatz)}</strong>
+                        {deckung.umsatzUnbezahlt > 0 && <span className="au-tliste-warnung">{formatEURGanz(deckung.umsatzUnbezahlt)} offen</span>}
                       </>
                     ) : (
                       <span className="au-klein">—</span>
@@ -180,13 +180,12 @@ function TerminListe({
                   </div>
                   <div
                     className="au-tliste-zahl"
-                    title={deckung ? `Umsatz − ${deckung.personen} Personen vor Ort × ${formatEUR(deckung.fremdkostenProPerson)}` : undefined}
+                    title={deckung ? `Umsatz − ${deckung.personen} Personen vor Ort × ${formatEUR(deckung.fremdkostenProPerson)} = − ${formatEUR(deckung.fremdkosten)} Kosten` : undefined}
                   >
                     <span className="au-tliste-mobil-label">DB</span>
                     {deckung && (deckung.umsatz > 0 || deckung.personen > 0) ? (
                       <>
-                        <strong style={deckung.db < 0 ? { color: "var(--color-danger)" } : undefined}>{formatEUR(Math.round(deckung.db))}</strong>
-                        <span className="au-klein">− {formatEUR(deckung.fremdkosten)} Kosten</span>
+                        <strong style={deckung.db < 0 ? { color: "var(--color-danger)" } : undefined}>{formatEURGanz(deckung.db)}</strong>
                       </>
                     ) : (
                       <span className="au-klein">—</span>

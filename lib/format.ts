@@ -1,6 +1,10 @@
 export function formatEUR(n: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
 }
+// Ganze Euro fuer Uebersichten (Terminliste) -- Cent-Stellen sind dort nur Rauschen.
+export function formatEURGanz(n: number) {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(Math.round(n));
+}
 export function formatDatum(d: string) {
   return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(d));
 }
