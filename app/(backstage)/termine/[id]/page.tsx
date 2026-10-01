@@ -42,6 +42,7 @@ import {
   fuegeTeilnehmerZuTerminHinzu,
   addReferentZuTermin,
   removeReferentVonTermin,
+  setzeFremdkostenPersonal,
 } from "@/lib/actions";
 import { ladeHotelliste } from "@/lib/hotelliste";
 import { berechneDeckungsbeitraege } from "@/lib/deckungsbeitrag";
@@ -580,11 +581,11 @@ export default async function TerminDetailPage({
             {deckung.umsatzUnbezahlt > 0 && <> · davon {formatEUR(deckung.umsatzUnbezahlt)} unbezahlt</>}
           </div>
         </div>
-        <div className="au-kennzahl" title={`Umsatz − ${deckung.personen} Personen vor Ort × ${formatEUR(deckung.fremdkostenProPerson)} Fremdkosten (Teilnehmer inkl. Freiplätze, Mitarbeiter, Referenten)`}>
+        <div className="au-kennzahl" title="Umsatz − Fremdkosten pro Person: Teilnehmer nach ihrer Option (sonst allgemeine Pauschale), Referenten/Mitarbeiter nach dem Personal-Satz des Termins. Personen nur aus Altdaten zählen nicht.">
           <div className="au-kennzahl-label">Deckungsbeitrag</div>
           <div className="au-kennzahl-wert" style={deckung.db < 0 ? { color: "var(--color-danger)" } : undefined}>{formatEUR(Math.round(deckung.db))}</div>
           <div className="au-kennzahl-kontext">
-            − {formatEUR(deckung.fremdkosten)} Fremdkosten ({deckung.personen} × {formatEUR(deckung.fremdkostenProPerson)})
+            − {formatEUR(deckung.fremdkosten)} Fremdkosten · {deckung.personen} Personen
           </div>
         </div>
         <div className="au-kennzahl">
@@ -825,6 +826,24 @@ export default async function TerminDetailPage({
             <button type="submit" className="au-btn au-btn-secondary">Hinzufügen</button>
           </form>
         )}
+        <form action={setzeFremdkostenPersonal} style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap", marginTop: "1rem" }}>
+          <input type="hidden" name="seminartermin_id" value={id} />
+          <div>
+            <label className="au-label">Fremdkosten Referenten &amp; Mitarbeiter pro Person (netto)</label>
+            <input
+              className="au-input"
+              style={{ marginBottom: 0, width: 180 }}
+              name="fremdkosten_personal_pro_person_netto"
+              type="number"
+              min={0}
+              step="0.01"
+              defaultValue={termin.fremdkosten_personal_pro_person_netto ?? ""}
+              placeholder={`leer = ${formatEUR(deckung.fremdkostenProPerson)}`}
+            />
+          </div>
+          <button type="submit" className="au-btn au-btn-secondary">Speichern</button>
+          <span className="au-klein" style={{ width: "100%" }}>Für den Deckungsbeitrag. Teilnehmer-Kosten stehen an der jeweiligen Option.</span>
+        </form>
       </Bereich>
 
       <Bereich titel="Mitarbeiter beim Termin">
@@ -1046,6 +1065,8 @@ export default async function TerminDetailPage({
                 </p>
                 <label className="au-label">Sortierung (0 = zuerst)</label>
                 <input className="au-input" name="sortierung" type="number" defaultValue={opt.sortierung ?? 0} />
+                <label className="au-label">Fremdkosten pro Person (netto, für den Deckungsbeitrag – leer = allgemeine Pauschale)</label>
+                <input className="au-input" name="fremdkosten_pro_person_netto" type="number" min={0} step="0.01" defaultValue={opt.fremdkosten_pro_person_netto ?? ""} placeholder="z. B. 600 bei 2 Tagen" />
                 <label className="au-label">Zusätzliche Nächte für Zimmer-Upgrade (nur bei Verlängerung/Zusatzübernachtung, sonst leer lassen)</label>
                 <input className="au-input" name="zimmerupgrade_zusatznaechte" type="number" min={0} defaultValue={opt.zimmerupgrade_zusatznaechte || ""} placeholder="z. B. 1" />
                 <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", fontSize: "0.9rem" }}>

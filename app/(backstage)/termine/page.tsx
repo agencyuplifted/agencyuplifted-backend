@@ -180,7 +180,7 @@ function TerminListe({
                   </div>
                   <div
                     className="au-tliste-zahl"
-                    title={deckung ? `Umsatz − ${deckung.personen} Personen vor Ort × ${formatEUR(deckung.fremdkostenProPerson)} = − ${formatEUR(deckung.fremdkosten)} Kosten` : undefined}
+                    title={deckung ? `Umsatz − ${formatEUR(deckung.fremdkosten)} Fremdkosten für ${deckung.personen} Personen (je nach Option bzw. Personal-Satz)` : undefined}
                   >
                     <span className="au-tliste-mobil-label">DB</span>
                     {deckung && (deckung.umsatz > 0 || deckung.personen > 0) ? (

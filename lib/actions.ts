@@ -2358,6 +2358,20 @@ export async function removeReferentVonTermin(formData: FormData) {
   revalidatePath(`/termine/${seminarterminId}`);
 }
 
+// Fremdkosten fuer Referenten/Mitarbeiter je Termin (leer = allgemeine Pauschale).
+export async function setzeFremdkostenPersonal(formData: FormData) {
+  await requireBackstageLogin();
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const roh = String(formData.get("fremdkosten_personal_pro_person_netto") || "").trim();
+  const { error } = await supabase
+    .from("seminartermine")
+    .update({ fremdkosten_personal_pro_person_netto: roh === "" ? null : Math.max(0, Number(roh)) })
+    .eq("id", seminarterminId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+}
+
 // Eigenes Mini-Formular statt Termin-Bearbeitung: das Zimmerkontingent aendert
 // sich oft kurzfristig und braucht keine doppelte Freigabe.
 export async function setzeZimmerReserviert(formData: FormData) {
@@ -2426,6 +2440,11 @@ export async function updateSeminarOption(formData: FormData) {
       zimmerupgrade_zusatznaechte: formData.get("zimmerupgrade_zusatznaechte")
         ? Number(formData.get("zimmerupgrade_zusatznaechte"))
         : null,
+      // Nur uebernehmen, wenn das Feld im Formular ist -- andere Formulare
+      // (Schnelleinfuegen) sollen den Wert nicht auf leer zuruecksetzen.
+      ...(formData.has("fremdkosten_pro_person_netto")
+        ? { fremdkosten_pro_person_netto: formData.get("fremdkosten_pro_person_netto") === "" ? null : Number(formData.get("fremdkosten_pro_person_netto")) }
+        : {}),
       ratenzahlung_aktiv: formData.get("ratenzahlung_aktiv") === "on",
       ratenzahlung_anzahl_raten: formData.get("ratenzahlung_anzahl_raten")
         ? Number(formData.get("ratenzahlung_anzahl_raten"))

@@ -296,8 +296,8 @@ async function UmsatzProSeminar({
       <SeminarGruppe titel="Vergangen" zeilen={vergangen} />
 
       <p className="au-fussnote">
-        Deckungsbeitrag = Umsatz − Personen vor Ort (Teilnehmer inkl. Freiplätze, Mitarbeiter, Referenten) × {formatEUR(fremdkostenProPerson)} netto pro Kopf,{" "}
-        <Link href="/einstellungen" prefetch={false}>einstellbar</Link>. Umsatz nur aus Buchungen des neuen Systems (Altdaten haben keine Preise);
+        Deckungsbeitrag = Umsatz − Fremdkosten pro Person: Teilnehmer (inkl. Freiplätze) nach ihrer Option, Referenten/Mitarbeiter nach dem Personal-Satz des Termins,
+        sonst allgemeine Pauschale {formatEUR(fremdkostenProPerson)} netto (<Link href="/einstellungen" prefetch={false}>einstellbar</Link>). Umsatz und Kosten nur aus echten Buchungen – Personen nur aus den Pipedrive-Altdaten zählen nicht;
         Stornos ausgeschlossen, unbezahlte („angefragte“) Buchungen enthalten und separat ausgewiesen. Alle Beträge netto zzgl. 19 % USt.
       </p>
     </Panel>
