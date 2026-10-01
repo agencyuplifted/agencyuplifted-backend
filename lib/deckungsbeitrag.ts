@@ -1,4 +1,4 @@
-import { ladeHotellisten } from "./hotelliste";
+import { ladeHotellisten, type Hotelliste } from "./hotelliste";
 
 // Deckungsbeitrag pro Termin -- gemeinsame Rechnung fuer Termin-Seite und
 // Dashboard (Reiter "Seminare"). Vorher rechnete nur das Dashboard, und
@@ -21,12 +21,17 @@ export async function ladeFremdkostenProPerson(supabase: any): Promise<number> {
   return Number(data?.fremdkosten_pro_person_netto ?? 300);
 }
 
-export async function berechneDeckungsbeitraege(supabase: any, terminIds: string[]): Promise<Map<string, Deckungsbeitrag>> {
+// vorgeladen: Hotel-Listen, die der Aufrufer ohnehin schon hat (Terminliste) -- spart die doppelten Abfragen.
+export async function berechneDeckungsbeitraege(
+  supabase: any,
+  terminIds: string[],
+  vorgeladen?: Map<string, Hotelliste>
+): Promise<Map<string, Deckungsbeitrag>> {
   const ergebnis = new Map<string, Deckungsbeitrag>();
   if (!terminIds.length) return ergebnis;
   const [fremdkostenProPerson, hotellisten, { data: positionen }, { data: legacy }] = await Promise.all([
     ladeFremdkostenProPerson(supabase),
-    ladeHotellisten(supabase, terminIds),
+    vorgeladen ?? ladeHotellisten(supabase, terminIds),
     supabase
       .from("buchungspositionen")
       .select("seminartermin_id, preis, buchungen!inner(status)")

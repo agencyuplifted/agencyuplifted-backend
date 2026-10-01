@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { ladeHotellisten, type Hotelliste } from "@/lib/hotelliste";
+import { berechneDeckungsbeitraege, type Deckungsbeitrag } from "@/lib/deckungsbeitrag";
 import TermineNav from "./TermineNav";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -72,6 +73,7 @@ function TerminListe({
   termine,
   gebuchtProTermin,
   hotellisten,
+  deckungProTermin,
   websiteAnzeigeProTermin,
   heuteISO,
   heuteBerlin,
@@ -79,6 +81,7 @@ function TerminListe({
   termine: any[];
   gebuchtProTermin: Map<string, number>;
   hotellisten: Map<string, Hotelliste>;
+  deckungProTermin: Map<string, Deckungsbeitrag>;
   websiteAnzeigeProTermin: Map<string, WebsiteVerfuegbarkeit>;
   heuteISO: string;
   heuteBerlin: string;
@@ -90,6 +93,7 @@ function TerminListe({
         <span>Termin</span>
         <span>Ort</span>
         <span>Belegung</span>
+        <span>Umsatz netto</span>
         <span>Status</span>
         <span />
       </div>
@@ -104,6 +108,7 @@ function TerminListe({
             {liste.map((t: any) => {
               const gebucht = gebuchtProTermin.get(t.id) || 0;
               const hotel = hotellisten.get(t.id);
+              const deckung = deckungProTermin.get(t.id);
               const kapazitaet = Number(t.kapazitaet) || 0;
               const anteil = kapazitaet ? Math.min(1, gebucht / kapazitaet) : 0;
               const vergangen = t.datum_start < heuteISO;
@@ -160,7 +165,18 @@ function TerminListe({
                       </span>
                     )}
                   </div>
-                  <div>
+                  <div className="au-tliste-umsatz" title={deckung ? `Umsatz − ${deckung.personen} Personen vor Ort × ${formatEUR(deckung.fremdkostenProPerson)} = Deckungsbeitrag` : undefined}>
+                    {deckung && (deckung.umsatz > 0 || deckung.personen > 0) ? (
+                      <>
+                        <strong>{formatEUR(deckung.umsatz)}</strong>
+                        <span className="au-klein" style={deckung.db < 0 ? { color: "var(--color-danger)" } : undefined}>DB {formatEUR(Math.round(deckung.db))}</span>
+                        {deckung.umsatzUnbezahlt > 0 && <span className="au-klein">davon {formatEUR(deckung.umsatzUnbezahlt)} offen</span>}
+                      </>
+                    ) : (
+                      <span className="au-klein">—</span>
+                    )}
+                  </div>
+                  <div className="au-tliste-status">
                     <span className={`au-badge ${status.klasse}`}>{status.label}</span>
                   </div>
                   <div className="au-tliste-aktionen">
@@ -288,6 +304,8 @@ export default async function TerminePage({
   // Personen vor Ort + Zimmerbedarf -- gleiche Rechnung wie die Hotel-Liste
   // (Teilnehmer + Mitarbeiter + Referenten, jede Person einmal).
   const hotellisten = await ladeHotellisten(supabase, liste.map((t: any) => t.id));
+  // Umsatz/DB pro Termin -- gleiche Rechnung wie Termin-Seite und Dashboard.
+  const deckungProTermin = await berechneDeckungsbeitraege(supabase, liste.map((t: any) => t.id), hotellisten);
 
   // Nur fuer anstehende Termine: vergangene/abgesagte liefert die oeffentliche
   // API nicht mehr aus, dort gibt es also auch keine Website-Anzeige.
@@ -376,6 +394,7 @@ export default async function TerminePage({
           termine={liste}
           gebuchtProTermin={gebuchtProTermin}
           hotellisten={hotellisten}
+          deckungProTermin={deckungProTermin}
           websiteAnzeigeProTermin={websiteAnzeigeProTermin}
           heuteISO={heuteISO}
           heuteBerlin={heuteBerlin}

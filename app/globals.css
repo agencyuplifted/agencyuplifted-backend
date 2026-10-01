@@ -2147,7 +2147,7 @@ a.au-kennzahl:hover {
 .au-tliste-kopf,
 .au-tliste-zeile {
   display: grid;
-  grid-template-columns: minmax(0, 2.6fr) minmax(0, 1fr) 130px 110px auto;
+  grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) 130px 120px 110px auto;
   gap: 1rem;
   align-items: center;
   padding: 0 1.15rem;
@@ -2209,7 +2209,8 @@ a.au-kennzahl:hover {
 }
 
 .au-tliste-ort,
-.au-tliste-belegung {
+.au-tliste-belegung,
+.au-tliste-umsatz {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -2251,12 +2252,13 @@ a.au-kennzahl:hover {
     padding-left: calc(44px + 0.85rem);
   }
 
-  .au-tliste-belegung {
+  .au-tliste-belegung,
+  .au-tliste-umsatz {
     grid-column: 1;
     padding-left: calc(44px + 0.85rem);
   }
 
-  .au-tliste-zeile > div:nth-child(4) {
+  .au-tliste-status {
     grid-column: 2;
     grid-row: 3;
     justify-self: end;
