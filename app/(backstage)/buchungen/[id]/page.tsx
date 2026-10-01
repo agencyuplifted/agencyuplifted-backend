@@ -127,6 +127,13 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
         </div>
       )}
 
+      {buchung.metadata?.buchungsart === "freiplatz" && (
+        <div className="au-banner au-card-tint">
+          <strong>Freiplatz.</strong> Kostenlose Teilnahme: belegt einen Platz, keine Rechnung, kein Umsatz.
+          Keine „Buchung erstellt“-Mail, die Mails vor Seminarstart und nach Seminarende gehen wie bei allen anderen raus.
+        </div>
+      )}
+
       {profil.length > 0 && (
         <div className="au-card">
           <h2>Quiz-Profil</h2>

@@ -39,7 +39,12 @@ export default async function BuchungenPage() {
               <td>{b.buchungspositionen?.[0]?.seminartermine?.seminartypen?.name || "—"}</td>
               <td>{formatEUR(b.buchungspositionen?.reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0) || 0)}</td>
               <td>{formatEURBrutto(b.buchungspositionen?.reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0) || 0)}</td>
-              <td>{b.status}</td>
+              <td>
+                {b.status}
+                {b.metadata?.buchungsart === "freiplatz" && (
+                  <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.5rem", fontSize: "0.72rem" }}>Freiplatz</span>
+                )}
+              </td>
             </tr>
           ))}
           {!buchungen?.length && (

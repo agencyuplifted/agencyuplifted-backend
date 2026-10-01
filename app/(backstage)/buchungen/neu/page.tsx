@@ -6,9 +6,9 @@ import BuchungForm from "./BuchungForm";
 export default async function NeueBuchungPage({
   searchParams,
 }: {
-  searchParams: Promise<{ teilnehmer_id?: string }>;
+  searchParams: Promise<{ teilnehmer_id?: string; seminartermin_id?: string }>;
 }) {
-  const { teilnehmer_id } = await searchParams;
+  const { teilnehmer_id, seminartermin_id } = await searchParams;
   const supabase = getSupabaseAdmin();
   const { data: teilnehmer } = await supabase.from("teilnehmer").select("*").order("nachname");
   const { data: organisationen } = await supabase.from("organisationen").select("*").order("name");
@@ -26,6 +26,7 @@ export default async function NeueBuchungPage({
         organisationen={organisationen || []}
         termine={(termine as any) || []}
         initialTeilnehmerId={teilnehmer_id || ""}
+        initialSeminarterminId={seminartermin_id || ""}
       />
     </main>
   );

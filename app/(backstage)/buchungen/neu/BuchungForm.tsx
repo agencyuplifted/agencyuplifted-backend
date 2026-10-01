@@ -30,14 +30,16 @@ export default function BuchungForm({
   organisationen,
   termine,
   initialTeilnehmerId,
+  initialSeminarterminId,
 }: {
   teilnehmer: Teilnehmer[];
   organisationen: Organisation[];
   termine: Termin[];
   initialTeilnehmerId?: string;
+  initialSeminarterminId?: string;
 }) {
   const [modus, setModus] = useState<"seminar" | "individuell">("seminar");
-  const [seminarterminId, setSeminarterminId] = useState("");
+  const [seminarterminId, setSeminarterminId] = useState(initialSeminarterminId || "");
   const [teilnehmerZeilen, setTeilnehmerZeilen] = useState([
     { key: 0, teilnehmerId: initialTeilnehmerId || "", optionId: "", listenpreis: "", rabatt: "0" },
   ]);

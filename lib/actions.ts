@@ -1233,6 +1233,92 @@ export async function createBuchung(formData: FormData) {
   redirect("/buchungen");
 }
 
+// Schnellanlage direkt am Termin (Reiter "Teilnehmer"): Person per E-Mail
+// wiedererkennen oder neu anlegen und in einem Schritt einbuchen. Vorher
+// brauchte das zwei Formulare (Teilnehmer anlegen, dann Buchung), und
+// Gratis-Teilnehmer liessen sich gar nicht sauber abbilden.
+//
+// Freiplatz = Buchung mit metadata.buchungsart 'freiplatz', Status
+// 'bestaetigt' und Preis 0: belegt einen Platz (Zaehlung schliesst nur
+// 'storniert' aus), taucht nirgends als unbezahlt auf und traegt nichts zum
+// Umsatz bei. Der "Buchung erstellt"-Funnel ueberspringt Freiplaetze
+// (lib/funnel.ts), Vor-/Nach-Seminar-Mails bekommen sie bewusst trotzdem
+// (Entscheidung Markus 01.10.2026: Anreise-Infos und Feedback gelten fuer alle).
+export async function fuegeTeilnehmerZuTerminHinzu(formData: FormData) {
+  await requireBackstageLogin();
+  const supabase = getSupabaseAdmin();
+  const benutzer = await getAktuellerBenutzer();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const buchungsart = String(formData.get("buchungsart") || "freiplatz");
+  const email = String(formData.get("email") || "").trim();
+  const vorname = String(formData.get("vorname") || "").trim();
+  const nachname = String(formData.get("nachname") || "").trim();
+  const optionRaw = formData.get("seminartermin_option_id");
+  if (!email) throw new Error("Bitte eine E-Mail-Adresse angeben.");
+
+  const { data: bestehend } = await supabase
+    .from("teilnehmer")
+    .select("id")
+    .ilike("email", email)
+    .limit(1)
+    .maybeSingle();
+  let teilnehmerId = bestehend?.id as string | undefined;
+  if (!teilnehmerId) {
+    if (!vorname || !nachname) throw new Error("Neue Person: Vor- und Nachname sind Pflicht.");
+    const { anrede, anrede_quelle } = ermittleAnredeUndQuelle(null, vorname);
+    const { data: neu, error } = await supabase
+      .from("teilnehmer")
+      .insert({ anrede, anrede_quelle, vorname, nachname, email, firma_freitext: formData.get("firma_freitext") || null })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    teilnehmerId = neu.id;
+  }
+
+  // Bezahlte Buchungen brauchen Rechnungsempfaenger, Option und Preis --
+  // dafuer gibt es das volle Formular, hier nur mit Termin und Person vorbelegt.
+  if (buchungsart !== "freiplatz") {
+    redirect(`/buchungen/neu?teilnehmer_id=${teilnehmerId}&seminartermin_id=${seminarterminId}`);
+  }
+
+  const { data: buchung, error: buchungError } = await supabase
+    .from("buchungen")
+    .insert({
+      rechnungsempfaenger_teilnehmer_id: teilnehmerId,
+      status: "bestaetigt",
+      bestaetigt_am: new Date().toISOString(),
+      notizen: formData.get("notizen") || null,
+      metadata: { buchungsart: "freiplatz" },
+    })
+    .select("id")
+    .single();
+  if (buchungError) throw new Error(buchungError.message);
+
+  // Option mitgeben: Positionen ohne Option gelten auf der Terminseite und in
+  // der Hotel-Liste als Zimmer-Upgrade-Zeile.
+  const { error: posError } = await supabase.from("buchungspositionen").insert({
+    buchung_id: buchung.id,
+    teilnehmer_id: teilnehmerId,
+    seminartermin_id: seminarterminId,
+    seminartermin_option_id: optionRaw ? String(optionRaw) : null,
+    listenpreis: 0,
+    rabatt_betrag: 0,
+  });
+  if (posError) throw new Error(posError.message);
+
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "buchung",
+    bezug_id: buchung.id,
+    ereignis: "freiplatz",
+    beschreibung: `Freiplatz angelegt${formData.get("notizen") ? `: ${formData.get("notizen")}` : ""}`,
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
+
+  revalidatePath(`/termine/${seminarterminId}`);
+  revalidatePath("/buchungen");
+  redirect(`/termine/${seminarterminId}#teilnehmer`);
+}
+
 export async function stornoBuchung(formData: FormData) {
   await requireBackstageLogin();
   const supabase = getSupabaseAdmin();

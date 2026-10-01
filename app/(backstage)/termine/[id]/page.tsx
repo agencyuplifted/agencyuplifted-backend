@@ -39,6 +39,7 @@ import {
   speichereSeminarUnterlage,
   verschiebeSeminarUnterlage,
   loescheSeminarUnterlage,
+  fuegeTeilnehmerZuTerminHinzu,
 } from "@/lib/actions";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto, effektiveTerminNaechte, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
@@ -222,7 +223,7 @@ export default async function TerminDetailPage({
     supabase
       .from("buchungspositionen")
       .select(
-        "teilnehmer_id, seminartermin_option_id, beschreibung, preis, buchungen(status, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle)"
+        "teilnehmer_id, seminartermin_option_id, beschreibung, preis, buchungen(status, metadata, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle)"
       )
       .eq("seminartermin_id", id),
     supabase
@@ -284,6 +285,7 @@ export default async function TerminDetailPage({
     essen: string;
     quelle: "aktuell" | "legacy";
     rolle: string;
+    freiplatz?: boolean;
   };
 
   const teilnehmerMap = new Map<string, TeilnehmerZeile>();
@@ -307,6 +309,7 @@ export default async function TerminDetailPage({
       essen: p.teilnehmer.ernaehrung_sonderwuensche || "—",
       quelle: "aktuell",
       rolle: p.teilnehmer.rolle || "teilnehmer",
+      freiplatz: p.buchungen?.metadata?.buchungsart === "freiplatz",
     });
   });
 
@@ -606,6 +609,11 @@ export default async function TerminDetailPage({
                       {rolleBadge[t.rolle]}
                     </span>
                   )}
+                  {t.freiplatz && (
+                    <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.5rem", fontSize: "0.72rem" }} title="Kostenlose Teilnahme: belegt einen Platz, kein Umsatz">
+                      Freiplatz
+                    </span>
+                  )}
                 </td>
                 <td>{t.orga}</td>
                 <td>{t.telefon}</td>
@@ -630,6 +638,53 @@ export default async function TerminDetailPage({
             )}
           </tbody>
         </table>
+
+        <AufklappBereich merkSchluessel={`teilnehmer-hinzufuegen-${id}`} className="au-aufklapp-panel" style={{ marginTop: "1rem" }} oeffnenBeiHash="teilnehmer-hinzufuegen" zusammenfassung={<strong>+ Teilnehmer hinzufügen</strong>}>
+          <form action={fuegeTeilnehmerZuTerminHinzu} style={{ maxWidth: 640 }}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>
+              Gibt es die E-Mail schon, wird die bestehende Person genommen (Name wird dann ignoriert), sonst neu angelegt.
+            </p>
+            <label className="au-label">E-Mail</label>
+            <input className="au-input" name="email" type="email" required />
+            <div className="au-row-2">
+              <div>
+                <label className="au-label">Vorname (nur bei neuer Person)</label>
+                <input className="au-input" name="vorname" />
+              </div>
+              <div>
+                <label className="au-label">Nachname (nur bei neuer Person)</label>
+                <input className="au-input" name="nachname" />
+              </div>
+            </div>
+            <label className="au-label">Firma (optional, nur bei neuer Person)</label>
+            <input className="au-input" name="firma_freitext" />
+            {aktiveOptionen.length > 0 && (
+              <>
+                <label className="au-label">Option</label>
+                <select className="au-input" name="seminartermin_option_id" defaultValue={aktiveOptionen[0].id}>
+                  {aktiveOptionen.map((o: any) => (
+                    <option key={o.id} value={o.id}>{o.titel}</option>
+                  ))}
+                </select>
+              </>
+            )}
+            <label className="au-label">Buchungsart</label>
+            <div style={{ display: "flex", gap: "1.5rem", marginBottom: "1rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
+                <input type="radio" name="buchungsart" value="freiplatz" defaultChecked />
+                Freiplatz (kostenlos, belegt einen Platz, kein Umsatz)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
+                <input type="radio" name="buchungsart" value="bezahlt" />
+                Bezahlt (weiter zum Buchungsformular)
+              </label>
+            </div>
+            <label className="au-label">Notiz (optional, z. B. Grund für den Freiplatz)</label>
+            <input className="au-input" name="notizen" />
+            <button type="submit" className="au-btn au-btn-primary">Hinzufügen</button>
+          </form>
+        </AufklappBereich>
       </Bereich>
 
       <Bereich titel="Zimmerpartner">
