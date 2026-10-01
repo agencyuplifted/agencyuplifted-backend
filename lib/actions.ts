@@ -4612,6 +4612,11 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
   revalidatePath("/teilnehmer");
   revalidatePath("/termine");
   revalidatePath(`/termine/${seminarterminId}`);
+
+  // Sichtbare Bestaetigung -- vorher sprang die Zeile nur still in einen
+  // anderen Block, und es sah aus, als waere nichts passiert. Nur die ID in
+  // die URL, keine Namen; den Text baut die Seite selbst.
+  redirect(`/buchungen/fastbill?erledigt=${id}`);
 }
 
 // ---------------------------------------------------------------------------

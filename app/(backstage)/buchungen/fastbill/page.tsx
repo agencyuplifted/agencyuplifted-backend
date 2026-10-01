@@ -9,13 +9,20 @@ import {
   setzeFastbillOffen,
 } from "@/lib/actions";
 import FastbillZuordnenForm from "./FastbillZuordnenForm";
+import Link from "next/link";
+
+type Filter = "offen" | "zugeordnet" | "ignoriert" | "alle";
+const FILTER: Filter[] = ["offen", "zugeordnet", "ignoriert", "alle"];
 
 export default async function FastbillAbgleichPage({
   searchParams,
 }: {
-  searchParams: Promise<{ importiert?: string; gefunden?: string; jahr?: string; debug?: string; fehler?: string }>;
+  searchParams: Promise<{ importiert?: string; gefunden?: string; jahr?: string; debug?: string; fehler?: string; filter?: string; erledigt?: string }>;
 }) {
-  const { importiert, gefunden, jahr, debug, fehler } = await searchParams;
+  const { importiert, gefunden, jahr, debug, fehler, filter: filterRaw, erledigt } = await searchParams;
+  // Standard nur offene Rechnungen -- zugeordnete blieben vorher in derselben
+  // Liste stehen und sahen aus, als waeren sie noch nicht erledigt.
+  const filter: Filter = FILTER.includes(filterRaw as Filter) ? (filterRaw as Filter) : "offen";
   const supabase = getSupabaseAdmin();
 
   const { data: rechnungen } = await supabase
@@ -63,7 +70,11 @@ export default async function FastbillAbgleichPage({
 
 
   const statusReihenfolge: Record<string, number> = { offen: 0, zugeordnet: 1, ignoriert: 2 };
-  const sortiert = [...rows].sort((a: any, b: any) => statusReihenfolge[a.status] - statusReihenfolge[b.status]);
+  const sortiert = [...rows]
+    .filter((r: any) => filter === "alle" || r.status === filter)
+    .sort((a: any, b: any) => statusReihenfolge[a.status] - statusReihenfolge[b.status]);
+  const anzahlProFilter: Record<Filter, number> = { offen, zugeordnet, ignoriert, alle: gesamt };
+  const erledigtZeile: any = erledigt ? rows.find((r: any) => r.id === erledigt && r.status === "zugeordnet") : null;
 
   return (
     <main>
@@ -79,6 +90,18 @@ export default async function FastbillAbgleichPage({
         <div className="au-card au-card-tint" style={{ marginBottom: "1rem" }}>
           Import für {jahr}: {gefunden} Rechnungen von FastBill geladen, {importiert} davon neu
           gespeichert (Rest war schon vorhanden).
+        </div>
+      )}
+
+      {erledigtZeile && (
+        <div className="au-card au-card-tint" style={{ marginBottom: "1rem" }}>
+          ✓ {erledigtZeile.fastbill_invoice_number} zugeordnet:{" "}
+          {(positionenByBuchung.get(erledigtZeile.buchung_id) || [])
+            .map((p: any) => (p.teilnehmer ? `${p.teilnehmer.vorname} ${p.teilnehmer.nachname}` : null))
+            .filter(Boolean)
+            .join(", ") || "—"}{" "}
+          → {erledigtZeile.seminartermine?.kennung || erledigtZeile.seminartermine?.titel}
+          {" · "}<Link href="/buchungen/fastbill?filter=zugeordnet">alle zugeordneten ansehen</Link>
         </div>
       )}
 
@@ -117,6 +140,14 @@ export default async function FastbillAbgleichPage({
         </form>
       </div>
 
+      <nav className="au-seitentabs" aria-label="Rechnungen filtern" style={{ marginTop: "1rem" }}>
+        {FILTER.map((f) => (
+          <Link key={f} href={`/buchungen/fastbill?filter=${f}`} className={f === filter ? "aktiv" : ""} aria-current={f === filter ? "page" : undefined}>
+            {f === "offen" ? "Offen" : f === "zugeordnet" ? "Zugeordnet" : f === "ignoriert" ? "Ignoriert" : "Alle"} ({anzahlProFilter[f]})
+          </Link>
+        ))}
+      </nav>
+
       <table className="au-table" style={{ marginTop: "1rem" }}>
         <thead>
           <tr>
@@ -131,12 +162,12 @@ export default async function FastbillAbgleichPage({
         <tbody>
           {sortiert.length === 0 && (
             <tr className="au-table-empty">
-              <td colSpan={6}>Noch keine Rechnungen importiert.</td>
+              <td colSpan={6}>{gesamt === 0 ? "Noch keine Rechnungen importiert." : filter === "offen" ? "Alles abgeglichen — keine offenen Rechnungen." : "Keine Rechnungen in dieser Ansicht."}</td>
             </tr>
           )}
           {sortiert.map((r: any, idx: number) => {
             const vorherige = sortiert[idx - 1];
-            const istErsteIgnorierte = r.status === "ignoriert" && vorherige?.status !== "ignoriert";
+            const istErsteIgnorierte = filter === "alle" && r.status === "ignoriert" && vorherige?.status !== "ignoriert";
             return (
             <>
             {istErsteIgnorierte && (
