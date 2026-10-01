@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { stornoBuchung, umbuchenBuchung, bestaetigeBuchung } from "@/lib/actions";
-import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
+import { formatDatum, formatDatumsspanne, formatEUR, formatEURBrutto } from "@/lib/format";
 import { quizProfil } from "@/lib/programm-buchung";
 import Link from "next/link";
 
@@ -28,9 +28,14 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
     .eq("bezug_id", id)
     .order("erstellt_am", { ascending: false });
 
+  // Umbuchen nur auf kommende, nicht abgesagte Termine -- vorher standen alle
+  // Termine ohne Kennung zur Wahl, und "01.02.2026" wurde mit "02.12.2026"
+  // verwechselt (Tobias Bals, 01.10.2026).
   const { data: termine } = await supabase
     .from("seminartermine")
-    .select("*, seminartypen(name)")
+    .select("id, kennung, titel, datum_start, datum_ende, seminartyp_id, seminartypen(name)")
+    .gte("datum_start", new Date().toISOString().slice(0, 10))
+    .neq("status", "abgesagt")
     .order("datum_start");
 
   if (!buchung) return <main><p>Buchung nicht gefunden.</p></main>;
@@ -111,7 +116,9 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
               <select className="au-input" name="neuer_seminartermin_id" required>
                 <option value="">— neuer Termin wählen —</option>
                 {termine?.filter((t: any) => t.id !== p.seminartermine?.id).map((t: any) => (
-                  <option key={t.id} value={t.id}>{t.seminartypen?.name} – {formatDatum(t.datum_start)}</option>
+                  <option key={t.id} value={t.id}>
+                    {t.kennung ? `${t.kennung} · ` : ""}{t.titel || t.seminartypen?.name} · {formatDatumsspanne(t.datum_start, t.datum_ende)}
+                  </option>
                 ))}
               </select>
             </div>

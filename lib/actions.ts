@@ -1479,11 +1479,46 @@ export async function umbuchenBuchung(formData: FormData) {
     .eq("id", positionId)
     .single();
 
+  // Option mitziehen: Optionen gehoeren zum Termin. Bleibt die alte stehen,
+  // zeigt die Position auf eine Option des alten Termins (Tobias Bals,
+  // 01.10.2026). Gleichnamige Option des neuen Termins nehmen; gibt es keine,
+  // lieber abbrechen als still eine falsche oder leere Option zu setzen --
+  // ohne Option gilt die Position als Zimmer-Upgrade-Zeile.
+  let neueOptionId: string | null = null;
+  if (altePosition?.seminartermin_option_id) {
+    const { data: alteOption } = await supabase.from("seminartermin_optionen").select("titel").eq("id", altePosition.seminartermin_option_id).single();
+    const { data: passende } = await supabase
+      .from("seminartermin_optionen")
+      .select("id")
+      .eq("seminartermin_id", neuerTerminId)
+      .eq("titel", alteOption?.titel || "")
+      .is("deaktiviert_am", null)
+      .limit(1)
+      .maybeSingle();
+    if (!passende) throw new Error(`Der neue Termin hat keine Option „${alteOption?.titel}“ – bitte dort zuerst anlegen oder die Buchung von Hand anpassen.`);
+    neueOptionId = passende.id;
+  }
+
   const { error } = await supabase
     .from("buchungspositionen")
-    .update({ seminartermin_id: neuerTerminId })
+    .update({ seminartermin_id: neuerTerminId, ...(neueOptionId ? { seminartermin_option_id: neueOptionId } : {}) })
     .eq("id", positionId);
   if (error) throw new Error(error.message);
+
+  // FastBill-Zuordnung und Alt-Daten-Eintrag derselben Person mitziehen --
+  // sonst zaehlt sie im alten Termin weiter als Person vor Ort (Kosten).
+  if (altePosition?.seminartermin_id) {
+    await supabase
+      .from("fastbill_rechnungen")
+      .update({ seminartermin_id: neuerTerminId, ...(neueOptionId ? { seminartermin_option_id: neueOptionId } : {}), aktualisiert_am: new Date().toISOString() })
+      .eq("buchung_id", buchungId)
+      .eq("seminartermin_id", altePosition.seminartermin_id);
+    await supabase
+      .from("legacy_buchungen")
+      .update({ seminartermin_id: neuerTerminId })
+      .eq("teilnehmer_id", altePosition.teilnehmer_id)
+      .eq("seminartermin_id", altePosition.seminartermin_id);
+  }
 
   const { data: neuerTermin } = await supabase
     .from("seminartermine")
@@ -1509,6 +1544,9 @@ export async function umbuchenBuchung(formData: FormData) {
 
   revalidatePath("/buchungen");
   revalidatePath(`/buchungen/${buchungId}`);
+  revalidatePath("/termine");
+  if (altePosition?.seminartermin_id) revalidatePath(`/termine/${altePosition.seminartermin_id}`);
+  revalidatePath(`/termine/${neuerTerminId}`);
   redirect(`/buchungen/${buchungId}`);
 }
 
