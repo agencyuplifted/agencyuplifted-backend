@@ -348,7 +348,7 @@ function KategorieKarten({ zeilen }: { zeilen: Zeile[] }) {
   );
 }
 
-function Sparkline({ werte }: { werte: number[] }) {
+export function Sparkline({ werte }: { werte: number[] }) {
   const W = 160;
   const H = 36;
   const lo = Math.min(...werte);

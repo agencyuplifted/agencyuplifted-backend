@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { berechneDeckungsbeitraege, ladeFremdkostenProPerson } from "@/lib/deckungsbeitrag";
 import SeminarCockpit from "./SeminarCockpit";
+import Geschaeftsfelder from "./Geschaeftsfelder";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatEURBrutto, formatDatum } from "@/lib/format";
@@ -160,6 +161,8 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
         <Kennzahl label="Umsatz netto" wert={formatEUR(umsatzNetto)} kontext={`brutto ${formatEURBrutto(umsatzNetto)} · neues System`} href="/buchungen" />
         <Kennzahl label="Teilnehmer" wert={teilnehmerCount ?? 0} kontext={`${orgaCount ?? 0} Organisationen · ${legacyCount ?? 0} Alt-Teilnahmen`} href="/teilnehmer" />
       </div>
+
+      <Geschaeftsfelder supabase={supabase} heute={heute} />
 
       <div className="au-dash-raster">
         <div className="au-dash-haupt">

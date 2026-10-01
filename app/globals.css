@@ -5860,3 +5860,67 @@ a.au-kliste-name:hover {
   .au-kat-zeile { grid-template-columns: minmax(0, 1fr) auto; }
   .au-kat-pillen { grid-column: 1 / -1; }
 }
+
+/* ---------- Dashboard-Übersicht: Geschäftsfelder ---------- */
+.au-gf { margin-bottom: 1.5rem; }
+.au-gf-kopf { margin-bottom: 1rem; }
+
+.au-gf-karten {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.au-gf-karte {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.au-gf-karte.leer { opacity: 0.55; background: var(--color-bg); }
+.au-gf-karte.unklar { border-style: dashed; }
+.au-gf-karte.unklar:hover { border-color: var(--color-accent); }
+
+.au-gf-zahl {
+  font-size: 1.5rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-gf-punkt {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+  vertical-align: middle;
+}
+
+.au-gf-balken {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  margin-top: 1.25rem;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.au-gf-balken span { display: block; min-width: 2px; }
+
+.au-gf-legende {
+  list-style: none;
+  padding: 0;
+  margin: 0.6rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.au-gf-legende strong { color: var(--color-text); font-weight: 600; }
