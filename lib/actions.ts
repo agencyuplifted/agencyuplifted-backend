@@ -1233,6 +1233,31 @@ export async function createBuchung(formData: FormData) {
   redirect("/buchungen");
 }
 
+// Firma fuer eine Buchung: zuerst exakter Namensabgleich mit der Firma auf der
+// Rechnung, sonst die Hauptorganisation des (ersten) Teilnehmers. Legt bewusst
+// keine neue Organisation an -- Namensvarianten ("medienreaktor®" vs.
+// "medienreaktor GmbH") haben schon Dubletten erzeugt; fehlt sie, bleibt das
+// Feld leer und kann in der Buchung von Hand gesetzt werden.
+async function ermittleBuchungsOrganisation(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  firmenname: string | null | undefined,
+  teilnehmerId: string
+): Promise<string | null> {
+  const name = (firmenname || "").trim();
+  if (name) {
+    const { data: treffer } = await supabase.from("organisationen").select("id").ilike("name", name).is("deaktiviert_am", null).limit(1).maybeSingle();
+    if (treffer) return treffer.id;
+  }
+  const { data: haupt } = await supabase
+    .from("teilnehmer_organisationen")
+    .select("organisation_id")
+    .eq("teilnehmer_id", teilnehmerId)
+    .order("ist_hauptorganisation", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return haupt?.organisation_id || null;
+}
+
 // Schnellanlage direkt am Termin (Reiter "Teilnehmer"): Person per E-Mail
 // wiedererkennen oder neu anlegen und in einem Schritt einbuchen. Vorher
 // brauchte das zwei Formulare (Teilnehmer anlegen, dann Buchung), und
@@ -1287,9 +1312,12 @@ export async function fuegeTeilnehmerZuTerminHinzu(formData: FormData) {
     redirect(`/buchungen/neu?teilnehmer_id=${teilnehmerId}&seminartermin_id=${seminarterminId}`);
   }
 
+  // Auch Freiplaetze gehoeren zur Firma der Person (Auswertungen pro Kunde).
+  const organisationId = await ermittleBuchungsOrganisation(supabase, null, teilnehmerId!);
   const { data: buchung, error: buchungError } = await supabase
     .from("buchungen")
     .insert({
+      organisation_id: organisationId,
       rechnungsempfaenger_teilnehmer_id: teilnehmerId,
       status: "bestaetigt",
       bestaetigt_am: new Date().toISOString(),
@@ -1323,6 +1351,43 @@ export async function fuegeTeilnehmerZuTerminHinzu(formData: FormData) {
   revalidatePath(`/termine/${seminarterminId}`);
   revalidatePath("/buchungen");
   redirect(`/termine/${seminarterminId}#teilnehmer`);
+}
+
+export async function setzeBuchungOrganisation(formData: FormData) {
+  await requireBackstageLogin();
+  const supabase = getSupabaseAdmin();
+  const buchungId = String(formData.get("buchung_id"));
+  const organisationId = String(formData.get("organisation_id") || "") || null;
+  const benutzer = await getAktuellerBenutzer();
+
+  const { data: buchung } = await supabase.from("buchungen").select("rechnungsempfaenger_teilnehmer_id, organisationen(name)").eq("id", buchungId).single();
+  // chk_rechnungsempfaenger: ohne Firma muss eine Person Rechnungsempfaenger sein.
+  if (!organisationId && !buchung?.rechnungsempfaenger_teilnehmer_id) {
+    throw new Error("Ohne Firma braucht die Buchung eine Person als Rechnungsempfänger.");
+  }
+  const { error } = await supabase.from("buchungen").update({ organisation_id: organisationId }).eq("id", buchungId);
+  if (error) throw new Error(error.message);
+
+  let neuerName = "keine";
+  if (organisationId) {
+    const { data: positionen } = await supabase.from("buchungspositionen").select("teilnehmer_id").eq("buchung_id", buchungId);
+    for (const tId of new Set((positionen || []).map((p: any) => p.teilnehmer_id))) {
+      await verknuepfeTeilnehmerMitOrganisationAutomatisch(supabase, tId, organisationId);
+    }
+    const { data: org } = await supabase.from("organisationen").select("name").eq("id", organisationId).single();
+    neuerName = org?.name || organisationId;
+  }
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "buchung",
+    bezug_id: buchungId,
+    ereignis: "aktualisierung",
+    beschreibung: `Firma: „${(buchung as any)?.organisationen?.name || "keine"}“ → „${neuerName}“`,
+    bearbeiter: benutzer?.name || "Unbekannt",
+  });
+
+  revalidatePath(`/buchungen/${buchungId}`);
+  revalidatePath("/buchungen");
+  redirect(`/buchungen/${buchungId}`);
 }
 
 export async function stornoBuchung(formData: FormData) {
@@ -4547,7 +4612,7 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
 
   const { data: rechnungRow, error: rechnungError } = await supabase
     .from("fastbill_rechnungen")
-    .select("buchung_id, betrag_netto")
+    .select("buchung_id, betrag_netto, kunde_firma")
     .eq("id", id)
     .single();
   if (rechnungError) throw new Error(rechnungError.message);
@@ -4599,18 +4664,24 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
 
   let buchungId = rechnungRow?.buchung_id || null;
 
+  // Firma der Buchung: die Rechnung ging an eine Firma, also gehoert die
+  // Buchung (mit allen Teilnehmern) an diese Organisation. Vorher blieb
+  // organisation_id hier immer leer (16 Buchungen, Befund 01.10.2026).
+  const organisationId = await ermittleBuchungsOrganisation(supabase, rechnungRow?.kunde_firma, teilnehmerIds[0]);
+
   if (buchungId) {
     const { error: delError } = await supabase.from("buchungspositionen").delete().eq("buchung_id", buchungId);
     if (delError) throw new Error(delError.message);
     const { error: buchungUpdateError } = await supabase
       .from("buchungen")
-      .update({ rechnungsempfaenger_teilnehmer_id: teilnehmerIds[0] })
+      .update({ rechnungsempfaenger_teilnehmer_id: teilnehmerIds[0], ...(organisationId ? { organisation_id: organisationId } : {}) })
       .eq("id", buchungId);
     if (buchungUpdateError) throw new Error(buchungUpdateError.message);
   } else {
     const { data: neueBuchung, error: buchungError } = await supabase
       .from("buchungen")
       .insert({
+        organisation_id: organisationId,
         rechnungsempfaenger_teilnehmer_id: teilnehmerIds[0],
         status: "bestaetigt",
         bestaetigt_am: new Date().toISOString(),
@@ -4639,6 +4710,10 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
   }));
   const { error: posError } = await supabase.from("buchungspositionen").insert(positionen);
   if (posError) throw new Error(posError.message);
+
+  if (organisationId) {
+    for (const tId of new Set(teilnehmerIds)) await verknuepfeTeilnehmerMitOrganisationAutomatisch(supabase, tId, organisationId);
+  }
 
   const { error } = await supabase
     .from("fastbill_rechnungen")

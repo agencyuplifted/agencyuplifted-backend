@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { stornoBuchung, umbuchenBuchung, bestaetigeBuchung } from "@/lib/actions";
+import { stornoBuchung, umbuchenBuchung, bestaetigeBuchung, setzeBuchungOrganisation } from "@/lib/actions";
 import { formatDatum, formatDatumsspanne, formatEUR, formatEURBrutto } from "@/lib/format";
 import { quizProfil } from "@/lib/programm-buchung";
 import Link from "next/link";
@@ -20,6 +20,8 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
     .from("buchungspositionen")
     .select("*, teilnehmer(vorname, nachname, email), seminartermine(id, datum_start, seminartypen(name)), seminartermin_optionen(titel), programme(name, schluessel)")
     .eq("buchung_id", id);
+
+  const { data: organisationen } = await supabase.from("organisationen").select("id, name").is("deaktiviert_am", null).order("name");
 
   const { data: protokoll } = await supabase
     .from("aenderungsprotokoll")
@@ -57,6 +59,26 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
       <p style={{ color: "var(--color-text-muted)" }}>
         Status: <strong>{buchung.status}</strong> · Rechnungsempfänger: {buchung.organisationen?.name || (buchung.teilnehmer ? `${buchung.teilnehmer.vorname} ${buchung.teilnehmer.nachname}` : "—")} · Gebucht am {formatDatum(buchung.gebucht_am)}
       </p>
+
+      {/* Firma der Buchung sichtbar und aenderbar -- vorher nirgends zu sehen,
+          FastBill-Zuordnungen liessen sie leer (Befund 01.10.2026). */}
+      <form action={setzeBuchungOrganisation} className="au-card" style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap" }}>
+        <input type="hidden" name="buchung_id" value={buchung.id} />
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <label className="au-label">
+            Firma (Organisation)
+            {!buchung.organisation_id && <span className="au-badge au-badge-warning" style={{ marginLeft: "0.5rem" }}>keine hinterlegt</span>}
+          </label>
+          <select className="au-input" style={{ marginBottom: 0 }} name="organisation_id" defaultValue={buchung.organisation_id || ""}>
+            <option value="">— keine (Selbständige/r, Rechnung an Person) —</option>
+            {(organisationen || []).map((o: any) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+        </div>
+        <button type="submit" className="au-btn au-btn-secondary">Speichern</button>
+        <span className="au-klein" style={{ width: "100%" }}>Alle Teilnehmer dieser Buchung werden mit der Firma verknüpft.</span>
+      </form>
 
       {(() => {
         const metadata: any = buchung.metadata || {};
