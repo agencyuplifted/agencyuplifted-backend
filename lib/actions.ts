@@ -4517,6 +4517,14 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
     const neuNachname = String(formData.get(`neu_nachname_${i}`) || "").trim();
     const neuEmail = String(formData.get(`neu_email_${i}`) || "").trim();
 
+    // "Neu anlegen" trotzdem erst per E-Mail abgleichen -- sonst entstehen
+    // Dubletten, wenn die Person kurz vorher schon angelegt wurde (Ronny
+    // Ullrich, 12.09.2026: leerer Doppel-Datensatz 5 Min. vor der Zuordnung).
+    if (!teilnehmerId && neuEmail) {
+      const { data: bestehend } = await supabase.from("teilnehmer").select("id").ilike("email", neuEmail).limit(1).maybeSingle();
+      if (bestehend) teilnehmerId = bestehend.id;
+    }
+
     if (!teilnehmerId && neuVorname && neuNachname) {
       const { anrede, anrede_quelle } = ermittleAnredeUndQuelle(null, neuVorname);
       const { data: neuerTeilnehmer, error: insertError } = await supabase
