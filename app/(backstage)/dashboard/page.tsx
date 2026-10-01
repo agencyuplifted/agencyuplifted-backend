@@ -8,10 +8,11 @@ import { ladeAnstehendeGeburtstage } from "@/lib/geburtstage";
 import FaelligWidget from "../wiedervorlage/FaelligWidget";
 import { getAktuellerBenutzer } from "@/lib/auth";
 
-type Ansicht = "uebersicht" | "nachfrage" | "auslastung" | "kunden" | "vertrieb";
+type Ansicht = "uebersicht" | "seminare" | "nachfrage" | "auslastung" | "kunden" | "vertrieb";
 
 const TABS: { key: Ansicht; label: string }[] = [
   { key: "uebersicht", label: "Übersicht" },
+  { key: "seminare", label: "Seminare: Umsatz & DB" },
   { key: "nachfrage", label: "Nachfrage nach Seminarart" },
   { key: "auslastung", label: "Termine & Auslastung" },
   { key: "kunden", label: "Top-Kunden" },
@@ -51,7 +52,8 @@ export default async function DashboardPage({
         ))}
       </nav>
 
-      {ansicht === "uebersicht" && <Uebersicht supabase={supabase} heute={heute} jahr={jahr} seminartypFilter={seminartyp} />}
+      {ansicht === "uebersicht" && <Uebersicht supabase={supabase} heute={heute} />}
+      {ansicht === "seminare" && <UmsatzProSeminar supabase={supabase} heute={heute} jahr={jahr} seminartypFilter={seminartyp} />}
       {ansicht === "nachfrage" && <Nachfrage supabase={supabase} />}
       {ansicht === "auslastung" && <Auslastung supabase={supabase} heute={heute} />}
       {ansicht === "kunden" && <Kunden supabase={supabase} />}
@@ -111,17 +113,7 @@ function Panel({ titel, aktion, children, className }: { titel: string; aktion?:
   );
 }
 
-async function Uebersicht({
-  supabase,
-  heute,
-  jahr,
-  seminartypFilter,
-}: {
-  supabase: any;
-  heute: string;
-  jahr: number;
-  seminartypFilter?: string;
-}) {
+async function Uebersicht({ supabase, heute }: { supabase: any; heute: string }) {
   const in30Tagen = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
   const [
     { count: teilnehmerCount },
@@ -153,17 +145,11 @@ async function Uebersicht({
 
   const umsatzNetto = (positionen || []).reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0);
 
-  // Belegung der naechsten Termine: gebuchte Plaetze (ohne Stornos) plus
-  // zugeordnete Altdaten -- gleiche Quelle wie "Umsatz pro Seminar".
-  const terminIds = (naechsteTermine || []).map((t: any) => t.id);
-  const [{ data: belegtNeu }, { data: belegtAlt }] = await Promise.all([
-    terminIds.length
-      ? supabase.from("buchungspositionen").select("seminartermin_id, buchungen!inner(status)").in("seminartermin_id", terminIds).neq("buchungen.status", "storniert")
-      : Promise.resolve({ data: [] }),
-    terminIds.length ? supabase.from("legacy_buchungen").select("seminartermin_id").in("seminartermin_id", terminIds) : Promise.resolve({ data: [] }),
-  ]);
+  // Belegung der naechsten Termine: Teilnehmer pro Person, nicht pro
+  // Buchungsposition -- sonst zaehlte ein Zimmer-Upgrade als zweiter Platz.
+  const dbNaechste = await berechneDeckungsbeitraege(supabase, (naechsteTermine || []).map((t: any) => t.id));
   const belegt = new Map<string, number>();
-  [...(belegtNeu || []), ...(belegtAlt || [])].forEach((b: any) => belegt.set(b.seminartermin_id, (belegt.get(b.seminartermin_id) || 0) + 1));
+  dbNaechste.forEach((d, id) => belegt.set(id, d.teilnehmer));
 
   return (
     <>
@@ -220,7 +206,9 @@ async function Uebersicht({
         </div>
       </div>
 
-      <UmsatzProSeminar supabase={supabase} jahr={jahr} seminartypFilter={seminartypFilter} />
+      <p style={{ marginTop: "1rem" }}>
+        <Link href="/dashboard?ansicht=seminare" prefetch={false}>Umsatz &amp; Deckungsbeitrag pro Seminar →</Link>
+      </p>
     </>
   );
 }
@@ -246,16 +234,18 @@ async function NaechsteGeburtstage() {
 
 async function UmsatzProSeminar({
   supabase,
+  heute,
   jahr,
   seminartypFilter,
 }: {
   supabase: any;
+  heute: string;
   jahr: number;
   seminartypFilter?: string;
 }) {
   let terminQuery = supabase
     .from("seminartermine")
-    .select("id, titel, kennung, datum_start, seminartypen(id, name)")
+    .select("id, titel, kennung, datum_start, kapazitaet, seminartypen(id, name, farbe)")
     .gte("datum_start", `${jahr}-01-01`)
     .lte("datum_start", `${jahr}-12-31`)
     .neq("status", "abgesagt")
@@ -271,20 +261,20 @@ async function UmsatzProSeminar({
   // Gleiche Rechnung wie auf der Termin-Seite (lib/deckungsbeitrag.ts).
   const dbProTermin = await berechneDeckungsbeitraege(supabase, (termine || []).map((t: any) => t.id));
   const zeilen = (termine || []).map((t: any) => ({ ...t, ...dbProTermin.get(t.id)! }));
-
-  const gesamtUmsatz = zeilen.reduce((s: number, z: any) => s + z.umsatz, 0);
-  const gesamtFremdkosten = zeilen.reduce((s: number, z: any) => s + z.fremdkosten, 0);
-  const gesamtDb = gesamtUmsatz - gesamtFremdkosten;
+  // Kommend: naechster zuerst. Vergangen: neuester zuerst -- beides oben das,
+  // was gerade am meisten interessiert.
+  const kommend = zeilen.filter((z: any) => z.datum_start >= heute);
+  const vergangen = zeilen.filter((z: any) => z.datum_start < heute).reverse();
 
   const jahre = [jahr - 2, jahr - 1, jahr, jahr + 1];
 
   return (
     <Panel
-      titel={`Umsatz pro Seminar ${jahr}`}
+      titel={`Seminare ${jahr}: Umsatz & Deckungsbeitrag`}
       className="au-panel-breit"
       aktion={
         <form method="get" className="au-panel-filter">
-          <input type="hidden" name="ansicht" value="uebersicht" />
+          <input type="hidden" name="ansicht" value="seminare" />
           <select name="jahr" defaultValue={jahr} aria-label="Jahr" className="au-select">
             {jahre.map((j) => (
               <option key={j} value={j}>{j}</option>
@@ -300,20 +290,53 @@ async function UmsatzProSeminar({
         </form>
       }
     >
-      <div className="au-summenleiste">
-        <div><span>Umsatz netto</span><strong>{formatEUR(gesamtUmsatz)}</strong></div>
-        <div><span>Fremdkosten (geschätzt)</span><strong>{formatEUR(gesamtFremdkosten)}</strong></div>
-        <div><span>Deckungsbeitrag (geschätzt)</span><strong>{formatEUR(Math.round(gesamtDb))}</strong></div>
-      </div>
+      <Summen titel="Gesamtjahr" zeilen={zeilen} />
+      {!zeilen.length && <p className="au-leer">Keine Seminare in {jahr}.</p>}
+      <SeminarGruppe titel="Kommend" zeilen={kommend} />
+      <SeminarGruppe titel="Vergangen" zeilen={vergangen} />
 
+      <p className="au-fussnote">
+        Deckungsbeitrag = Umsatz − Personen vor Ort (Teilnehmer inkl. Freiplätze, Mitarbeiter, Referenten) × {formatEUR(fremdkostenProPerson)} netto pro Kopf,{" "}
+        <Link href="/einstellungen" prefetch={false}>einstellbar</Link>. Umsatz nur aus Buchungen des neuen Systems (Altdaten haben keine Preise);
+        Stornos ausgeschlossen, unbezahlte („angefragte“) Buchungen enthalten und separat ausgewiesen. Alle Beträge netto zzgl. 19 % USt.
+      </p>
+    </Panel>
+  );
+}
+
+function Summen({ titel, zeilen }: { titel: string; zeilen: any[] }) {
+  const umsatz = zeilen.reduce((s: number, z: any) => s + z.umsatz, 0);
+  const unbezahlt = zeilen.reduce((s: number, z: any) => s + z.umsatzUnbezahlt, 0);
+  const fremdkosten = zeilen.reduce((s: number, z: any) => s + z.fremdkosten, 0);
+  return (
+    <div className="au-summenleiste">
+      <div><span>{titel} · Umsatz netto</span><strong>{formatEUR(umsatz)}</strong>{unbezahlt > 0 && <span className="au-klein">davon {formatEUR(unbezahlt)} unbezahlt</span>}</div>
+      <div><span>Fremdkosten (geschätzt)</span><strong>{formatEUR(fremdkosten)}</strong></div>
+      <div><span>Deckungsbeitrag (geschätzt)</span><strong>{formatEUR(Math.round(umsatz - fremdkosten))}</strong></div>
+    </div>
+  );
+}
+
+function SeminarGruppe({ titel, zeilen }: { titel: string; zeilen: any[] }) {
+  if (!zeilen.length) return null;
+  const umsatz = zeilen.reduce((s: number, z: any) => s + z.umsatz, 0);
+  const db = zeilen.reduce((s: number, z: any) => s + z.db, 0);
+  return (
+    <section style={{ marginTop: "1.5rem" }}>
+      <h3 style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1rem", flexWrap: "wrap", margin: "0 0 0.5rem" }}>
+        <span>{titel} · {zeilen.length} {zeilen.length === 1 ? "Termin" : "Termine"}</span>
+        <span className="au-klein" style={{ fontWeight: 400 }}>Umsatz {formatEUR(umsatz)} · DB {formatEUR(Math.round(db))}</span>
+      </h3>
       <div style={{ overflowX: "auto" }}>
         <table className="au-table">
           <thead>
             <tr>
-              <th>Termin</th>
               <th>Datum</th>
-              <th style={{ textAlign: "right" }}>Personen</th>
+              <th>Seminar</th>
+              <th style={{ textAlign: "right" }}>TN</th>
+              <th style={{ textAlign: "right" }}>vor Ort</th>
               <th style={{ textAlign: "right" }}>Umsatz</th>
+              <th style={{ textAlign: "right" }}>davon unbezahlt</th>
               <th style={{ textAlign: "right" }}>Fremdkosten</th>
               <th style={{ textAlign: "right" }}>DB</th>
             </tr>
@@ -321,27 +344,23 @@ async function UmsatzProSeminar({
           <tbody>
             {zeilen.map((z: any) => (
               <tr key={z.id}>
-                <td><Link href={`/termine/${z.id}`} prefetch={false}>{z.titel || z.seminartypen?.name}{z.kennung ? ` (${z.kennung})` : ""}</Link></td>
                 <td style={{ whiteSpace: "nowrap" }}>{formatDatum(z.datum_start)}</td>
+                <td>
+                  <Link href={`/termine/${z.id}`} prefetch={false}>{z.titel || z.seminartypen?.name}</Link>
+                  {z.kennung && <span className="au-klein"> · {z.kennung}</span>}
+                </td>
+                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{z.teilnehmer}{z.kapazitaet ? ` / ${z.kapazitaet}` : ""}</td>
                 <td style={{ textAlign: "right" }}>{z.personen}</td>
                 <td style={{ textAlign: "right" }}>{formatEUR(z.umsatz)}</td>
+                <td style={{ textAlign: "right", color: "var(--color-text-muted)" }}>{z.umsatzUnbezahlt ? formatEUR(z.umsatzUnbezahlt) : "—"}</td>
                 <td style={{ textAlign: "right", color: "var(--color-text-muted)" }}>{formatEUR(z.fremdkosten)}</td>
-                <td style={{ textAlign: "right", fontWeight: 600 }}>{formatEUR(Math.round(z.db))}</td>
+                <td style={{ textAlign: "right", fontWeight: 600, color: z.db < 0 ? "var(--color-danger)" : undefined }}>{formatEUR(Math.round(z.db))}</td>
               </tr>
             ))}
-            {!zeilen.length && (
-              <tr className="au-table-empty"><td colSpan={6}>Keine Seminare mit Umsatz in {jahr}.</td></tr>
-            )}
           </tbody>
         </table>
       </div>
-
-      <p className="au-fussnote">
-        Fremdkosten = Personen vor Ort (Teilnehmer inkl. Freiplätze, Mitarbeiter, Referenten) × {formatEUR(fremdkostenProPerson)} netto pro Kopf,{" "}
-        <Link href="/einstellungen" prefetch={false}>einstellbar</Link>. Umsatz nur aus Buchungen des neuen Systems (Altdaten haben keine Preise);
-        Stornos ausgeschlossen, unbezahlte („angefragte“) Buchungen enthalten. Alle Beträge netto zzgl. 19 % USt.
-      </p>
-    </Panel>
+    </section>
   );
 }
 

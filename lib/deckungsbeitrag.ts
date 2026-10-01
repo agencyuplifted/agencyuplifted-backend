@@ -1,7 +1,7 @@
 import { ladeHotellisten } from "./hotelliste";
 
 // Deckungsbeitrag pro Termin -- gemeinsame Rechnung fuer Termin-Seite und
-// Dashboard ("Umsatz pro Seminar"). Vorher rechnete nur das Dashboard, und
+// Dashboard (Reiter "Seminare"). Vorher rechnete nur das Dashboard, und
 // zwar nur mit gebuchten Personen: Mitarbeiter und Referenten kosten aber
 // genauso Hotel und Verpflegung (Entscheidung Markus 01.10.2026: alle vor Ort
 // je Pauschale, keine Fixkosten pro Termin).
@@ -10,6 +10,7 @@ export type Deckungsbeitrag = {
   umsatz: number;
   umsatzUnbezahlt: number;
   personen: number;
+  teilnehmer: number;
   fremdkostenProPerson: number;
   fremdkosten: number;
   db: number;
@@ -48,8 +49,9 @@ export async function berechneDeckungsbeitraege(supabase: any, terminIds: string
       .filter((p: any) => p.buchungen?.status === "angefragt")
       .reduce((s: number, p: any) => s + Number(p.preis || 0), 0);
     const personen = hotel.zeilen.length + legacyPersonen.size;
+    const teilnehmer = hotel.zeilen.filter((z) => z.typ === "Teilnehmer").length + legacyPersonen.size;
     const fremdkosten = personen * fremdkostenProPerson;
-    ergebnis.set(id, { umsatz, umsatzUnbezahlt, personen, fremdkostenProPerson, fremdkosten, db: umsatz - fremdkosten });
+    ergebnis.set(id, { umsatz, umsatzUnbezahlt, personen, teilnehmer, fremdkostenProPerson, fremdkosten, db: umsatz - fremdkosten });
   }
   return ergebnis;
 }
