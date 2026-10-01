@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatDatumZeit } from "@/lib/format";
 import { updateFinanzKonfiguration } from "@/lib/actions";
+import { ladeKostenVergleich } from "@/lib/deckungsbeitrag";
+import Link from "next/link";
 
 export default async function EinstellungenPage() {
   const supabase = getSupabaseAdmin();
@@ -13,6 +15,7 @@ export default async function EinstellungenPage() {
     .single();
 
   const fremdkosten = Number(konfig?.fremdkosten_pro_person_netto ?? 300);
+  const vergleich = await ladeKostenVergleich(supabase);
 
   return (
     <main>
@@ -61,9 +64,47 @@ export default async function EinstellungenPage() {
       </div>
 
       <div className="au-card">
-        <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
-          Aktueller Wert zur Kontrolle: {formatEUR(fremdkosten)} pro Person.
-        </p>
+        <h2>Pauschale vs. echte Kosten</h2>
+        {/* Lernen aus den Hotelrechnungen: wie gut trifft die Pauschale? */}
+        {!vergleich ? (
+          <p style={{ color: "var(--color-text-muted)", margin: 0 }}>
+            Noch keine Kostenbelege. Echte Hotelrechnungen trägst du am Termin im Reiter „Teilnehmer“ unter „Fremdkosten &amp; Belege“ ein.
+          </p>
+        ) : (
+          <>
+            <p style={{ marginTop: 0 }}>
+              Ø echte Fremdkosten: <strong>{formatEUR(Math.round(vergleich.durchschnittProPerson))}</strong> pro Person
+              {" "}· eingestellte Pauschale {formatEUR(fremdkosten)}
+              {" "}({vergleich.durchschnittProPerson <= fremdkosten ? "Pauschale liegt" : "Pauschale liegt"}{" "}
+              {formatEUR(Math.abs(Math.round(fremdkosten - vergleich.durchschnittProPerson)))} {vergleich.durchschnittProPerson <= fremdkosten ? "darüber" : "darunter"})
+            </p>
+            <table className="au-table">
+              <thead>
+                <tr>
+                  <th>Termin</th>
+                  <th style={{ textAlign: "right" }}>Personen</th>
+                  <th style={{ textAlign: "right" }}>geschätzt</th>
+                  <th style={{ textAlign: "right" }}>echt</th>
+                  <th style={{ textAlign: "right" }}>pro Person</th>
+                  <th style={{ textAlign: "right" }}>pro Person &amp; Nacht</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vergleich.zeilen.map((z: any) => (
+                  <tr key={z.id}>
+                    <td><Link href={`/termine/${z.id}#teilnehmer`}>{z.kennung}</Link> <span className="au-klein">{z.typ}</span></td>
+                    <td style={{ textAlign: "right" }}>{z.personen}</td>
+                    <td style={{ textAlign: "right" }}>{formatEUR(z.geschaetzt)}</td>
+                    <td style={{ textAlign: "right" }}>{formatEUR(z.echt)}</td>
+                    <td style={{ textAlign: "right" }}>{formatEUR(Math.round(z.proPerson))}</td>
+                    <td style={{ textAlign: "right" }}>{formatEUR(Math.round(z.proPersonNacht))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="au-klein">Nächte = Seminartage (inkl. Anreise am Vorabend). Konferenz und Seminare haben eigene Sätze pro Option – siehe Termin → Optionen.</p>
+          </>
+        )}
       </div>
     </main>
   );

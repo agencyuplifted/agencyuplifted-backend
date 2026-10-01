@@ -43,7 +43,11 @@ import {
   addReferentZuTermin,
   removeReferentVonTermin,
   setzeFremdkostenPersonal,
+  erzeugeKostenbelegUpload,
+  speichereKostenbeleg,
+  loescheKostenbeleg,
 } from "@/lib/actions";
+import KostenbelegeVerwaltung from "./KostenbelegeVerwaltung";
 import { ladeHotelliste } from "@/lib/hotelliste";
 import { berechneDeckungsbeitraege } from "@/lib/deckungsbeitrag";
 import ZimmerKontingent from "./ZimmerKontingent";
@@ -193,6 +197,7 @@ export default async function TerminDetailPage({
     { data: referenten },
     hotelliste,
     dbProTermin,
+    { data: kostenbelege },
   ] = await Promise.all([
     supabase
       .from("seminartermine")
@@ -261,6 +266,7 @@ export default async function TerminDetailPage({
     supabase.from("seminartermin_referenten").select("trainer_id, trainer(name)").eq("seminartermin_id", id).order("erstellt_am"),
     ladeHotelliste(supabase, id),
     berechneDeckungsbeitraege(supabase, [id]),
+    supabase.from("termin_kostenbelege").select("id, betrag_netto, beschreibung, dateiname, datei_pfad").eq("seminartermin_id", id).order("erstellt_am"),
   ]);
 
   // Exakt dieselbe Berechnung wie /api/public/seminartermine/[id], die der
@@ -585,7 +591,8 @@ export default async function TerminDetailPage({
           <div className="au-kennzahl-label">Deckungsbeitrag</div>
           <div className="au-kennzahl-wert" style={deckung.db < 0 ? { color: "var(--color-danger)" } : undefined}>{formatEUR(Math.round(deckung.db))}</div>
           <div className="au-kennzahl-kontext">
-            − {formatEUR(deckung.fremdkosten)} Fremdkosten · {deckung.personen} Personen
+            − {formatEUR(deckung.fremdkosten)} Fremdkosten · {deckung.personen} Personen ·{" "}
+            {deckung.kostenQuelle === "beleg" ? <strong>echte Kosten (Beleg)</strong> : "geschätzt"}
           </div>
         </div>
         <div className="au-kennzahl">
@@ -725,6 +732,28 @@ export default async function TerminDetailPage({
       </Bereich>
 
       <ZimmerKontingent terminId={id} liste={hotelliste} />
+
+      <Bereich titel="Fremdkosten & Belege">
+        <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>
+          Sobald ein Beleg (z. B. Hotelrechnung) eingetragen ist, rechnet der Deckungsbeitrag mit den echten Kosten statt der Schätzung.
+          {" "}Geschätzt: <strong>{formatEUR(deckung.fremdkostenGeschaetzt)}</strong>
+          {deckung.kostenQuelle === "beleg" && (
+            <>
+              {" "}· echt: <strong>{formatEUR(deckung.fremdkosten)}</strong>
+              {deckung.personen > 0 && <> · {formatEUR(Math.round(deckung.fremdkosten / deckung.personen))} pro Person</>}
+              {" "}({deckung.fremdkosten <= deckung.fremdkostenGeschaetzt ? "−" : "+"}{formatEUR(Math.abs(Math.round(deckung.fremdkosten - deckung.fremdkostenGeschaetzt)))} zur Schätzung)
+            </>
+          )}
+          . Belege sind nur hier im Backstage sichtbar, nicht für Teilnehmer.
+        </p>
+        <KostenbelegeVerwaltung
+          terminId={id}
+          belege={(kostenbelege as any) || []}
+          uploadVorbereitenAction={erzeugeKostenbelegUpload}
+          speichernAction={speichereKostenbeleg}
+          loeschenAction={loescheKostenbeleg}
+        />
+      </Bereich>
 
       <Bereich titel="Zimmerpartner">
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>

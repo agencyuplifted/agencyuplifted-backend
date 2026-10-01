@@ -12,6 +12,8 @@ import { ladeHotellisten, type Hotelliste } from "./hotelliste";
 //   Abgleich; Umsatz und Kosten kommen aus echten Buchungen (Backstage/FastBill).
 //   Sonst stuende jeder vergangene Termin vor dem FastBill-Abgleich tief im Minus.
 // Keine Fixkosten pro Termin.
+// - Gibt es Kostenbelege (termin_kostenbelege, z. B. Hotelrechnung), ersetzt
+//   deren Summe die Schaetzung komplett; die Schaetzung bleibt zum Vergleich.
 
 export type Deckungsbeitrag = {
   umsatz: number;
@@ -23,6 +25,10 @@ export type Deckungsbeitrag = {
   /** Allgemeine Pauschale aus den Einstellungen (Fallback) */
   fremdkostenProPerson: number;
   fremdkosten: number;
+  /** "beleg" = echte Kosten aus Belegen, "schaetzung" = aus Pauschalen */
+  kostenQuelle: "beleg" | "schaetzung";
+  /** Schaetzung aus Pauschalen, auch wenn Belege da sind (Vergleich/Lernen) */
+  fremdkostenGeschaetzt: number;
   db: number;
 };
 
@@ -39,7 +45,7 @@ export async function berechneDeckungsbeitraege(
 ): Promise<Map<string, Deckungsbeitrag>> {
   const ergebnis = new Map<string, Deckungsbeitrag>();
   if (!terminIds.length) return ergebnis;
-  const [pauschale, hotellisten, { data: positionen }, { data: legacy }, { data: termine }] = await Promise.all([
+  const [pauschale, hotellisten, { data: positionen }, { data: legacy }, { data: termine }, { data: belege }] = await Promise.all([
     ladeFremdkostenProPerson(supabase),
     vorgeladen ?? ladeHotellisten(supabase, terminIds),
     supabase
@@ -49,6 +55,7 @@ export async function berechneDeckungsbeitraege(
       .neq("buchungen.status", "storniert"),
     supabase.from("legacy_buchungen").select("seminartermin_id, teilnehmer_id").in("seminartermin_id", terminIds),
     supabase.from("seminartermine").select("id, fremdkosten_personal_pro_person_netto").in("id", terminIds),
+    supabase.from("termin_kostenbelege").select("seminartermin_id, betrag_netto").in("seminartermin_id", terminIds),
   ]);
 
   for (const id of terminIds) {
@@ -70,7 +77,7 @@ export async function berechneDeckungsbeitraege(
     const personalRoh = (termine || []).find((t: any) => t.id === id)?.fremdkosten_personal_pro_person_netto;
     const personal = personalRoh === null || personalRoh === undefined ? pauschale : Number(personalRoh);
 
-    const fremdkosten = hotel.zeilen.reduce((summe, z) => {
+    const fremdkostenGeschaetzt = hotel.zeilen.reduce((summe, z) => {
       if (z.typ === "Teilnehmer") return summe + (z.teilnehmerId && kostenJeTeilnehmer.has(z.teilnehmerId) ? kostenJeTeilnehmer.get(z.teilnehmerId)! : pauschale);
       return summe + personal;
     }, 0);
@@ -82,6 +89,12 @@ export async function berechneDeckungsbeitraege(
     );
     const teilnehmer = hotel.zeilen.filter((z) => z.typ === "Teilnehmer").length + legacyPersonen.size;
 
+    const eigeneBelege = (belege || []).filter((b: any) => b.seminartermin_id === id);
+    const kostenQuelle = eigeneBelege.length ? "beleg" : "schaetzung";
+    const fremdkosten = eigeneBelege.length
+      ? eigeneBelege.reduce((s: number, b: any) => s + Number(b.betrag_netto || 0), 0)
+      : fremdkostenGeschaetzt;
+
     ergebnis.set(id, {
       umsatz,
       umsatzUnbezahlt,
@@ -89,8 +102,40 @@ export async function berechneDeckungsbeitraege(
       teilnehmer,
       fremdkostenProPerson: pauschale,
       fremdkosten,
+      kostenQuelle,
+      fremdkostenGeschaetzt,
       db: umsatz - fremdkosten,
     });
   }
   return ergebnis;
+}
+
+// "Lernen": echte Kosten pro Person ueber alle Termine mit Belegen, als
+// Vergleich zur eingestellten Pauschale (Einstellungen).
+export async function ladeKostenVergleich(supabase: any) {
+  const { data: belege } = await supabase.from("termin_kostenbelege").select("seminartermin_id, betrag_netto");
+  const terminIds = [...new Set((belege || []).map((b: any) => b.seminartermin_id as string))] as string[];
+  if (!terminIds.length) return null;
+  const [db, { data: termine }] = await Promise.all([
+    berechneDeckungsbeitraege(supabase, terminIds),
+    supabase.from("seminartermine").select("id, kennung, titel, datum_start, datum_ende, seminartypen(name)").in("id", terminIds).order("datum_start"),
+  ]);
+  const zeilen = (termine || []).map((t: any) => {
+    const d = db.get(t.id)!;
+    const naechte = Math.max(1, Math.round((Date.parse(t.datum_ende || t.datum_start) - Date.parse(t.datum_start)) / 86400000) + 1);
+    return {
+      id: t.id,
+      kennung: t.kennung || t.titel,
+      typ: t.seminartypen?.name || "",
+      personen: d.personen,
+      echt: d.fremdkosten,
+      geschaetzt: d.fremdkostenGeschaetzt,
+      proPerson: d.personen ? d.fremdkosten / d.personen : 0,
+      // Naechte inkl. Vorabend: Seminar 3 Tage = 3 Naechte (Anreise am Vorabend)
+      proPersonNacht: d.personen ? d.fremdkosten / d.personen / naechte : 0,
+    };
+  });
+  const personen = zeilen.reduce((s: number, z: any) => s + z.personen, 0);
+  const echt = zeilen.reduce((s: number, z: any) => s + z.echt, 0);
+  return { zeilen, durchschnittProPerson: personen ? echt / personen : 0 };
 }

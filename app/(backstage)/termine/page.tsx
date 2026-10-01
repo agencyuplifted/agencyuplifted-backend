@@ -186,6 +186,7 @@ function TerminListe({
                     {deckung && (deckung.umsatz > 0 || deckung.personen > 0) ? (
                       <>
                         <strong style={deckung.db < 0 ? { color: "var(--color-danger)" } : undefined}>{formatEURGanz(deckung.db)}</strong>
+                        {deckung.kostenQuelle === "beleg" && <span className="au-klein" title="Mit echten Kosten aus Belegen gerechnet">✓ Beleg</span>}
                       </>
                     ) : (
                       <span className="au-klein">—</span>

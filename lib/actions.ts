@@ -2850,6 +2850,78 @@ export async function loescheSeminarUnterlage(formData: FormData): Promise<Vorla
   return { fehler: null };
 }
 
+// ---------------------------------------------------------------------------
+// Kostenbelege pro Termin (Hotelrechnung u. a.). Eigener privater Bucket
+// "kostenbelege" -- NICHT "seminar-unterlagen", die sehen die Teilnehmer,
+// und Hotelrechnungen enthalten alle Gaestenamen. Download nur ueber die
+// login-geschuetzte Route /api/kostenbelege/[id].
+
+export async function erzeugeKostenbelegUpload(formData: FormData): Promise<VorlagenAktionsErgebnis & { pfad?: string; uploadUrl?: string }> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const terminId = String(formData.get("seminartermin_id") || "");
+  const dateiname = String(formData.get("dateiname") || "beleg")
+    .normalize("NFKD")
+    .replace(/[^\w.\-]+/g, "_")
+    .slice(-80);
+  if (!/^[0-9a-f-]{36}$/i.test(terminId)) return { fehler: "Termin fehlt." };
+  const pfad = `${terminId}/${Date.now()}-${dateiname}`;
+  const { data, error } = await getSupabaseAdmin().storage.from("kostenbelege").createSignedUploadUrl(pfad);
+  if (error || !data) return { fehler: error?.message || "Upload konnte nicht vorbereitet werden." };
+  return { fehler: null, pfad: data.path, uploadUrl: data.signedUrl };
+}
+
+export async function speichereKostenbeleg(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const terminId = String(formData.get("seminartermin_id") || "");
+  const belegId = String(formData.get("beleg_id") || "");
+  const pfad = String(formData.get("pfad") || "").trim() || null;
+  const dateiname = String(formData.get("dateiname") || "").trim() || null;
+  const supabase = getSupabaseAdmin();
+  const benutzer = await getAktuellerBenutzer();
+
+  // Datei an bestehenden Beleg nachreichen
+  if (belegId) {
+    if (!pfad) return { fehler: "Keine Datei." };
+    const { error } = await supabase.from("termin_kostenbelege").update({ datei_pfad: pfad, dateiname }).eq("id", belegId);
+    if (error) return { fehler: error.message };
+    revalidatePath(`/termine/${terminId}`);
+    return { fehler: null };
+  }
+
+  const betragRoh = String(formData.get("betrag_netto") || "").trim().replace(/\./g, "").replace(",", ".");
+  const betrag = Number(betragRoh);
+  if (!betragRoh || !Number.isFinite(betrag) || betrag < 0) return { fehler: "Bitte den Nettobetrag angeben (z. B. 9246,92)." };
+  const { error } = await supabase.from("termin_kostenbelege").insert({
+    seminartermin_id: terminId,
+    betrag_netto: Math.round(betrag * 100) / 100,
+    beschreibung: String(formData.get("beschreibung") || "").trim() || null,
+    datei_pfad: pfad,
+    dateiname,
+    erstellt_von: benutzer?.name || null,
+  });
+  if (error) return { fehler: error.message };
+  revalidatePath(`/termine/${terminId}`);
+  revalidatePath("/termine");
+  return { fehler: null };
+}
+
+export async function loescheKostenbeleg(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const id = String(formData.get("id") || "");
+  const supabase = getSupabaseAdmin();
+  const { data: b } = await supabase.from("termin_kostenbelege").select("seminartermin_id, datei_pfad").eq("id", id).maybeSingle();
+  if (!b) return { fehler: "Beleg nicht gefunden." };
+  const { error } = await supabase.from("termin_kostenbelege").delete().eq("id", id);
+  if (error) return { fehler: error.message };
+  if (b.datei_pfad) await supabase.storage.from("kostenbelege").remove([b.datei_pfad]);
+  revalidatePath(`/termine/${b.seminartermin_id}`);
+  revalidatePath("/termine");
+  return { fehler: null };
+}
+
 export async function funnelVersandJetzt() {
   await requireBackstageLogin();
   const { pruefeUndSendeFaelligeFunnelMails } = await import("./funnel");

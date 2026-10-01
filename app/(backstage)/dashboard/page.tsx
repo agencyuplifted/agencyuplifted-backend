@@ -353,7 +353,10 @@ function SeminarGruppe({ titel, zeilen }: { titel: string; zeilen: any[] }) {
                 <td style={{ textAlign: "right" }}>{z.personen}</td>
                 <td style={{ textAlign: "right" }}>{formatEUR(z.umsatz)}</td>
                 <td style={{ textAlign: "right", color: "var(--color-text-muted)" }}>{z.umsatzUnbezahlt ? formatEUR(z.umsatzUnbezahlt) : "—"}</td>
-                <td style={{ textAlign: "right", color: "var(--color-text-muted)" }}>{formatEUR(z.fremdkosten)}</td>
+                <td style={{ textAlign: "right", color: "var(--color-text-muted)" }}>
+                  {formatEUR(z.fremdkosten)}
+                  {z.kostenQuelle === "beleg" && <span className="au-klein" title="Echte Kosten aus Belegen"> ✓</span>}
+                </td>
                 <td style={{ textAlign: "right", fontWeight: 600, color: z.db < 0 ? "var(--color-danger)" : undefined }}>{formatEUR(Math.round(z.db))}</td>
               </tr>
             ))}
