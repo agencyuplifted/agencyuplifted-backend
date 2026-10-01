@@ -692,6 +692,19 @@ export default async function TerminDetailPage({
                 </select>
               </>
             )}
+            {teilnehmerListe.some((t) => t.quelle === "aktuell") && (
+              <>
+                <label className="au-label">Teilt Zimmer mit (Doppelzimmer, optional)</label>
+                <select className="au-input" name="zimmerpartner_id" defaultValue="">
+                  <option value="">— eigenes Zimmer —</option>
+                  {teilnehmerListe
+                    .filter((t) => t.quelle === "aktuell" && !partnerVonTeilnehmer.has(t.id))
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                </select>
+              </>
+            )}
             <label className="au-label">Buchungsart</label>
             <div style={{ display: "flex", gap: "1.5rem", marginBottom: "1rem" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>

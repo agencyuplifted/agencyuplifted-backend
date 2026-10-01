@@ -1275,6 +1275,12 @@ export async function fuegeTeilnehmerZuTerminHinzu(formData: FormData) {
     teilnehmerId = neu.id;
   }
 
+  // Doppelzimmer gleich beim Hinzufuegen festhalten -- nachtraeglich im
+  // Bereich "Zimmerpartner" wurde es vergessen (Sturm, FUE126, 01.10.2026),
+  // und die Zimmerzahl war um eins zu hoch.
+  const zimmerpartnerId = String(formData.get("zimmerpartner_id") || "");
+  if (zimmerpartnerId) await trageZimmerpartnerEin(supabase, seminarterminId, teilnehmerId!, zimmerpartnerId);
+
   // Bezahlte Buchungen brauchen Rechnungsempfaenger, Option und Preis --
   // dafuer gibt es das volle Formular, hier nur mit Termin und Person vorbelegt.
   if (buchungsart !== "freiplatz") {
@@ -2303,12 +2309,7 @@ export async function setzeZimmerReserviert(formData: FormData) {
   revalidatePath(`/termine/${seminarterminId}/teilnehmerliste`);
 }
 
-export async function setzeZimmerpartner(formData: FormData) {
-  await requireBackstageLogin();
-  const supabase = getSupabaseAdmin();
-  const seminarterminId = String(formData.get("seminartermin_id"));
-  const teilnehmerA = String(formData.get("teilnehmer_id_a"));
-  const teilnehmerB = String(formData.get("teilnehmer_id_b"));
+async function trageZimmerpartnerEin(supabase: ReturnType<typeof getSupabaseAdmin>, seminarterminId: string, teilnehmerA: string, teilnehmerB: string) {
   if (!teilnehmerA || !teilnehmerB || teilnehmerA === teilnehmerB) {
     throw new Error("Bitte zwei unterschiedliche Personen auswählen.");
   }
@@ -2322,6 +2323,13 @@ export async function setzeZimmerpartner(formData: FormData) {
     { onConflict: "seminartermin_id,teilnehmer_id_a,teilnehmer_id_b" }
   );
   if (error) throw new Error(error.message);
+}
+
+export async function setzeZimmerpartner(formData: FormData) {
+  await requireBackstageLogin();
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  await trageZimmerpartnerEin(supabase, seminarterminId, String(formData.get("teilnehmer_id_a")), String(formData.get("teilnehmer_id_b")));
   revalidatePath(`/termine/${seminarterminId}`);
 }
 
