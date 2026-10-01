@@ -1,4 +1,5 @@
 import { getAktuellerBenutzer } from "@/lib/auth";
+import { istAdmin } from "@/lib/rechte";
 import Sidebar from "../Sidebar";
 
 // Layout fuer den gesamten authentifizierten Admin-Bereich (alles ausser
@@ -6,11 +7,11 @@ import Sidebar from "../Sidebar";
 // Root-Layout und hat faelschlich auch /login und /oeffentlich (jetzt
 // /wissen) in die Sidebar gepackt.
 export default async function BackstageLayout({ children }: { children: React.ReactNode }) {
-  const benutzer = await getAktuellerBenutzer();
+  const [benutzer, admin] = await Promise.all([getAktuellerBenutzer(), istAdmin()]);
 
   return (
     <div className="au-app">
-      <Sidebar benutzerName={benutzer?.name} />
+      <Sidebar benutzerName={benutzer?.name} istAdmin={admin} />
       <div className="au-main">
         <div className="au-container">{children}</div>
       </div>

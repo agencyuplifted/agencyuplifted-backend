@@ -2983,6 +2983,29 @@ export async function logoutAction() {
   redirect("/login");
 }
 
+// Rolle setzen (admin/mitarbeiter) -- nur Admins duerfen das, und der letzte
+// aktive Admin kann sich nicht selbst herabstufen (sonst sieht niemand mehr
+// das Dashboard und niemand kann es reparieren).
+export async function setzeMitarbeiterRolle(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const { istAdmin } = await import("./rechte");
+  if (!(await istAdmin())) return { fehler: "Nur Admins können Rollen ändern." };
+  const id = String(formData.get("id") || "");
+  const rolle = String(formData.get("rolle") || "");
+  if (!["admin", "mitarbeiter"].includes(rolle)) return { fehler: "Unbekannte Rolle." };
+  const supabase = getSupabaseAdmin();
+  if (rolle === "mitarbeiter") {
+    const { count } = await supabase.from("mitarbeiter").select("id", { count: "exact", head: true }).eq("rolle", "admin").eq("aktiv", true).neq("id", id);
+    if (!count) return { fehler: "Mindestens ein aktiver Admin muss bleiben." };
+  }
+  const { error } = await supabase.from("mitarbeiter").update({ rolle }).eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidatePath("/mitarbeiter");
+  revalidatePath("/", "layout");
+  return { fehler: null };
+}
+
 export async function setMitarbeiterZugang(formData: FormData) {
   await requireBackstageLogin();
   const id = String(formData.get("id"));

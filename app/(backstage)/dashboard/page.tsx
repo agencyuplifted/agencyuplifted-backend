@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { berechneDeckungsbeitraege, ladeFremdkostenProPerson } from "@/lib/deckungsbeitrag";
 import SeminarCockpit from "./SeminarCockpit";
+import { requireAdmin } from "@/lib/rechte";
 import Geschaeftsfelder from "./Geschaeftsfelder";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -35,6 +36,8 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ ansicht?: string; jahr?: string; seminartyp?: string }>;
 }) {
+  // Dashboard mit Umsatz/DB nur fuer Admins (Rechtemanagement lib/rechte.ts)
+  await requireAdmin();
   const { ansicht: ansichtRaw, jahr: jahrRaw, seminartyp } = await searchParams;
   const ansicht: Ansicht = (TABS.some((t) => t.key === ansichtRaw) ? ansichtRaw : "uebersicht") as Ansicht;
   const jahr = Number(jahrRaw) || new Date().getFullYear();

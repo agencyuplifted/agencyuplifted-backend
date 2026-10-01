@@ -11,12 +11,12 @@ import { logoutAction } from "@/lib/actions";
 // gebuendelt und standardmaessig zu, plus Schnellsuche (Cmd/Strg+K) ueber
 // alle Seiten. Vorher waren es 7 Gruppen mit 30 gleichrangigen Links.
 
-type NavLink = { href: string; label: string; stichworte?: string };
+type NavLink = { href: string; label: string; stichworte?: string; nurAdmin?: boolean };
 type IconName = "home" | "clock" | "inbox" | "calendar" | "layers" | "network" | "megaphone" | "mail" | "settings";
 type NavBereich = { key: string; titel: string; icon: IconName; links: NavLink[]; standardOffen?: boolean };
 
 const SCHNELLZUGRIFF: (NavLink & { icon: IconName })[] = [
-  { href: "/dashboard", label: "Dashboard", icon: "home" },
+  { href: "/dashboard", label: "Dashboard", icon: "home", nurAdmin: true },
   { href: "/wiedervorlage", label: "Wiedervorlage", icon: "clock", stichworte: "fällig aufgaben erinnerungen kalender" },
   { href: "/inbox", label: "Ideen-Inbox", icon: "inbox", stichworte: "ideen themen notizen" },
 ];
@@ -139,7 +139,7 @@ function Icon({ name }: { name: IconName }) {
   );
 }
 
-function Schnellsuche({ offen, schliessen }: { offen: boolean; schliessen: () => void }) {
+function Schnellsuche({ offen, schliessen, istAdmin }: { offen: boolean; schliessen: () => void; istAdmin: boolean }) {
   const router = useRouter();
   const [suche, setSuche] = useState("");
   const [markiert, setMarkiert] = useState(0);
@@ -147,8 +147,9 @@ function Schnellsuche({ offen, schliessen }: { offen: boolean; schliessen: () =>
 
   const treffer = useMemo(() => {
     const q = suche.trim().toLowerCase();
-    if (!q) return ALLE_LINKS;
-    return ALLE_LINKS.filter((l) => `${l.label} ${l.bereich} ${l.stichworte || ""}`.toLowerCase().includes(q));
+    const erlaubt = ALLE_LINKS.filter((l) => istAdmin || !l.nurAdmin);
+    if (!q) return erlaubt;
+    return erlaubt.filter((l) => `${l.label} ${l.bereich} ${l.stichworte || ""}`.toLowerCase().includes(q));
   }, [suche]);
 
   useEffect(() => {
@@ -207,7 +208,9 @@ function Schnellsuche({ offen, schliessen }: { offen: boolean; schliessen: () =>
   );
 }
 
-export default function Sidebar({ benutzerName }: { benutzerName?: string | null }) {
+// istAdmin kommt vom Server (lib/rechte.ts); die Seiten pruefen selbst noch
+// einmal -- das Ausblenden hier ist nur Komfort, kein Schutz.
+export default function Sidebar({ benutzerName, istAdmin = false }: { benutzerName?: string | null; istAdmin?: boolean }) {
   const pathname = usePathname();
   const [mobileOffen, setMobileOffen] = useState(false);
   const [sucheOffen, setSucheOffen] = useState(false);
@@ -272,7 +275,7 @@ export default function Sidebar({ benutzerName }: { benutzerName?: string | null
             gleichzeitig bei jedem Seitenaufruf -- das ergab einen Burst von 15-20+
             gleichzeitigen serverseitigen Renders und sporadische 503-Fehler. Bei
             einem internen Tool bringt Prefetching kaum etwas. */}
-        <Link href="/dashboard" className="au-sidebar-brand" prefetch={false}>AgencyUplifted</Link>
+        <Link href={istAdmin ? "/dashboard" : "/termine"} className="au-sidebar-brand" prefetch={false}>AgencyUplifted</Link>
 
         <button type="button" className="au-nav-suche" onClick={() => setSucheOffen(true)}>
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
@@ -282,7 +285,7 @@ export default function Sidebar({ benutzerName }: { benutzerName?: string | null
 
         <nav aria-label="Hauptnavigation" className="au-nav">
           <div className="au-nav-schnell">
-            {SCHNELLZUGRIFF.map((l) => (
+            {SCHNELLZUGRIFF.filter((l) => istAdmin || !l.nurAdmin).map((l) => (
               <Link key={l.href} href={l.href} prefetch={false} className={`au-sidebar-link au-nav-hauptlink ${aktiv === l.href ? "au-sidebar-link-active" : ""}`} aria-current={aktiv === l.href ? "page" : undefined}>
                 <Icon name={l.icon} />
                 {l.label}
@@ -334,7 +337,7 @@ export default function Sidebar({ benutzerName }: { benutzerName?: string | null
         )}
       </aside>
 
-      <Schnellsuche offen={sucheOffen} schliessen={() => setSucheOffen(false)} />
+      <Schnellsuche offen={sucheOffen} schliessen={() => setSucheOffen(false)} istAdmin={istAdmin} />
     </>
   );
 }

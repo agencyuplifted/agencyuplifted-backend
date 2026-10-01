@@ -1,11 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { createMitarbeiter, deaktiviereMitarbeiter, setMitarbeiterZugang, setMitarbeiterBio } from "@/lib/actions";
+import { createMitarbeiter, deaktiviereMitarbeiter, setMitarbeiterZugang, setMitarbeiterBio, setzeMitarbeiterRolle } from "@/lib/actions";
+import { istAdmin } from "@/lib/rechte";
+import AktionsFormular from "../AktionsFormular";
 import { formatDatum } from "@/lib/format";
 
 export default async function MitarbeiterPage() {
   const supabase = getSupabaseAdmin();
+  const admin = await istAdmin();
   const { data: mitarbeiter } = await supabase
     .from("mitarbeiter")
     .select("*")
@@ -15,7 +18,7 @@ export default async function MitarbeiterPage() {
   return (
     <main>
       <h1>Mitarbeiter</h1>
-      <p>Referenten/Assistenz, die bei Seminaren dabei sind — getrennt von Teilnehmern erfasst und Terminen zuordenbar.</p>
+      <p>Referenten/Assistenz, die bei Seminaren dabei sind — getrennt von Teilnehmern erfasst und Terminen zuordenbar. <strong>Rolle:</strong> Admins sehen zusätzlich das Dashboard mit Umsatz und Deckungsbeitrag.</p>
 
       <table className="au-table">
         <thead>
@@ -25,6 +28,7 @@ export default async function MitarbeiterPage() {
             <th>Telefon</th>
             <th>Erfasst</th>
             <th>Status</th>
+            <th>Rolle</th>
             <th>Login-Zugang</th>
             <th>Wissen-Autor</th>
             <th></th>
@@ -38,6 +42,20 @@ export default async function MitarbeiterPage() {
               <td>{m.telefon || "—"}</td>
               <td>{formatDatum(m.erstellt_am)}</td>
               <td>{m.aktiv ? "aktiv" : "deaktiviert"}</td>
+              <td>
+                {admin ? (
+                  <AktionsFormular action={setzeMitarbeiterRolle} style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+                    <input type="hidden" name="id" value={m.id} />
+                    <select className="au-select" name="rolle" defaultValue={m.rolle}>
+                      <option value="admin">Admin</option>
+                      <option value="mitarbeiter">Mitarbeiter</option>
+                    </select>
+                    <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Setzen</button>
+                  </AktionsFormular>
+                ) : (
+                  <span className="au-badge au-badge-neutral">{m.rolle === "admin" ? "Admin" : "Mitarbeiter"}</span>
+                )}
+              </td>
               <td>
                 {m.passwort_hash ? (
                   <span className="au-badge au-badge-success">eingerichtet</span>
@@ -93,7 +111,7 @@ export default async function MitarbeiterPage() {
             </tr>
           ))}
           {!mitarbeiter?.length && (
-            <tr className="au-table-empty"><td colSpan={8}>Noch keine Mitarbeiter erfasst.</td></tr>
+            <tr className="au-table-empty"><td colSpan={9}>Noch keine Mitarbeiter erfasst.</td></tr>
           )}
         </tbody>
       </table>
