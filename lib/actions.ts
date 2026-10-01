@@ -555,6 +555,11 @@ export async function updateSeminartermin(formData: FormData) {
       ? Number(formData.get("zusatzteilnehmer_rabatt_prozent"))
       : null,
     untertitel: formData.get("untertitel") || null,
+    // Nur wenn das Feld im Formular ist -- alte Links auf die Bestaetigungsseite
+    // sollen eine gesetzte Notiz nicht leeren.
+    ...(formData.has("sondereffekt_notiz")
+      ? { sondereffekt_notiz: String(formData.get("sondereffekt_notiz") || "").trim() || null }
+      : {}),
     eyebrow_text: formData.get("eyebrow_text") || null,
     onepage_slug: formData.get("onepage_slug") || null,
     zimmerupgrade_beschreibung: formData.get("zimmerupgrade_beschreibung") || null,

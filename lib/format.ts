@@ -111,6 +111,7 @@ export const TERMIN_FELD_LABELS: Record<string, string> = {
   format: "Format",
   veranstaltungsort_id: "Ort",
   trainer_id: "Haupt-Referent",
+  sondereffekt_notiz: "Sondereffekt-Notiz",
   kapazitaet: "Kapazität",
   mindestteilnehmerzahl: "Mindestteilnehmerzahl",
   ueberbuchungspuffer: "Überbuchungspuffer (intern)",

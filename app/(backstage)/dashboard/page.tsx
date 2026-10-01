@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { berechneDeckungsbeitraege, ladeFremdkostenProPerson } from "@/lib/deckungsbeitrag";
+import SeminarCockpit from "./SeminarCockpit";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatEURBrutto, formatDatum } from "@/lib/format";
@@ -290,7 +291,8 @@ async function UmsatzProSeminar({
         </form>
       }
     >
-      <Summen titel="Gesamtjahr" zeilen={zeilen} />
+      <SeminarCockpit supabase={supabase} heute={heute} jahr={jahr} seminartypFilter={seminartypFilter} />
+      <h3 className="au-cockpit-zwischentitel" style={{ marginTop: "2rem" }}>Alle Termine {jahr} im Einzelnen</h3>
       {!zeilen.length && <p className="au-leer">Keine Seminare in {jahr}.</p>}
       <SeminarGruppe titel="Kommend" zeilen={kommend} />
       <SeminarGruppe titel="Vergangen" zeilen={vergangen} />
@@ -301,19 +303,6 @@ async function UmsatzProSeminar({
         Stornos ausgeschlossen, unbezahlte („angefragte“) Buchungen enthalten und separat ausgewiesen. Alle Beträge netto zzgl. 19 % USt.
       </p>
     </Panel>
-  );
-}
-
-function Summen({ titel, zeilen }: { titel: string; zeilen: any[] }) {
-  const umsatz = zeilen.reduce((s: number, z: any) => s + z.umsatz, 0);
-  const unbezahlt = zeilen.reduce((s: number, z: any) => s + z.umsatzUnbezahlt, 0);
-  const fremdkosten = zeilen.reduce((s: number, z: any) => s + z.fremdkosten, 0);
-  return (
-    <div className="au-summenleiste">
-      <div><span>{titel} · Umsatz netto</span><strong>{formatEUR(umsatz)}</strong>{unbezahlt > 0 && <span className="au-klein">davon {formatEUR(unbezahlt)} unbezahlt</span>}</div>
-      <div><span>Fremdkosten (geschätzt)</span><strong>{formatEUR(fremdkosten)}</strong></div>
-      <div><span>Deckungsbeitrag (geschätzt)</span><strong>{formatEUR(Math.round(umsatz - fremdkosten))}</strong></div>
-    </div>
   );
 }
 

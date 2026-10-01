@@ -1674,6 +1674,11 @@ export default async function TerminDetailPage({
             </div>
           </div>
 
+          <label className="au-label">Sondereffekt-Notiz (z. B. Umbuchung, Absage kurzfristig)</label>
+          <input className="au-input" name="sondereffekt_notiz" defaultValue={termin.sondereffekt_notiz || ""} placeholder="leer lassen, wenn der Termin normal verlief" />
+          <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
+            Im Dashboard wird der Balken dieses Termins dann grau und die Notiz als Fußnote angezeigt – damit Ausreißer nicht falsch gelesen werden.
+          </p>
           <label className="au-label">Haupt-Referent (weitere im Reiter „Teilnehmer“)</label>
           <select className="au-input" name="trainer_id" defaultValue={termin.trainer_id || ""}>
             <option value="">—</option>

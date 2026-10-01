@@ -5636,3 +5636,148 @@ a.au-kliste-name:hover {
 .au-fb-vorschlag.warnung {
   margin-top: 0.35rem;
 }
+
+/* ---------- Dashboard „Seminare“: großes Bild (SeminarCockpit) ---------- */
+.au-cockpit {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.au-cockpit-label {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.au-cockpit-hero {
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface, #fff);
+}
+
+.au-cockpit-zahl {
+  font-size: 2.4rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0.2rem 0 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-cockpit-kontext,
+.au-cockpit-vergleich {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.au-cockpit-vergleich {
+  margin-top: 0.5rem;
+  color: var(--color-text-faint);
+}
+
+.au-cockpit-plus { color: var(--color-success, #1a7f4b); }
+.au-cockpit-minus { color: var(--color-danger); }
+
+.au-cockpit-konferenz {
+  padding: 0.85rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.au-cockpit-konferenz-werte {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.au-cockpit-konferenz-werte strong {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-cockpit-konferenz-werte span {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.au-cockpit-chart h3,
+.au-cockpit-zwischentitel {
+  font-size: 0.95rem;
+  margin: 0 0 0.5rem;
+}
+
+.au-cockpit-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.au-cockpit-svg .au-raster { stroke: var(--color-border); stroke-width: 1; }
+.au-cockpit-svg .au-achse-null { stroke: var(--color-text-faint); stroke-width: 1; }
+.au-cockpit-svg .au-achse-text { font-size: 11px; fill: var(--color-text-muted); }
+.au-cockpit-svg .au-achse-klein { font-size: 10px; fill: var(--color-text-faint); }
+.au-cockpit-svg .au-balken:hover path { filter: brightness(0.92); }
+
+.au-cockpit-schluessel {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0.4rem 0 0;
+}
+
+.au-cockpit-schluessel span {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-left: 0.5rem;
+}
+
+.au-cockpit-schluessel span:first-child { margin-left: 0; }
+
+.au-cockpit-fussnote {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0.35rem 0 0;
+}
+
+.au-cockpit-kategorien {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0.75rem;
+}
+
+.au-cockpit-kategorie {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.au-cockpit-kategorie-zahl {
+  font-size: 1.5rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.au-sparkline {
+  width: 100%;
+  max-width: 160px;
+  height: 36px;
+  display: block;
+  margin: 0.25rem 0;
+}
+
+/* Auf schmalen Bildschirmen nicht unter Lesbarkeit schrumpfen, sondern seitlich scrollen */
+.au-cockpit-scroll { overflow-x: auto; }
+@media (max-width: 640px) {
+  .au-cockpit-scroll .au-cockpit-svg { min-width: 560px; }
+  .au-cockpit-zahl { font-size: 2.1rem; }
+}
