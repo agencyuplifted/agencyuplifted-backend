@@ -91,9 +91,9 @@ function TerminListe({
     <section className="au-panel">
       <div className="au-tliste-kopf" aria-hidden="true">
         <span>Termin</span>
-        <span>Ort</span>
         <span>Belegung</span>
-        <span>Umsatz netto</span>
+        <span className="rechts">Umsatz netto</span>
+        <span className="rechts">DB</span>
         <span>Status</span>
         <span />
       </div>
@@ -116,16 +116,25 @@ function TerminListe({
               const status = STATUS_STIL[t.status] || { label: t.status, klasse: "au-badge-neutral" };
               return (
                 <div key={t.id} className={`au-tliste-zeile${vergangen ? " vergangen" : ""}`}>
-                  <Link href={`/termine/${t.id}`} className="au-tliste-termin" prefetch={false}>
-                    <span className="au-termin-datum" style={t.seminartypen?.farbe ? { borderColor: t.seminartypen.farbe } : undefined}>
-                      <strong>{d.getUTCDate()}</strong>
-                      <span>{MONATSKURZ[d.getUTCMonth()]}</span>
-                    </span>
-                    <span className="au-termin-text">
-                      <strong>{t.titel || t.seminartypen?.name}</strong>
-                      <span className="au-klein">
-                        {[t.kennung, formatDatumsspanne(t.datum_start, t.datum_ende), t.titel && t.seminartypen?.name !== t.titel ? t.seminartypen?.name : null].filter(Boolean).join(" · ")}
+                  <div className="au-tliste-termin-zelle">
+                    <Link href={`/termine/${t.id}`} className="au-tliste-termin" prefetch={false}>
+                      <span className="au-termin-datum" style={t.seminartypen?.farbe ? { borderColor: t.seminartypen.farbe } : undefined}>
+                        <strong>{d.getUTCDate()}</strong>
+                        <span>{MONATSKURZ[d.getUTCMonth()]}</span>
                       </span>
+                      <span className="au-termin-text">
+                        <strong>{t.titel || t.seminartypen?.name}</strong>
+                        <span className="au-klein">
+                          {[
+                            t.kennung,
+                            formatDatumsspanne(t.datum_start, t.datum_ende),
+                            t.veranstaltungsorte?.ort || t.veranstaltungsorte?.name,
+                            t.format && t.format !== "praesenz" ? t.format : null,
+                          ].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                    </Link>
+                    <div className="au-tliste-hinweise">
                       {!vergangen && t.status !== "abgesagt" && (() => {
                         const pw = preiswechselFuer(t);
                         if (!pw) return null;
@@ -140,37 +149,44 @@ function TerminListe({
                           </span>
                         );
                       })()}
-                    </span>
-                  </Link>
-                  <div className="au-tliste-ort">
-                    <span>{t.veranstaltungsorte?.ort || t.veranstaltungsorte?.name || "—"}</span>
-                    {t.format && t.format !== "praesenz" && <span className="au-klein">{t.format}</span>}
+                      {websiteAnzeigeProTermin.has(t.id) && (
+                        <WebsiteAnzeigeHinweis anzeige={websiteAnzeigeProTermin.get(t.id)!} termin={t} kompakt />
+                      )}
+                    </div>
                   </div>
                   <div className="au-tliste-belegung">
-                    <span className="au-klein"><strong>{gebucht}</strong> / {kapazitaet} TN</span>
+                    <span><strong>{gebucht}</strong> <span className="au-klein">/ {kapazitaet} TN</span></span>
                     <span className="au-belegung-balken"><span style={{ width: `${anteil * 100}%` }} /></span>
                     {hotel && t.format === "praesenz" && (
                       <span className="au-klein" title="Teilnehmer + Mitarbeiter + Referenten, geteilte Zimmer abgezogen">
                         {hotel.zeilen.length} vor Ort · {hotel.zimmerBenoetigt} Zi.
-                        {hotel.zimmerReserviert !== null && (
-                          <>
-                            {" "}/ {hotel.zimmerReserviert} res.
-                            {hotel.zimmerReserviert < hotel.zimmerBenoetigt && (
-                              <span className="au-badge au-badge-warning" style={{ marginLeft: "0.35rem", fontSize: "0.7rem" }}>
-                                {hotel.zimmerBenoetigt - hotel.zimmerReserviert} fehlen
-                              </span>
-                            )}
-                          </>
+                        {hotel.zimmerReserviert !== null && <> / {hotel.zimmerReserviert} res.</>}
+                        {hotel.zimmerReserviert !== null && hotel.zimmerReserviert < hotel.zimmerBenoetigt && (
+                          <span className="au-tliste-warnung"> · {hotel.zimmerBenoetigt - hotel.zimmerReserviert} fehlen</span>
                         )}
                       </span>
                     )}
                   </div>
-                  <div className="au-tliste-umsatz" title={deckung ? `Umsatz − ${deckung.personen} Personen vor Ort × ${formatEUR(deckung.fremdkostenProPerson)} = Deckungsbeitrag` : undefined}>
+                  <div className="au-tliste-zahl">
+                    <span className="au-tliste-mobil-label">Umsatz</span>
                     {deckung && (deckung.umsatz > 0 || deckung.personen > 0) ? (
                       <>
                         <strong>{formatEUR(deckung.umsatz)}</strong>
-                        <span className="au-klein" style={deckung.db < 0 ? { color: "var(--color-danger)" } : undefined}>DB {formatEUR(Math.round(deckung.db))}</span>
-                        {deckung.umsatzUnbezahlt > 0 && <span className="au-klein">davon {formatEUR(deckung.umsatzUnbezahlt)} offen</span>}
+                        {deckung.umsatzUnbezahlt > 0 && <span className="au-tliste-warnung">{formatEUR(deckung.umsatzUnbezahlt)} offen</span>}
+                      </>
+                    ) : (
+                      <span className="au-klein">—</span>
+                    )}
+                  </div>
+                  <div
+                    className="au-tliste-zahl"
+                    title={deckung ? `Umsatz − ${deckung.personen} Personen vor Ort × ${formatEUR(deckung.fremdkostenProPerson)}` : undefined}
+                  >
+                    <span className="au-tliste-mobil-label">DB</span>
+                    {deckung && (deckung.umsatz > 0 || deckung.personen > 0) ? (
+                      <>
+                        <strong style={deckung.db < 0 ? { color: "var(--color-danger)" } : undefined}>{formatEUR(Math.round(deckung.db))}</strong>
+                        <span className="au-klein">− {formatEUR(deckung.fremdkosten)} Kosten</span>
                       </>
                     ) : (
                       <span className="au-klein">—</span>
@@ -182,16 +198,11 @@ function TerminListe({
                   <div className="au-tliste-aktionen">
                     <form action={duplicateSeminartermin}>
                       <input type="hidden" name="seminartermin_id" value={t.id} />
-                      <button type="submit" title="Termin inkl. Optionen, Preisstaffeln und Urgency-Stufen duplizieren" className="au-btn au-btn-secondary au-btn-sm">
+                      <button type="submit" title="Termin inkl. Optionen, Preisstaffeln und Urgency-Stufen duplizieren" className="au-tliste-duplizieren">
                         Duplizieren
                       </button>
                     </form>
                   </div>
-                  {websiteAnzeigeProTermin.has(t.id) && (
-                    <div className="au-tliste-website">
-                      <WebsiteAnzeigeHinweis anzeige={websiteAnzeigeProTermin.get(t.id)!} termin={t} />
-                    </div>
-                  )}
                 </div>
               );
             })}

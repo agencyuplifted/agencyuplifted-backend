@@ -9,10 +9,13 @@ export default function WebsiteAnzeigeHinweis({
   anzeige,
   termin,
   ausfuehrlich = false,
+  kompakt = false,
 }: {
   anzeige: WebsiteVerfuegbarkeit;
   termin: { kapazitaet: number; verfuegbarkeit_anzeige_modus: string | null };
   ausfuehrlich?: boolean;
+  /** Eine Zeile fuer die Terminliste -- Details (Balken, Quelle) im Tooltip. */
+  kompakt?: boolean;
 }) {
   const quelle =
     anzeige.quelle === "neutral"
@@ -23,6 +26,22 @@ export default function WebsiteAnzeigeHinweis({
           ? "Urgency-Text Standard (keine Stufe greift)"
           : "kein Text hinterlegt";
 
+  const balken =
+    termin.verfuegbarkeit_anzeige_modus === "neutral" ? "ohne Zahlen/Balken" : `Balken: ${anzeige.freiePlaetze} von ${termin.kapazitaet} frei`;
+
+  if (kompakt) {
+    return (
+      <span className="au-tliste-websitezeile" title={`${balken} · ${quelle}`}>
+        Website: {anzeige.dringlichkeitstext ? `„${anzeige.dringlichkeitstext}“` : "kein Platz-Hinweis"}
+        {anzeige.restplaetzeUeberschrieben && (
+          <span className="au-tliste-ueberschrieben" title="Onepage rechnet mit einer manuell festgelegten Restplatzzahl statt der echten Buchungen">
+            {" "}· überschrieben ({anzeige.freiePlaetze} statt {anzeige.freiRechnerisch})
+          </span>
+        )}
+      </span>
+    );
+  }
+
   return (
     <div style={{ fontSize: "0.82rem", margin: ausfuehrlich ? "0 0 0.75rem" : "0.25rem 0 0" }}>
       <div>
@@ -30,9 +49,7 @@ export default function WebsiteAnzeigeHinweis({
         <strong>{anzeige.dringlichkeitstext ? `„${anzeige.dringlichkeitstext}“` : "keinen Platz-Hinweis"}</strong>
       </div>
       <div style={{ color: "var(--color-text-faint)" }}>
-        {termin.verfuegbarkeit_anzeige_modus === "neutral"
-          ? "ohne Zahlen/Balken"
-          : `Balken: ${anzeige.freiePlaetze} von ${termin.kapazitaet} frei`}
+        {balken}
         {" · "}
         {quelle}
       </div>
