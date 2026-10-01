@@ -106,7 +106,7 @@ export const TERMIN_FELD_LABELS: Record<string, string> = {
   vorabendanreise_inklusive: "Inkl. Vorabendanreise (Zimmer-Upgrade-Nächte)",
   format: "Format",
   veranstaltungsort_id: "Ort",
-  trainer_id: "Trainer",
+  trainer_id: "Haupt-Referent",
   kapazitaet: "Kapazität",
   mindestteilnehmerzahl: "Mindestteilnehmerzahl",
   ueberbuchungspuffer: "Überbuchungspuffer (intern)",

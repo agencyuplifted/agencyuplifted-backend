@@ -2219,6 +2219,52 @@ export async function removeMitarbeiterVonTermin(formData: FormData) {
   revalidatePath(`/termine/${seminarterminId}`);
 }
 
+// Referenten (Tabelle trainer) pro Termin. Der Haupt-Referent
+// (seminartermine.trainer_id) wird per DB-Trigger automatisch eingetragen und
+// laesst sich nur ueber die Termin-Daten wechseln, nicht hier entfernen.
+export async function addReferentZuTermin(formData: FormData) {
+  await requireBackstageLogin();
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const { error } = await supabase
+    .from("seminartermin_referenten")
+    .upsert({ seminartermin_id: seminarterminId, trainer_id: String(formData.get("trainer_id")) }, { onConflict: "seminartermin_id,trainer_id", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+}
+
+export async function removeReferentVonTermin(formData: FormData) {
+  await requireBackstageLogin();
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const trainerId = String(formData.get("trainer_id"));
+  const { data: termin } = await supabase.from("seminartermine").select("trainer_id").eq("id", seminarterminId).single();
+  if (termin?.trainer_id === trainerId) throw new Error("Der Haupt-Referent lässt sich nur in den Termin-Daten wechseln.");
+  const { error } = await supabase
+    .from("seminartermin_referenten")
+    .delete()
+    .eq("seminartermin_id", seminarterminId)
+    .eq("trainer_id", trainerId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+}
+
+// Eigenes Mini-Formular statt Termin-Bearbeitung: das Zimmerkontingent aendert
+// sich oft kurzfristig und braucht keine doppelte Freigabe.
+export async function setzeZimmerReserviert(formData: FormData) {
+  await requireBackstageLogin();
+  const supabase = getSupabaseAdmin();
+  const seminarterminId = String(formData.get("seminartermin_id"));
+  const roh = String(formData.get("zimmer_reserviert") || "").trim();
+  const { error } = await supabase
+    .from("seminartermine")
+    .update({ zimmer_reserviert: roh === "" ? null : Math.max(0, Math.round(Number(roh))) })
+    .eq("id", seminarterminId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/termine/${seminarterminId}`);
+  revalidatePath(`/termine/${seminarterminId}/teilnehmerliste`);
+}
+
 export async function setzeZimmerpartner(formData: FormData) {
   await requireBackstageLogin();
   const supabase = getSupabaseAdmin();

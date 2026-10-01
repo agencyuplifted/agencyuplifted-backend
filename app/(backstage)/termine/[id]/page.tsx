@@ -40,7 +40,11 @@ import {
   verschiebeSeminarUnterlage,
   loescheSeminarUnterlage,
   fuegeTeilnehmerZuTerminHinzu,
+  addReferentZuTermin,
+  removeReferentVonTermin,
 } from "@/lib/actions";
+import { ladeHotelliste } from "@/lib/hotelliste";
+import ZimmerKontingent from "./ZimmerKontingent";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto, effektiveTerminNaechte, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
 import { renderFett } from "@/lib/richtext";
@@ -184,6 +188,8 @@ export default async function TerminDetailPage({
     { data: alleOptionenFuerKopie },
     { data: preisstaffelVorlagen },
     { data: unterlagen },
+    { data: referenten },
+    hotelliste,
   ] = await Promise.all([
     supabase
       .from("seminartermine")
@@ -249,6 +255,8 @@ export default async function TerminDetailPage({
     // (einmal fuer alle Optionen geladen, nicht pro Option).
     supabase.from("preisstaffel_vorlagen").select("*").order("name"),
     supabase.from("seminar_unterlagen").select("id, titel, datei_url, position").eq("seminartermin_id", id).order("position").order("erstellt_am"),
+    supabase.from("seminartermin_referenten").select("trainer_id, trainer(name)").eq("seminartermin_id", id).order("erstellt_am"),
+    ladeHotelliste(supabase, id),
   ]);
 
   // Exakt dieselbe Berechnung wie /api/public/seminartermine/[id], die der
@@ -330,6 +338,8 @@ export default async function TerminDetailPage({
 
   const teilnehmerListe = [...teilnehmerMap.values()].sort((a, b) => a.name.localeCompare(b.name, "de"));
   const echteTeilnehmerAnzahl = teilnehmerListe.filter((t) => t.rolle === "teilnehmer").length;
+  const referentenNamen = (referenten || []).map((r: any) => r.trainer?.name).filter(Boolean) as string[];
+  const weitereReferenten = (trainerListe || []).filter((t: any) => !(referenten || []).some((r: any) => r.trainer_id === t.id));
 
   const rolleBadge: Record<string, string> = {
     mitarbeiter: "Mitarbeiter",
@@ -349,7 +359,6 @@ export default async function TerminDetailPage({
       zuordnungId: z.id,
     });
   });
-  const anzahlZimmer = teilnehmerListe.length - (zimmerpartner?.length || 0);
 
   if (!termin) return <main><p>Termin nicht gefunden.</p></main>;
 
@@ -426,7 +435,7 @@ export default async function TerminDetailPage({
             {termin.vorabend_anreise_datum && (<><dt>Vorabendanreise</dt><dd>{formatDatum(termin.vorabend_anreise_datum)}{termin.vorabend_anreise_uhrzeit ? `, ${formatZeit(termin.vorabend_anreise_uhrzeit)}` : ""}</dd></>)}
             <dt>Ort</dt><dd>{ortText || "—"}{termin.veranstaltungsorte?.nahe_grossstadt ? ` (bei ${termin.veranstaltungsorte.nahe_grossstadt})` : ""}</dd>
             <dt>Format</dt><dd>{termin.format === "praesenz" ? "Präsenz" : termin.format}</dd>
-            <dt>Trainer</dt><dd>{termin.trainer?.name || "—"}</dd>
+            <dt>{referentenNamen.length > 1 ? "Referenten" : "Referent"}</dt><dd>{referentenNamen.join(", ") || "—"}</dd>
             <dt>Kapazität</dt><dd>{kapazitaet} Plätze · mind. {termin.mindestteilnehmerzahl ?? "—"} · +{termin.ueberbuchungspuffer ?? 0} Puffer intern</dd>
             {(termin.zusatzteilnehmer_preis || termin.zusatzteilnehmer_rabatt_prozent) && (<><dt>Weitere Person</dt><dd>{termin.zusatzteilnehmer_preis ? formatEUR(Number(termin.zusatzteilnehmer_preis)) : `${termin.zusatzteilnehmer_rabatt_prozent} % Rabatt`}</dd></>)}
             {termin.zimmerupgrade_preis_pro_nacht_netto && (<><dt>Zimmer-Upgrade</dt><dd>{termin.zimmerupgrade_beschreibung || "Upgrade"}: {formatEUR(Number(termin.zimmerupgrade_preis_pro_nacht_netto))} pro Nacht</dd></>)}
@@ -530,7 +539,7 @@ export default async function TerminDetailPage({
             {" "}<span className={`au-badge ${statusStil[termin.status] || "au-badge-neutral"}`}>{termin.status === "bestaetigt" ? "bestätigt" : termin.status}</span>
           </p>
           <h1>{titelAnzeige}</h1>
-          <p className="au-termin-unterzeile">{zeitraum}{ortText ? ` · ${ortText}` : ""}{termin.trainer?.name ? ` · ${termin.trainer.name}` : ""}</p>
+          <p className="au-termin-unterzeile">{zeitraum}{ortText ? ` · ${ortText}` : ""}{referentenNamen.length ? ` · ${referentenNamen.join(", ")}` : ""}</p>
         </div>
         <div className="au-dash-aktionen">
           <Link href={`/termine/${id}/teilnehmerliste`} className="au-btn au-btn-secondary au-btn-sm">Hotel-Liste</Link>
@@ -556,8 +565,11 @@ export default async function TerminDetailPage({
         </div>
         <div className="au-kennzahl">
           <div className="au-kennzahl-label">Personen vor Ort</div>
-          <div className="au-kennzahl-wert">{teilnehmerListe.length}</div>
-          <div className="au-kennzahl-kontext">{anzahlZimmer} {anzahlZimmer === 1 ? "Zimmer" : "Zimmer"}{zimmerpartner?.length ? ` · ${zimmerpartner.length} geteilt` : ""}</div>
+          <div className="au-kennzahl-wert">{hotelliste.zeilen.length}</div>
+          <div className="au-kennzahl-kontext">
+            {hotelliste.zimmerBenoetigt} Zimmer benötigt
+            {hotelliste.zimmerReserviert !== null ? ` · ${hotelliste.zimmerReserviert} reserviert` : ""}
+          </div>
         </div>
         <div className="au-kennzahl">
           <div className="au-kennzahl-label">Umsatz netto</div>
@@ -585,7 +597,7 @@ export default async function TerminDetailPage({
       <Bereich titel={`Teilnehmer · ${echteTeilnehmerAnzahl}`} aktion={<Link href={`/termine/${id}/teilnehmerliste`} className="au-panel-link">Hotel-Liste zum Kopieren →</Link>}>
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>
           Alle Personen, die für diesen Termin gebucht haben oder (aus Alt-Daten) hatten — inklusive zugeordneter Legacy-Buchungen.
-          {zimmerpartner && zimmerpartner.length > 0 && <> · {anzahlZimmer} Zimmer benötigt ({zimmerpartner.length} geteilt)</>}
+          
         </p>
         <table className="au-table">
           <thead>
@@ -687,6 +699,8 @@ export default async function TerminDetailPage({
         </AufklappBereich>
       </Bereich>
 
+      <ZimmerKontingent terminId={id} liste={hotelliste} />
+
       <Bereich titel="Zimmerpartner">
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginTop: 0 }}>
           Für Paare (z. B. Ehepaare), die sich ein Zimmer teilen — reduziert die Zimmerzahl automatisch, beide Personen bleiben in der Teilnehmerliste sichtbar.
@@ -747,6 +761,48 @@ export default async function TerminDetailPage({
         )}
       </Bereich>
 
+      <Bereich titel="Referenten">
+        <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
+          Stehen in der Hotel-Liste. Der Haupt-Referent wird in den Termin-Daten gewechselt, neue Termine bekommen automatisch den Standard-Referenten.
+        </p>
+        <table className="au-table">
+          <tbody>
+            {(referenten || []).map((r: any) => (
+              <tr key={r.trainer_id}>
+                <td>
+                  {r.trainer?.name}
+                  {r.trainer_id === termin.trainer_id && <span className="au-badge au-badge-gold" style={{ marginLeft: "0.5rem", fontSize: "0.72rem" }}>Haupt-Referent</span>}
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  {r.trainer_id !== termin.trainer_id && (
+                    <form action={removeReferentVonTermin} style={{ display: "inline" }}>
+                      <input type="hidden" name="trainer_id" value={r.trainer_id} />
+                      <input type="hidden" name="seminartermin_id" value={id} />
+                      <button type="submit" className="au-link-danger">entfernen</button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {weitereReferenten.length > 0 && (
+          <form action={addReferentZuTermin} style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end" }}>
+            <input type="hidden" name="seminartermin_id" value={id} />
+            <div>
+              <label className="au-label">Weiteren Referenten hinzufügen</label>
+              <select className="au-input" style={{ marginBottom: 0 }} name="trainer_id" required>
+                <option value="">— wählen —</option>
+                {weitereReferenten.map((t: any) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="au-btn au-btn-secondary">Hinzufügen</button>
+          </form>
+        )}
+      </Bereich>
+
       <Bereich titel="Mitarbeiter beim Termin">
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>
           Referenten/Assistenz, die bei diesem Termin dabei sind — nicht als Teilnehmer, sondern als Personal erfasst.
@@ -791,7 +847,7 @@ export default async function TerminDetailPage({
           </div>
           <div>
             <label className="au-label">Rolle</label>
-            <select className="au-input" name="rolle" defaultValue="Referent">
+            <select className="au-input" name="rolle" defaultValue="Assistenz">
               <option value="Referent">Referent</option>
               <option value="Assistenz">Assistenz</option>
               <option value="Co-Trainer">Co-Trainer</option>
@@ -1544,7 +1600,7 @@ export default async function TerminDetailPage({
             </div>
           </div>
 
-          <label className="au-label">Trainer</label>
+          <label className="au-label">Haupt-Referent (weitere im Reiter „Teilnehmer“)</label>
           <select className="au-input" name="trainer_id" defaultValue={termin.trainer_id || ""}>
             <option value="">—</option>
             {trainerListe?.map((t) => (

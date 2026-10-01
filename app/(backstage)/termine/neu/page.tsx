@@ -91,9 +91,9 @@ export default async function NeuerTerminPage() {
           </div>
         </div>
 
-        <label className="au-label">Trainer</label>
-        <select className="au-input" name="trainer_id">
-          <option value="">—</option>
+        <label className="au-label">Haupt-Referent</label>
+        <select className="au-input" name="trainer_id" defaultValue={trainerListe?.find((t: any) => t.ist_standard)?.id || ""}>
+          <option value="">— Standard-Referent —</option>
           {trainerListe?.map((t) => (
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}

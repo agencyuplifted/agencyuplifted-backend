@@ -9,7 +9,7 @@ export default async function TrainerPage() {
 
   return (
     <main>
-      <h1>Trainer</h1>
+      <h1>Referenten</h1>
       <table className="au-table">
         <thead>
           <tr>
@@ -25,13 +25,13 @@ export default async function TrainerPage() {
             </tr>
           ))}
           {!trainer?.length && (
-            <tr className="au-table-empty"><td colSpan={2}>Noch keine Trainer erfasst.</td></tr>
+            <tr className="au-table-empty"><td colSpan={2}>Noch keine Referenten erfasst.</td></tr>
           )}
         </tbody>
       </table>
 
       <div className="au-card" style={{ maxWidth: 600 }}>
-        <h2>Neuer Trainer</h2>
+        <h2>Neuer Referent</h2>
         <form action={createTrainer} className="au-row-2">
           <div>
             <label className="au-label">Name</label>
@@ -42,7 +42,7 @@ export default async function TrainerPage() {
             <input className="au-input" name="email" type="email" />
           </div>
           <div className="au-span-all">
-            <button type="submit" className="au-btn au-btn-primary">Trainer anlegen</button>
+            <button type="submit" className="au-btn au-btn-primary">Referent anlegen</button>
           </div>
         </form>
       </div>

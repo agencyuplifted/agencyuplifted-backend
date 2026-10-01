@@ -63,6 +63,8 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 
 **SEO/public-site infra**: `app/robots.txt/route.ts`, `app/sitemap.xml/route.ts` (built from published `insights_eintraege`), and `app/llms.txt/route.ts` (an [llms.txt](https://llmstxt.org/) for AI crawlers) are all gated to `PUBLIC_HOST` only, matching the middleware's indexing policy.
 
+**Referenten, Mitarbeiter, Hotel-Liste.** Referenten = Tabelle `trainer` (UI heißt „Referenten“), pro Termin beliebig viele in `seminartermin_referenten`. `seminartermine.trainer_id` ist der Haupt-Referent: DB-Trigger setzt bei neuen Terminen ohne Angabe den Standard-Referenten (`trainer.ist_standard`, Markus) und spiegelt `trainer_id` immer in `seminartermin_referenten`. `mitarbeiter.teilnehmer_id` verknüpft Backstage-Login und Teilnehmer-Stammsatz derselben Person (voller Name für die Hotel-Liste). `lib/hotelliste.ts` (`ladeHotelliste`) ist die einzige Quelle für Hotel-Liste und Zimmerzahl: Referenten + Mitarbeiter + Teilnehmer, pro Person einmal (Abgleich per E-Mail), benötigte Zimmer = Personen − geteilte Zimmerpartner; Vergleich mit `seminartermine.zimmer_reserviert` (Hotelkontingent, eigenes Mini-Formular ohne Bestätigungsseite).
+
 ## Conventions worth following
 
 - German naming for domain concepts, tables, and comments throughout (`teilnehmer`, `buchungen`, `seminartermine`, etc.) — match this rather than introducing English domain terms.
