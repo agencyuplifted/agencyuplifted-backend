@@ -10,12 +10,15 @@ export default function WebsiteAnzeigeHinweis({
   termin,
   ausfuehrlich = false,
   kompakt = false,
+  terminId,
 }: {
   anzeige: WebsiteVerfuegbarkeit;
   termin: { kapazitaet: number; verfuegbarkeit_anzeige_modus: string | null };
   ausfuehrlich?: boolean;
   /** Eine Zeile fuer die Terminliste -- Details (Balken, Quelle) im Tooltip. */
   kompakt?: boolean;
+  /** Fuer den Link vom Ueberschrieben-Hinweis direkt in den Reiter "Website-Anzeige". */
+  terminId?: string;
 }) {
   const quelle =
     anzeige.quelle === "neutral"
@@ -30,15 +33,33 @@ export default function WebsiteAnzeigeHinweis({
     termin.verfuegbarkeit_anzeige_modus === "neutral" ? "ohne Zahlen/Balken" : `Balken: ${anzeige.freiePlaetze} von ${termin.kapazitaet} frei`;
 
   if (kompakt) {
+    // Ueberschriebene Restplaetze sind eine bewusste, aber leicht vergessene
+    // Abweichung von der Wahrheit -- eigener, deutlicher Hinweis statt eines
+    // kleinen Zusatzes am Zeilenende (Wunsch Markus 01.10.2026).
+    const abweichend = anzeige.restplaetzeUeberschrieben && anzeige.freiePlaetze !== anzeige.freiRechnerisch;
+    const inhalt = (
+      <>
+        <span aria-hidden="true" className="au-ueberschrieben-icon">✎</span>
+        <span>
+          Restplätze manuell: Website zeigt <strong>{anzeige.freiePlaetze} frei</strong> · tatsächlich <strong>{anzeige.freiRechnerisch} frei</strong>
+        </span>
+        {terminId && <span aria-hidden="true" className="au-ueberschrieben-pfeil">→</span>}
+      </>
+    );
     return (
-      <span className="au-tliste-websitezeile" title={`${balken} · ${quelle}`}>
-        Website: {anzeige.dringlichkeitstext ? `„${anzeige.dringlichkeitstext}“` : "kein Platz-Hinweis"}
-        {anzeige.restplaetzeUeberschrieben && anzeige.freiePlaetze !== anzeige.freiRechnerisch && (
-          <span className="au-tliste-ueberschrieben" title="Onepage rechnet mit einer manuell festgelegten Restplatzzahl statt der echten Buchungen">
-            {" "}· überschrieben ({anzeige.freiePlaetze} statt {anzeige.freiRechnerisch})
-          </span>
-        )}
-      </span>
+      <>
+        <span className="au-tliste-websitezeile" title={`${balken} · ${quelle}`}>
+          Website: {anzeige.dringlichkeitstext ? `„${anzeige.dringlichkeitstext}“` : "kein Platz-Hinweis"}
+        </span>
+        {abweichend &&
+          (terminId ? (
+            <a href={`/termine/${terminId}#website`} className="au-ueberschrieben" title="Onepage rechnet mit einer manuell festgelegten Restplatzzahl statt der echten Buchungen — im Reiter „Website-Anzeige“ ändern">
+              {inhalt}
+            </a>
+          ) : (
+            <span className="au-ueberschrieben">{inhalt}</span>
+          ))}
+      </>
     );
   }
 

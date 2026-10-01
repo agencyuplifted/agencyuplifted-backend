@@ -150,7 +150,7 @@ function TerminListe({
                         );
                       })()}
                       {websiteAnzeigeProTermin.has(t.id) && (
-                        <WebsiteAnzeigeHinweis anzeige={websiteAnzeigeProTermin.get(t.id)!} termin={t} kompakt />
+                        <WebsiteAnzeigeHinweis anzeige={websiteAnzeigeProTermin.get(t.id)!} termin={t} kompakt terminId={t.id} />
                       )}
                     </div>
                   </div>
