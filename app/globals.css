@@ -5592,3 +5592,47 @@ a.au-kliste-name:hover {
 .au-programm-breit {
   grid-column: 1 / -1;
 }
+
+/* FastBill-Abgleich: Rechnungstext zum Aufklappen */
+.au-rechnungstext {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+}
+
+.au-rechnungstext summary {
+  cursor: pointer;
+  color: var(--color-accent);
+}
+
+.au-rechnungstext ol {
+  margin: 0.4rem 0 0;
+  padding: 0.6rem 0.75rem 0.6rem 1.6rem;
+  max-width: 34rem;
+  background: var(--color-bg);
+  border-radius: 6px;
+}
+
+.au-rechnungstext li + li {
+  margin-top: 0.6rem;
+}
+
+.au-rechnungstext-beschreibung {
+  white-space: pre-line;
+  line-height: 1.4;
+}
+
+.au-fb-vorschlag {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  max-width: 22rem;
+}
+
+.au-fb-vorschlag.warnung,
+.au-fb-warnung {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.au-fb-vorschlag.warnung {
+  margin-top: 0.35rem;
+}

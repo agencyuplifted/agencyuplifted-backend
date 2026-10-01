@@ -38,6 +38,7 @@ export default function FastbillZuordnenForm({
   defaultSeminarterminId,
   defaultOptionId,
   defaultPositionen = [],
+  neuVorschlag,
 }: {
   rechnungId: string;
   termine: Termin[];
@@ -46,6 +47,8 @@ export default function FastbillZuordnenForm({
   defaultSeminarterminId: string | null;
   defaultOptionId: string | null;
   defaultPositionen?: BestehendePosition[];
+  /** Name von der Rechnung, wenn die Person noch nicht im System ist (Vorbelegung "neuer Teilnehmer"). */
+  neuVorschlag?: { vorname: string; nachname: string };
 }) {
   const [seminarterminId, setSeminarterminId] = useState(defaultSeminarterminId || "");
   const passendeOptionen = useMemo(
@@ -159,8 +162,8 @@ export default function FastbillZuordnenForm({
 
             <div style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>oder neuer Teilnehmer:</div>
             <div style={{ display: "flex", gap: "0.4rem" }}>
-              <input className="au-input" name={`neu_vorname_${i}`} placeholder="Vorname" style={{ flex: 1 }} />
-              <input className="au-input" name={`neu_nachname_${i}`} placeholder="Nachname" style={{ flex: 1 }} />
+              <input className="au-input" name={`neu_vorname_${i}`} placeholder="Vorname" style={{ flex: 1 }} defaultValue={i === 0 ? neuVorschlag?.vorname : undefined} />
+              <input className="au-input" name={`neu_nachname_${i}`} placeholder="Nachname" style={{ flex: 1 }} defaultValue={i === 0 ? neuVorschlag?.nachname : undefined} />
             </div>
             <input className="au-input" name={`neu_email_${i}`} placeholder="E-Mail (optional)" />
           </div>

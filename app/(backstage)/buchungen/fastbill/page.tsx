@@ -9,6 +9,7 @@ import {
   setzeFastbillOffen,
 } from "@/lib/actions";
 import FastbillZuordnenForm from "./FastbillZuordnenForm";
+import { parseRechnung, type ParserTermin, type RechnungsVorschlag } from "@/lib/fastbill-parser";
 import Link from "next/link";
 
 type Filter = "offen" | "zugeordnet" | "ignoriert" | "alle";
@@ -28,22 +29,40 @@ export default async function FastbillAbgleichPage({
   const { data: rechnungen } = await supabase
     .from("fastbill_rechnungen")
     .select(
-      "id, fastbill_invoice_number, rechnungsdatum, ist_storno, kunde_firma, kunde_vorname, kunde_nachname, betrag_netto, betrag_brutto, kategorie, status, notiz, vorgeschlagener_seminartermin_id, vorgeschlagene_option_id, seminartermin_id, seminartermin_option_id, teilnehmer_id, buchung_id, seminartermine!fastbill_rechnungen_seminartermin_id_fkey(kennung, titel), seminartermin_optionen!fastbill_rechnungen_seminartermin_option_id_fkey(titel), teilnehmer(vorname, nachname, email)"
+      "id, fastbill_invoice_number, rechnungsdatum, ist_storno, positionen, kunde_firma, kunde_vorname, kunde_nachname, betrag_netto, betrag_brutto, kategorie, status, notiz, vorgeschlagener_seminartermin_id, vorgeschlagene_option_id, seminartermin_id, seminartermin_option_id, teilnehmer_id, buchung_id, seminartermine!fastbill_rechnungen_seminartermin_id_fkey(kennung, titel), seminartermin_optionen!fastbill_rechnungen_seminartermin_option_id_fkey(titel), teilnehmer(vorname, nachname, email)"
     )
     .order("rechnungsdatum", { ascending: false });
 
   const { data: alleTermine } = await supabase
     .from("seminartermine")
-    .select("id, kennung, titel, datum_start")
+    .select("id, kennung, titel, datum_start, datum_ende, seminartypen(name)")
     .order("datum_start", { ascending: true });
 
   const { data: alleOptionen } = await supabase
     .from("seminartermin_optionen")
-    .select("id, seminartermin_id, titel");
+    .select("id, seminartermin_id, titel, preisstaffeln(preis)");
 
   const { data: alleTeilnehmer } = await supabase.from("teilnehmer").select("id, vorname, nachname, email");
 
   const rows = rechnungen || [];
+
+  // Vorschlag aus dem Rechnungstext (lib/fastbill-parser.ts), pro Aufruf
+  // berechnet -- nichts gespeichert, damit neue Termine/Optionen sofort zaehlen.
+  const parserTermine: ParserTermin[] = (alleTermine || []).map((t: any) => ({
+    id: t.id,
+    kennung: t.kennung,
+    titel: t.titel,
+    typ: t.seminartypen?.name || null,
+    datum_start: t.datum_start,
+    datum_ende: t.datum_ende,
+    optionen: (alleOptionen || [])
+      .filter((o: any) => o.seminartermin_id === t.id)
+      .map((o: any) => ({ id: o.id, titel: o.titel, preise: (o.preisstaffeln || []).map((p: any) => Number(p.preis)) })),
+  }));
+  const teilnehmerById = new Map((alleTeilnehmer || []).map((t: any) => [t.id, t]));
+  const vorschlaege = new Map<string, RechnungsVorschlag>(
+    rows.map((r: any) => [r.id, parseRechnung(r, parserTermine, alleTeilnehmer || [])])
+  );
 
   // Eine FastBill-Rechnung kann mehrere Teilnehmer haben (Gesamtrechnung fuer
   // eine Gruppe) -- die eigentliche Teilnehmerliste steckt in den
@@ -168,6 +187,19 @@ export default async function FastbillAbgleichPage({
           {sortiert.map((r: any, idx: number) => {
             const vorherige = sortiert[idx - 1];
             const istErsteIgnorierte = filter === "alle" && r.status === "ignoriert" && vorherige?.status !== "ignoriert";
+            const v = vorschlaege.get(r.id)!;
+            const ersterTn: any = v.teilnehmerId ? teilnehmerById.get(v.teilnehmerId) : null;
+            // Formular-Vorbelegung: so viele Zeilen wie Personen, erste Person = Rechnungsempfaenger
+            const vorschlagPositionen = v.terminId
+              ? Array.from({ length: Math.min(4, v.anzahl) }).map((_, i) => ({
+                  teilnehmerId: i === 0 && ersterTn ? ersterTn.id : "",
+                  optionId: v.optionId,
+                  vorname: i === 0 && ersterTn ? ersterTn.vorname : null,
+                  nachname: i === 0 && ersterTn ? ersterTn.nachname : null,
+                  email: i === 0 && ersterTn ? ersterTn.email : null,
+                }))
+              : [];
+            const abweichung = r.status === "zugeordnet" && v.terminId && v.terminId !== r.seminartermin_id;
             return (
             <>
             {istErsteIgnorierte && (
@@ -196,6 +228,23 @@ export default async function FastbillAbgleichPage({
                 <div>
                   {r.kunde_vorname} {r.kunde_nachname}
                 </div>
+                {/* Rechnungstext aus dem Import -- vorher musste man fuer jede
+                    Zuordnung in FastBill nachsehen, was genau berechnet wurde. */}
+                {Array.isArray(r.positionen) && r.positionen.length > 0 && (
+                  <details className="au-rechnungstext">
+                    <summary>Rechnungstext ({r.positionen.length} {r.positionen.length === 1 ? "Position" : "Positionen"})</summary>
+                    <ol>
+                      {r.positionen.map((pos: any, i: number) => (
+                        <li key={i}>
+                          <div className="au-rechnungstext-beschreibung">{String(pos.description || "—").trim()}</div>
+                          <div className="au-klein">
+                            {Number(pos.quantity || 1)} × {formatEUR(Number(pos.unitPrice || 0))} = <strong>{formatEUR(Number(pos.completeNet || 0))}</strong> netto
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
               </td>
               <td>
                 {formatEUR(Number(r.betrag_netto))} netto
@@ -234,15 +283,16 @@ export default async function FastbillAbgleichPage({
                       : r.teilnehmer
                       ? `${r.teilnehmer.vorname} ${r.teilnehmer.nachname}`
                       : "—"}
+                    {abweichung && (
+                      <div className="au-fb-vorschlag warnung">
+                        Rechnungstext nennt <strong>{v.terminText}</strong> – bitte prüfen (nach bewusster Umbuchung ok)
+                      </div>
+                    )}
                   </div>
                 ) : r.status === "ignoriert" ? (
                   <span style={{ color: "var(--color-text-muted)" }}>ignoriert</span>
-                ) : r.vorgeschlagener_seminartermin_id ? (
-                  <span style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
-                    Vorschlag: Preis passt eindeutig zu einer Option (unten bestätigen)
-                  </span>
                 ) : (
-                  <span style={{ color: "var(--color-text-muted)" }}>kein Vorschlag — manuell wählen</span>
+                  <VorschlagAnzeige v={v} />
                 )}
               </td>
               <td>
@@ -252,8 +302,10 @@ export default async function FastbillAbgleichPage({
                     termine={alleTermine || []}
                     optionen={alleOptionen || []}
                     teilnehmer={alleTeilnehmer || []}
-                    defaultSeminarterminId={r.vorgeschlagener_seminartermin_id}
-                    defaultOptionId={r.vorgeschlagene_option_id}
+                    defaultSeminarterminId={v.terminId || r.vorgeschlagener_seminartermin_id}
+                    defaultOptionId={v.optionId || r.vorgeschlagene_option_id}
+                    defaultPositionen={vorschlagPositionen}
+                    neuVorschlag={!ersterTn && r.kunde_vorname && r.kunde_nachname ? { vorname: r.kunde_vorname, nachname: r.kunde_nachname } : undefined}
                   />
                 )}
                 {r.status === "zugeordnet" && (
@@ -302,5 +354,31 @@ export default async function FastbillAbgleichPage({
         </tbody>
       </table>
     </main>
+  );
+}
+
+function VorschlagAnzeige({ v }: { v: RechnungsVorschlag }) {
+  if (v.art === "buch" || v.art === "projekt") {
+    return (
+      <div className="au-fb-vorschlag">
+        <strong>{v.art === "buch" ? "Buch" : "Beratung/Projekt"}</strong> – {v.gruende[0]}
+        <div className="au-klein">{v.art === "buch" ? "Vorschlag: Ignorieren" : "Vorschlag: Kategorie „Projekt“"}</div>
+      </div>
+    );
+  }
+  if (v.art === "unbekannt") return <span style={{ color: "var(--color-text-muted)" }}>kein Vorschlag — manuell wählen</span>;
+  return (
+    <div className="au-fb-vorschlag">
+      <div>
+        Vorschlag: <strong>{v.terminText || "Termin offen"}</strong>
+        {v.optionTitel && <> · {v.optionTitel}</>}
+        {v.anzahl > 1 && <> · {v.anzahl} Personen</>}
+      </div>
+      {v.gruende.length > 0 && <div className="au-klein">{v.gruende.join(" · ")}</div>}
+      {v.warnungen.map((w, i) => (
+        <div key={i} className="au-fb-warnung">{w}</div>
+      ))}
+      {v.terminId && <div className="au-klein">Rechts im Formular vorausgefüllt – prüfen und übernehmen.</div>}
+    </div>
   );
 }
