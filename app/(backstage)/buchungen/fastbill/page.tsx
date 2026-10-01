@@ -44,6 +44,7 @@ export default async function FastbillAbgleichPage({
     .select("id, seminartermin_id, titel, preisstaffeln(preis)");
 
   const { data: alleTeilnehmer } = await supabase.from("teilnehmer").select("id, vorname, nachname, email");
+  const { data: fastbillKategorien } = await supabase.from("fastbill_kategorien").select("id, name").order("reihenfolge").order("name");
 
   const rows = rechnungen || [];
 
@@ -256,9 +257,10 @@ export default async function FastbillAbgleichPage({
                 <form action={setzeFastbillKategorie} style={{ display: "flex", gap: "0.3rem" }}>
                   <input type="hidden" name="id" value={r.id} />
                   <select className="au-select" name="kategorie" defaultValue={r.kategorie}>
-                    <option value="seminar">Seminar</option>
-                    <option value="projekt">Projekt</option>
-                    <option value="unklar">Unklar</option>
+                    <option value="unklar">unklar</option>
+                    {(fastbillKategorien || []).map((k: any) => (
+                      <option key={k.id} value={k.name}>{k.name}</option>
+                    ))}
                   </select>
                   <button type="submit" className="au-btn au-btn-secondary au-btn-sm">
                     Setzen

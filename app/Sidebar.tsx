@@ -92,6 +92,8 @@ const BEREICHE: NavBereich[] = [
       { href: "/referenzen", label: "Referenzen" },
       { href: "/buchungen/alte-seminare", label: "Alte Seminare zuordnen", stichworte: "legacy" },
       { href: "/buchungen/fastbill", label: "FastBill-Abgleich", stichworte: "rechnungen" },
+      { href: "/buchungen/fastbill/kategorisieren", label: "FastBill kategorisieren", stichworte: "rechnungen kategorien umsatz" },
+      { href: "/buchungen/fastbill/kategorien", label: "FastBill-Kategorien", stichworte: "rechnungen" },
       { href: "/redirects", label: "Weiterleitungen" },
       { href: "/email-test", label: "E-Mail-Test" },
       { href: "/mitarbeiter", label: "Mitarbeiter" },

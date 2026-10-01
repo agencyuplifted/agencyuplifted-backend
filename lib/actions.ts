@@ -4594,6 +4594,7 @@ export async function importFastbillRechnungen(formData: FormData) {
       preis_netto: Number(s.preis),
     }));
 
+  const seminarKategorie = await fastbillKategorieName(supabase, "seminar", "Seminar");
   let eingefuegt = 0;
   for (const inv of neueInvoices) {
     const match = findePreisMatch(inv.subTotal, preisKandidaten);
@@ -4609,7 +4610,7 @@ export async function importFastbillRechnungen(formData: FormData) {
       betrag_brutto: inv.total,
       positionen: inv.items,
       rohdaten: inv.raw,
-      kategorie: match ? "seminar" : "unklar",
+      kategorie: match ? seminarKategorie : FASTBILL_UNKLAR,
       vorgeschlagener_seminartermin_id: match?.seminartermin_id ?? null,
       vorgeschlagene_option_id: match?.option_id ?? null,
     });
@@ -4624,14 +4625,99 @@ export async function importFastbillRechnungen(formData: FormData) {
   );
 }
 
+// ---------- FastBill-Kategorien (frei verwaltbar, Tabelle fastbill_kategorien) ----------
+// fastbill_rechnungen.kategorie speichert den Namen; "unklar" = noch nicht
+// kategorisiert. Kategorien mit schluessel setzt der Code selbst (Zuordnung ->
+// 'seminar'), deshalb ueber den Schluessel nachschlagen statt Namen zu verdrahten.
+
+const FASTBILL_UNKLAR = "unklar";
+
+async function fastbillKategorieName(supabase: ReturnType<typeof getSupabaseAdmin>, schluessel: string, fallback: string) {
+  const { data } = await supabase.from("fastbill_kategorien").select("name").eq("schluessel", schluessel).maybeSingle();
+  return data?.name || fallback;
+}
+
+export async function legeFastbillKategorieAn(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const name = String(formData.get("name") || "").trim();
+  if (!name) return { fehler: "Bitte einen Namen angeben." };
+  if (name.toLowerCase() === FASTBILL_UNKLAR) return { fehler: "„unklar“ ist reserviert (= noch nicht kategorisiert)." };
+  const supabase = getSupabaseAdmin();
+  const { data: letzte } = await supabase.from("fastbill_kategorien").select("reihenfolge").order("reihenfolge", { ascending: false }).limit(1);
+  const { error } = await supabase.from("fastbill_kategorien").insert({ name, reihenfolge: (letzte?.[0]?.reihenfolge ?? 0) + 1 });
+  if (error) return { fehler: error.code === "23505" ? `Kategorie „${name}“ gibt es schon.` : error.message };
+  revalidatePath("/buchungen/fastbill/kategorien");
+  revalidatePath("/buchungen/fastbill/kategorisieren");
+  return { fehler: null };
+}
+
+// Umbenennen zieht alle Rechnungen mit dem alten Namen mit.
+export async function aendereFastbillKategorie(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const id = String(formData.get("id") || "");
+  const name = String(formData.get("name") || "").trim();
+  const reihenfolge = Number(formData.get("reihenfolge") || 0);
+  if (!name) return { fehler: "Der Name darf nicht leer sein." };
+  if (name.toLowerCase() === FASTBILL_UNKLAR) return { fehler: "„unklar“ ist reserviert." };
+  const supabase = getSupabaseAdmin();
+  const { data: alt } = await supabase.from("fastbill_kategorien").select("name").eq("id", id).maybeSingle();
+  if (!alt) return { fehler: "Kategorie nicht gefunden." };
+  const { error } = await supabase.from("fastbill_kategorien").update({ name, reihenfolge }).eq("id", id);
+  if (error) return { fehler: error.code === "23505" ? `Kategorie „${name}“ gibt es schon.` : error.message };
+  if (alt.name !== name) {
+    const { error: e2 } = await supabase.from("fastbill_rechnungen").update({ kategorie: name }).eq("kategorie", alt.name);
+    if (e2) return { fehler: e2.message };
+  }
+  revalidatePath("/buchungen/fastbill/kategorien");
+  revalidatePath("/buchungen/fastbill/kategorisieren");
+  revalidatePath("/buchungen/fastbill");
+  return { fehler: null };
+}
+
+export async function loescheFastbillKategorie(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const id = String(formData.get("id") || "");
+  const supabase = getSupabaseAdmin();
+  const { data: k } = await supabase.from("fastbill_kategorien").select("name, schluessel").eq("id", id).maybeSingle();
+  if (!k) return { fehler: "Kategorie nicht gefunden." };
+  if (k.schluessel) return { fehler: `„${k.name}“ wird von der FastBill-Zuordnung automatisch gesetzt und kann nicht gelöscht werden (umbenennen geht).` };
+  const { count } = await supabase.from("fastbill_rechnungen").select("id", { count: "exact", head: true }).eq("kategorie", k.name);
+  if (count) return { fehler: `„${k.name}“ wird noch von ${count} Rechnung${count === 1 ? "" : "en"} genutzt – erst umkategorisieren, dann löschen.` };
+  const { error } = await supabase.from("fastbill_kategorien").delete().eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidatePath("/buchungen/fastbill/kategorien");
+  revalidatePath("/buchungen/fastbill/kategorisieren");
+  return { fehler: null };
+}
+
+// Kategorisierungsmaske: eine Rechnung -> Kategoriename. Rueckgabe statt
+// redirect, die Zeile verschwindet clientseitig ohne Neuladen.
+export async function kategorisiereFastbillRechnung(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const loginFehler = await pruefeBackstageLogin();
+  if (loginFehler) return { fehler: loginFehler };
+  const id = String(formData.get("id") || "");
+  const kategorie = String(formData.get("kategorie") || "");
+  const supabase = getSupabaseAdmin();
+  const { data: k } = await supabase.from("fastbill_kategorien").select("name").eq("name", kategorie).maybeSingle();
+  if (!k) return { fehler: "Unbekannte Kategorie." };
+  const { error } = await supabase.from("fastbill_rechnungen").update({ kategorie: k.name, aktualisiert_am: new Date().toISOString() }).eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidatePath("/buchungen/fastbill");
+  return { fehler: null };
+}
+
 export async function setzeFastbillKategorie(formData: FormData) {
   await requireBackstageLogin();
   const id = String(formData.get("id"));
   const kategorie = String(formData.get("kategorie"));
-  if (!["seminar", "projekt", "unklar"].includes(kategorie)) {
-    throw new Error("Unbekannte Kategorie.");
-  }
   const supabase = getSupabaseAdmin();
+  if (kategorie !== FASTBILL_UNKLAR) {
+    const { data: k } = await supabase.from("fastbill_kategorien").select("id").eq("name", kategorie).maybeSingle();
+    if (!k) throw new Error("Unbekannte Kategorie.");
+  }
   const { error } = await supabase
     .from("fastbill_rechnungen")
     .update({ kategorie, aktualisiert_am: new Date().toISOString() })
@@ -4818,7 +4904,7 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
       seminartermin_option_id: optionIds[0],
       teilnehmer_id: teilnehmerIds[0],
       buchung_id: buchungId,
-      kategorie: "seminar",
+      kategorie: await fastbillKategorieName(supabase, "seminar", "Seminar"),
       status: "zugeordnet",
       aktualisiert_am: new Date().toISOString(),
     })
