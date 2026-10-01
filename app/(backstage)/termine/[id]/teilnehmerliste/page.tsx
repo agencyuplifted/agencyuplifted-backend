@@ -6,6 +6,12 @@ import { formatDatum } from "@/lib/format";
 import { ladeHotelliste } from "@/lib/hotelliste";
 import ZimmerKontingent from "../ZimmerKontingent";
 
+const GRUPPEN = [
+  { typ: "Teilnehmer", titel: "Teilnehmer", infoSpalte: "Option" },
+  { typ: "Mitarbeiter", titel: "Mitarbeiter", infoSpalte: "Rolle" },
+  { typ: "Referent", titel: "Referenten", infoSpalte: null },
+] as const;
+
 export default async function TeilnehmerlistePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -29,7 +35,7 @@ export default async function TeilnehmerlistePage({ params }: { params: Promise<
       <p>
         {titelAnzeige} · {formatDatum(termin.datum_start)}
         {termin.datum_ende && termin.datum_ende !== termin.datum_start ? ` – ${formatDatum(termin.datum_ende)}` : ""}
-        {" "}· {zeilen.length} Personen ({anzahl("Referent")} Referent · {anzahl("Mitarbeiter")} Mitarbeiter · {anzahl("Teilnehmer")} Teilnehmer)
+        {" "}· {zeilen.length} Personen ({anzahl("Teilnehmer")} Teilnehmer · {anzahl("Mitarbeiter")} Mitarbeiter · {anzahl("Referent")} Referent)
       </p>
 
       <ZimmerKontingent terminId={id} liste={liste} />
@@ -50,31 +56,36 @@ export default async function TeilnehmerlistePage({ params }: { params: Promise<
 
       <div className="au-card">
         <h2>Übersicht</h2>
-        <table className="au-table">
-          <thead>
-            <tr>
-              <th>Vorname</th>
-              <th>Nachname</th>
-              <th>Typ</th>
-              <th>Option / Rolle</th>
-              <th>Zimmer</th>
-            </tr>
-          </thead>
-          <tbody>
-            {zeilen.map((z) => (
-              <tr key={z.schluessel}>
-                <td>{z.vorname}</td>
-                <td>{z.nachname}</td>
-                <td>{z.typ}</td>
-                <td>{z.info || "—"}</td>
-                <td>{z.zimmerpartner ? `teilt mit ${z.zimmerpartner}` : "—"}</td>
-              </tr>
-            ))}
-            {!zeilen.length && (
-              <tr className="au-table-empty"><td colSpan={5}>Noch keine Personen für diesen Termin.</td></tr>
-            )}
-          </tbody>
-        </table>
+        {!zeilen.length && <p className="au-leer">Noch keine Personen für diesen Termin.</p>}
+        {GRUPPEN.map(({ typ, titel, infoSpalte }) => {
+          const gruppe = zeilen.filter((z) => z.typ === typ);
+          if (!gruppe.length) return null;
+          return (
+            <div key={typ} style={{ marginBottom: "1.5rem" }}>
+              <h3 style={{ margin: "0 0 0.5rem" }}>{titel} · {gruppe.length}</h3>
+              <table className="au-table">
+                <thead>
+                  <tr>
+                    <th>Vorname</th>
+                    <th>Nachname</th>
+                    {infoSpalte && <th>{infoSpalte}</th>}
+                    <th>Zimmer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gruppe.map((z) => (
+                    <tr key={z.schluessel}>
+                      <td>{z.vorname}</td>
+                      <td>{z.nachname}</td>
+                      {infoSpalte && <td>{z.info || "—"}</td>}
+                      <td>{z.zimmerpartner ? `teilt mit ${z.zimmerpartner}` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
       </div>
     </main>
   );

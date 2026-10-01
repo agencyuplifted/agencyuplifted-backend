@@ -102,7 +102,8 @@ export async function ladeHotelliste(supabase: any, terminId: string): Promise<H
     if (z.teilnehmerId && partnerName.has(z.teilnehmerId)) z.zimmerpartner = partnerName.get(z.teilnehmerId)!;
   });
 
-  const typReihenfolge = { Referent: 0, Mitarbeiter: 1, Teilnehmer: 2 };
+  // Reihenfolge wie im Hotel-Export gewuenscht: erst Teilnehmer, dann Mitarbeiter, dann Referenten.
+  const typReihenfolge = { Teilnehmer: 0, Mitarbeiter: 1, Referent: 2 };
   zeilen.sort(
     (a, b) =>
       typReihenfolge[a.typ] - typReihenfolge[b.typ] ||
