@@ -44,6 +44,7 @@ import {
   removeReferentVonTermin,
 } from "@/lib/actions";
 import { ladeHotelliste } from "@/lib/hotelliste";
+import { berechneDeckungsbeitraege } from "@/lib/deckungsbeitrag";
 import ZimmerKontingent from "./ZimmerKontingent";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatEUR, formatEURBrutto, effektiveTerminNaechte, VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
@@ -190,6 +191,7 @@ export default async function TerminDetailPage({
     { data: unterlagen },
     { data: referenten },
     hotelliste,
+    dbProTermin,
   ] = await Promise.all([
     supabase
       .from("seminartermine")
@@ -257,6 +259,7 @@ export default async function TerminDetailPage({
     supabase.from("seminar_unterlagen").select("id, titel, datei_url, position").eq("seminartermin_id", id).order("position").order("erstellt_am"),
     supabase.from("seminartermin_referenten").select("trainer_id, trainer(name)").eq("seminartermin_id", id).order("erstellt_am"),
     ladeHotelliste(supabase, id),
+    berechneDeckungsbeitraege(supabase, [id]),
   ]);
 
   // Exakt dieselbe Berechnung wie /api/public/seminartermine/[id], die der
@@ -413,9 +416,7 @@ export default async function TerminDetailPage({
   const tageBisStart = Math.round((Date.parse(termin.datum_start) - Date.parse(heuteISO)) / 86400000);
   const kapazitaet = Number(termin.kapazitaet) || 0;
   const belegungAnteil = kapazitaet ? Math.min(1, echteTeilnehmerAnzahl / kapazitaet) : 0;
-  const umsatzNetto = (buchungsPositionen || [])
-    .filter((p: any) => p.buchungen?.status !== "storniert")
-    .reduce((summe: number, p: any) => summe + Number(p.preis || 0), 0);
+  const deckung = dbProTermin.get(id)!;
   const optionenMitWarnung = aktiveOptionen.filter(
     (o: any) => !(o.preisstaffeln || []).length || normalpreisLuecke(o.preisstaffeln || [], termin.datum_start)
   ).length;
@@ -552,7 +553,7 @@ export default async function TerminDetailPage({
         </div>
       </header>
 
-      <div className="au-kennzahlen">
+      <div className="au-kennzahlen au-kennzahlen-5">
         <div className="au-kennzahl">
           <div className="au-kennzahl-label">Belegung</div>
           <div className="au-kennzahl-wert">{echteTeilnehmerAnzahl}<span className="au-kennzahl-von"> / {kapazitaet}</span></div>
@@ -573,8 +574,18 @@ export default async function TerminDetailPage({
         </div>
         <div className="au-kennzahl">
           <div className="au-kennzahl-label">Umsatz netto</div>
-          <div className="au-kennzahl-wert">{formatEUR(umsatzNetto)}</div>
-          <div className="au-kennzahl-kontext">brutto {formatEURBrutto(umsatzNetto)} · neues System</div>
+          <div className="au-kennzahl-wert">{formatEUR(deckung.umsatz)}</div>
+          <div className="au-kennzahl-kontext">
+            brutto {formatEURBrutto(deckung.umsatz)}
+            {deckung.umsatzUnbezahlt > 0 && <> · davon {formatEUR(deckung.umsatzUnbezahlt)} unbezahlt</>}
+          </div>
+        </div>
+        <div className="au-kennzahl" title={`Umsatz − ${deckung.personen} Personen vor Ort × ${formatEUR(deckung.fremdkostenProPerson)} Fremdkosten (Teilnehmer inkl. Freiplätze, Mitarbeiter, Referenten)`}>
+          <div className="au-kennzahl-label">Deckungsbeitrag</div>
+          <div className="au-kennzahl-wert" style={deckung.db < 0 ? { color: "var(--color-danger)" } : undefined}>{formatEUR(Math.round(deckung.db))}</div>
+          <div className="au-kennzahl-kontext">
+            − {formatEUR(deckung.fremdkosten)} Fremdkosten ({deckung.personen} × {formatEUR(deckung.fremdkostenProPerson)})
+          </div>
         </div>
         <div className="au-kennzahl">
           <div className="au-kennzahl-label">{tageBisStart >= 0 ? "Bis zum Start" : "Seit dem Start"}</div>

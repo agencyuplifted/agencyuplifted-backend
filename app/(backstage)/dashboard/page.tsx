@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { berechneDeckungsbeitraege, ladeFremdkostenProPerson } from "@/lib/deckungsbeitrag";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatEURBrutto, formatDatum } from "@/lib/format";
@@ -261,52 +262,15 @@ async function UmsatzProSeminar({
     .order("datum_start", { ascending: true });
   if (seminartypFilter) terminQuery = terminQuery.eq("seminartyp_id", seminartypFilter);
   // Parallel statt nacheinander -- jede Abfrage ist ein eigener Round-Trip zur DB.
-  const [{ data: konfig }, { data: seminartypen }, { data: termine }] = await Promise.all([
-    supabase.from("finanz_konfiguration").select("fremdkosten_pro_person_netto").eq("id", 1).single(),
+  const [fremdkostenProPerson, { data: seminartypen }, { data: termine }] = await Promise.all([
+    ladeFremdkostenProPerson(supabase),
     supabase.from("seminartypen").select("id, name").order("name"),
     terminQuery,
   ]);
-  const fremdkostenProPerson = Number(konfig?.fremdkosten_pro_person_netto ?? 300);
 
-  const terminIds = (termine || []).map((t: any) => t.id);
-
-  const [{ data: positionen }, { data: legacyPositionen }] = await Promise.all([
-    terminIds.length
-      ? supabase
-          .from("buchungspositionen")
-          .select("seminartermin_id, teilnehmer_id, preis, buchungen!inner(status)")
-          .in("seminartermin_id", terminIds)
-          .neq("buchungen.status", "storniert")
-      : Promise.resolve({ data: [] }),
-    terminIds.length
-      ? supabase.from("legacy_buchungen").select("seminartermin_id, teilnehmer_id").in("seminartermin_id", terminIds)
-      : Promise.resolve({ data: [] }),
-  ]);
-
-  const umsatzProTermin = new Map<string, number>();
-  const personenProTermin = new Map<string, Set<string>>();
-
-  (positionen || []).forEach((p: any) => {
-    if (!p.seminartermin_id) return;
-    umsatzProTermin.set(p.seminartermin_id, (umsatzProTermin.get(p.seminartermin_id) || 0) + Number(p.preis || 0));
-    if (p.teilnehmer_id) {
-      if (!personenProTermin.has(p.seminartermin_id)) personenProTermin.set(p.seminartermin_id, new Set());
-      personenProTermin.get(p.seminartermin_id)!.add(p.teilnehmer_id);
-    }
-  });
-  (legacyPositionen || []).forEach((l: any) => {
-    if (!l.seminartermin_id || !l.teilnehmer_id) return;
-    if (!personenProTermin.has(l.seminartermin_id)) personenProTermin.set(l.seminartermin_id, new Set());
-    personenProTermin.get(l.seminartermin_id)!.add(l.teilnehmer_id);
-  });
-
-  const zeilen = (termine || []).map((t: any) => {
-    const umsatz = umsatzProTermin.get(t.id) || 0;
-    const personen = personenProTermin.get(t.id)?.size || 0;
-    const fremdkosten = personen * fremdkostenProPerson;
-    const db = umsatz - fremdkosten;
-    return { ...t, umsatz, personen, fremdkosten, db };
-  });
+  // Gleiche Rechnung wie auf der Termin-Seite (lib/deckungsbeitrag.ts).
+  const dbProTermin = await berechneDeckungsbeitraege(supabase, (termine || []).map((t: any) => t.id));
+  const zeilen = (termine || []).map((t: any) => ({ ...t, ...dbProTermin.get(t.id)! }));
 
   const gesamtUmsatz = zeilen.reduce((s: number, z: any) => s + z.umsatz, 0);
   const gesamtFremdkosten = zeilen.reduce((s: number, z: any) => s + z.fremdkosten, 0);
@@ -373,9 +337,9 @@ async function UmsatzProSeminar({
       </div>
 
       <p className="au-fussnote">
-        Fremdkosten = Personen (Teilnehmer, Mitarbeiter, Gastreferenten) × {formatEUR(fremdkostenProPerson)} netto pro Kopf,{" "}
+        Fremdkosten = Personen vor Ort (Teilnehmer inkl. Freiplätze, Mitarbeiter, Referenten) × {formatEUR(fremdkostenProPerson)} netto pro Kopf,{" "}
         <Link href="/einstellungen" prefetch={false}>einstellbar</Link>. Umsatz nur aus Buchungen des neuen Systems (Altdaten haben keine Preise);
-        Stornos ausgeschlossen. Alle Beträge netto zzgl. 19 % USt.
+        Stornos ausgeschlossen, unbezahlte („angefragte“) Buchungen enthalten. Alle Beträge netto zzgl. 19 % USt.
       </p>
     </Panel>
   );
