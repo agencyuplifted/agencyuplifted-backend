@@ -5781,3 +5781,12 @@ a.au-kliste-name:hover {
   .au-cockpit-scroll .au-cockpit-svg { min-width: 560px; }
   .au-cockpit-zahl { font-size: 2.1rem; }
 }
+
+.au-cockpit-hero-raster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+@media (max-width: 760px) {
+  .au-cockpit-hero-raster { grid-template-columns: minmax(0, 1fr); }
+}

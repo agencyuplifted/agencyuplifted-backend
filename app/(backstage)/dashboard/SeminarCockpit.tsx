@@ -82,12 +82,26 @@ export default async function SeminarCockpit({
   const veraenderung = vorjahrAktiv && vorjahr.db !== 0 ? (rollierend.db - vorjahr.db) / Math.abs(vorjahr.db) : null;
 
   const imJahr = zeilen.filter((z) => z.datum_start.startsWith(String(jahr)));
+
+  // Kalenderjahr (Jahresfilter): durchgefuehrt + was die anstehenden Termine
+  // nach heutigem Buchungsstand bringen. Vorjahresvergleich "bis heute" =
+  // gleicher Kalendertag im Vorjahr, nur wenn dort echte Buchungen existieren.
+  const jahrDurchgefuehrt = summe(imJahr.filter((z) => z.vergangen));
+  const jahrAnstehend = summe(imJahr.filter((z) => !z.vergangen));
+  const stichtagVorjahr = `${jahr - 1}${heute.slice(4)}`;
+  const vorjahrBisHeute = zeilen.filter((z) => z.datum_start.startsWith(String(jahr - 1)) && (z.datum_ende || z.datum_start) < stichtagVorjahr);
+  const jahrVergleichAktiv = jahr === Number(heute.slice(0, 4)) && vorjahrBisHeute.some((z) => z.umsatz > 0);
+  const jahrVeraenderung =
+    jahrVergleichAktiv && summe(vorjahrBisHeute).db !== 0
+      ? (jahrDurchgefuehrt.db - summe(vorjahrBisHeute).db) / Math.abs(summe(vorjahrBisHeute).db)
+      : null;
   const konferenzen = imJahr.filter((z) => z.istKonferenz);
   const seminare = imJahr.filter((z) => !z.istKonferenz);
 
   return (
     <div className="au-cockpit">
-      {/* 1. Hero */}
+      {/* 1. Hero: rollierend und Kalenderjahr nebeneinander */}
+      <div className="au-cockpit-hero-raster">
       <section className="au-cockpit-hero">
         <div className="au-cockpit-label">Deckungsbeitrag, rollierend 12 Monate</div>
         <div className="au-cockpit-zahl">{formatEURGanz(rollierend.db)}</div>
@@ -108,6 +122,36 @@ export default async function SeminarCockpit({
           )}
         </div>
       </section>
+
+      <section className="au-cockpit-hero">
+        <div className="au-cockpit-label">Deckungsbeitrag im Jahr {jahr}</div>
+        <div className="au-cockpit-zahl">{formatEURGanz(jahrDurchgefuehrt.db)}</div>
+        <div className="au-cockpit-kontext">
+          durchgeführt · Umsatz {formatEURGanz(jahrDurchgefuehrt.umsatz)} · Fremdkosten {formatEURGanz(jahrDurchgefuehrt.kosten)}
+        </div>
+        {jahrAnstehend.umsatz !== 0 || jahrAnstehend.kosten !== 0 ? (
+          <div className="au-cockpit-kontext" style={{ marginTop: "0.35rem" }}>
+            {jahrAnstehend.db >= 0 ? "+" : "−"} {formatEURGanz(Math.abs(jahrAnstehend.db))} aus anstehenden Terminen (Stand Buchungen) ={" "}
+            <strong>{formatEURGanz(jahrDurchgefuehrt.db + jahrAnstehend.db)} erwartet</strong>
+          </div>
+        ) : null}
+        <div className="au-cockpit-vergleich">
+          {jahr !== Number(heute.slice(0, 4)) ? (
+            <>{jahr < Number(heute.slice(0, 4)) ? "Abgeschlossenes Jahr." : "Noch kein Termin durchgeführt."}</>
+          ) : jahrVeraenderung === null ? (
+            <>Vorjahr bis heute: noch keine Daten – aktiviert sich automatisch, sobald {jahr - 1} nachgetragen ist.</>
+          ) : (
+            <>
+              <span className={jahrVeraenderung >= 0 ? "au-cockpit-plus" : "au-cockpit-minus"} aria-hidden="true">
+                {jahrVeraenderung >= 0 ? "▲" : "▼"}
+              </span>{" "}
+              {jahrVeraenderung >= 0 ? "+" : "−"}
+              {Math.abs(Math.round(jahrVeraenderung * 100))} % ggü. {jahr - 1} bis zum gleichen Tag ({formatEURGanz(summe(vorjahrBisHeute).db)})
+            </>
+          )}
+        </div>
+      </section>
+      </div>
 
       {/* 2. Konferenz separat */}
       {konferenzen.map((k) => (
