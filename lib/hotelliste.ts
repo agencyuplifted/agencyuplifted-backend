@@ -30,23 +30,47 @@ function personSchluessel(email: string | null | undefined, vorname: string, nac
 }
 
 export async function ladeHotelliste(supabase: any, terminId: string): Promise<Hotelliste> {
-  const [{ data: termin }, { data: referenten }, { data: terminMitarbeiter }, { data: positionen }, { data: zimmerpartner }] = await Promise.all([
-    supabase.from("seminartermine").select("zimmer_reserviert").eq("id", terminId).single(),
-    supabase.from("seminartermin_referenten").select("trainer(name, email)").eq("seminartermin_id", terminId),
+  return (await ladeHotellisten(supabase, [terminId])).get(terminId)!;
+}
+
+// Fuer viele Termine auf einmal (Terminuebersicht): fuenf Abfragen gesamt
+// statt fuenf pro Termin.
+export async function ladeHotellisten(supabase: any, terminIds: string[]): Promise<Map<string, Hotelliste>> {
+  const ergebnis = new Map<string, Hotelliste>();
+  if (!terminIds.length) return ergebnis;
+  const [{ data: termine }, { data: referenten }, { data: terminMitarbeiter }, { data: positionen }, { data: zimmerpartner }] = await Promise.all([
+    supabase.from("seminartermine").select("id, zimmer_reserviert").in("id", terminIds),
+    supabase.from("seminartermin_referenten").select("seminartermin_id, trainer(name, email)").in("seminartermin_id", terminIds),
     supabase
       .from("seminartermin_mitarbeiter")
-      .select("rolle, mitarbeiter(name, email, teilnehmer(id, vorname, nachname))")
-      .eq("seminartermin_id", terminId),
+      .select("seminartermin_id, rolle, mitarbeiter(name, email, teilnehmer(id, vorname, nachname))")
+      .in("seminartermin_id", terminIds),
     supabase
       .from("buchungspositionen")
-      .select("seminartermin_option_id, teilnehmer(id, vorname, nachname, email), buchungen(status), seminartermin_optionen(titel)")
-      .eq("seminartermin_id", terminId),
+      .select("seminartermin_id, seminartermin_option_id, teilnehmer(id, vorname, nachname, email), buchungen(status), seminartermin_optionen(titel)")
+      .in("seminartermin_id", terminIds),
     supabase
       .from("seminartermin_zimmerpartner")
-      .select("teilnehmer_a:teilnehmer_id_a(id, vorname, nachname), teilnehmer_b:teilnehmer_id_b(id, vorname, nachname)")
-      .eq("seminartermin_id", terminId),
+      .select("seminartermin_id, teilnehmer_a:teilnehmer_id_a(id, vorname, nachname), teilnehmer_b:teilnehmer_id_b(id, vorname, nachname)")
+      .in("seminartermin_id", terminIds),
   ]);
+  const nachTermin = (zeilen: any[] | null, id: string) => (zeilen || []).filter((z: any) => z.seminartermin_id === id);
+  for (const id of terminIds) {
+    ergebnis.set(
+      id,
+      baueHotelliste(
+        (termine || []).find((t: any) => t.id === id)?.zimmer_reserviert ?? null,
+        nachTermin(referenten, id),
+        nachTermin(terminMitarbeiter, id),
+        nachTermin(positionen, id),
+        nachTermin(zimmerpartner, id)
+      )
+    );
+  }
+  return ergebnis;
+}
 
+function baueHotelliste(zimmerReserviert: number | null, referenten: any[], terminMitarbeiter: any[], positionen: any[], zimmerpartner: any[]): Hotelliste {
   const map = new Map<string, HotelZeile>();
   const hinzu = (z: HotelZeile) => {
     if (!map.has(z.schluessel)) map.set(z.schluessel, z);
@@ -115,6 +139,6 @@ export async function ladeHotelliste(supabase: any, terminId: string): Promise<H
     zeilen,
     zimmerBenoetigt: zeilen.length - geteilteZimmer,
     geteilteZimmer,
-    zimmerReserviert: termin?.zimmer_reserviert ?? null,
+    zimmerReserviert,
   };
 }

@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { ladeHotellisten, type Hotelliste } from "@/lib/hotelliste";
 import TermineNav from "./TermineNav";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -70,14 +71,14 @@ const STATUS_STIL: Record<string, { label: string; klasse: string }> = {
 function TerminListe({
   termine,
   gebuchtProTermin,
-  gesamtProTermin,
+  hotellisten,
   websiteAnzeigeProTermin,
   heuteISO,
   heuteBerlin,
 }: {
   termine: any[];
   gebuchtProTermin: Map<string, number>;
-  gesamtProTermin: Map<string, number>;
+  hotellisten: Map<string, Hotelliste>;
   websiteAnzeigeProTermin: Map<string, WebsiteVerfuegbarkeit>;
   heuteISO: string;
   heuteBerlin: string;
@@ -102,7 +103,7 @@ function TerminListe({
             </div>
             {liste.map((t: any) => {
               const gebucht = gebuchtProTermin.get(t.id) || 0;
-              const gesamt = gesamtProTermin.get(t.id) || 0;
+              const hotel = hotellisten.get(t.id);
               const kapazitaet = Number(t.kapazitaet) || 0;
               const anteil = kapazitaet ? Math.min(1, gebucht / kapazitaet) : 0;
               const vergangen = t.datum_start < heuteISO;
@@ -140,10 +141,24 @@ function TerminListe({
                     <span>{t.veranstaltungsorte?.ort || t.veranstaltungsorte?.name || "—"}</span>
                     {t.format && t.format !== "praesenz" && <span className="au-klein">{t.format}</span>}
                   </div>
-                  <div className="au-tliste-belegung" title={`Gesamt vor Ort (TN + Mitarbeiter + Gastreferenten): ${gesamt}`}>
+                  <div className="au-tliste-belegung">
                     <span className="au-klein"><strong>{gebucht}</strong> / {kapazitaet} TN</span>
                     <span className="au-belegung-balken"><span style={{ width: `${anteil * 100}%` }} /></span>
-                    {gesamt !== gebucht && <span className="au-klein">{gesamt} Personen vor Ort</span>}
+                    {hotel && t.format === "praesenz" && (
+                      <span className="au-klein" title="Teilnehmer + Mitarbeiter + Referenten, geteilte Zimmer abgezogen">
+                        {hotel.zeilen.length} vor Ort · {hotel.zimmerBenoetigt} Zi.
+                        {hotel.zimmerReserviert !== null && (
+                          <>
+                            {" "}/ {hotel.zimmerReserviert} res.
+                            {hotel.zimmerReserviert < hotel.zimmerBenoetigt && (
+                              <span className="au-badge au-badge-warning" style={{ marginLeft: "0.35rem", fontSize: "0.7rem" }}>
+                                {hotel.zimmerBenoetigt - hotel.zimmerReserviert} fehlen
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    )}
                   </div>
                   <div>
                     <span className={`au-badge ${status.klasse}`}>{status.label}</span>
@@ -266,24 +281,13 @@ export default async function TerminePage({
   const gebuchtProTermin = new Map<string, number>();
   teilnehmerProTermin.forEach((set, id) => gebuchtProTermin.set(id, set.size));
 
-  // Gesamtsumme (TN + Mitarbeiter + Gastreferent + Organisator) fuer die Zimmerplanung,
-  // unabhaengig von der Rolle - jede Person, die vor Ort ist, braucht ein Bett.
-  const alleProTermin = new Map<string, Set<string>>();
-  const zaehleAlleEin = (seminarterminId: string | null, teilnehmerId: string | null) => {
-    if (!seminarterminId || !teilnehmerId) return;
-    if (!alleProTermin.has(seminarterminId)) alleProTermin.set(seminarterminId, new Set());
-    alleProTermin.get(seminarterminId)!.add(teilnehmerId);
-  };
-  (positionen || []).forEach((p: any) => zaehleAlleEin(p.seminartermin_id, p.teilnehmer_id));
-  (legacyPositionen || []).forEach((l: any) => zaehleAlleEin(l.seminartermin_id, l.teilnehmer_id));
-
-  const gesamtProTermin = new Map<string, number>();
-  alleProTermin.forEach((set, id) => gesamtProTermin.set(id, set.size));
-
   const anstehend = anstehendDaten || [];
   const vergangen = (vergangeneOderAbgesagt || []).filter((t: any) => t.datum_start < heuteISO && t.status !== "abgesagt");
   const abgesagt = (vergangeneOderAbgesagt || []).filter((t: any) => t.status === "abgesagt");
   const liste = ansicht === "anstehend" ? anstehend : ansicht === "vergangen" ? vergangen : abgesagt;
+  // Personen vor Ort + Zimmerbedarf -- gleiche Rechnung wie die Hotel-Liste
+  // (Teilnehmer + Mitarbeiter + Referenten, jede Person einmal).
+  const hotellisten = await ladeHotellisten(supabase, liste.map((t: any) => t.id));
 
   // Nur fuer anstehende Termine: vergangene/abgesagte liefert die oeffentliche
   // API nicht mehr aus, dort gibt es also auch keine Website-Anzeige.
@@ -371,7 +375,7 @@ export default async function TerminePage({
         <TerminListe
           termine={liste}
           gebuchtProTermin={gebuchtProTermin}
-          gesamtProTermin={gesamtProTermin}
+          hotellisten={hotellisten}
           websiteAnzeigeProTermin={websiteAnzeigeProTermin}
           heuteISO={heuteISO}
           heuteBerlin={heuteBerlin}
