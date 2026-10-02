@@ -6367,3 +6367,6 @@ a.au-sz-chip { text-decoration: none; }
   .au-ue-unten { grid-template-columns: minmax(0, 1fr); }
 }
 .au-ue-feld .au-sz-name small { white-space: normal; }
+.au-ue-feld.leer .au-sz-name b { color: var(--color-text-muted); font-weight: 500; }
+.au-ue-feld.leer .au-ue-punkt { opacity: 0.45; }
+.au-ue-feld.leer .au-sz-db b { color: var(--color-text-faint); font-weight: 500; }

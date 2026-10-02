@@ -12,8 +12,16 @@ import { Sparkline } from "./SeminarCockpit";
 // Seminare = Termine mit Beginn im Zeitraum inkl. bereits gebuchter
 // kuenftiger (wie Reiter Seminare), FastBill = Rechnungen nach Datum.
 //
+// Gruppen in FESTER Reihenfolge, auch ohne Umsatz (Markus 10/2026: "alle
+// Gruppen tendenziell sehen"): Seminare (ohne Konferenz), Konferenz, je
+// Programm (Foundation, Uplift ... aus dem Buchungssystem, nach Buchungsdatum,
+// voller Vertragswert), dann die FastBill-Kategorien. Feste Reihenfolge =
+// feste Farbe pro Gruppe, auch wenn sich die Betraege aendern.
+//
 // GEGEN DOPPELZAEHLUNG: Die FastBill-Kategorie mit schluessel 'seminar' sind
-// dieselben Rechnungen wie die Buchungen und werden NIE aufaddiert. Alle
+// dieselben Rechnungen wie die Buchungen und werden NIE aufaddiert. Gleiches gilt kuenftig fuer Programm-Rechnungen:
+// Bekommen die in FastBill eine eigene Kategorie, muss sie hier genauso
+// ausgenommen werden (sonst doppelt mit den Programm-Buchungen). Alle
 // anderen Kategorien kommen live aus fastbill_kategorien -- keine Liste im Code.
 
 // Kategoriale Farben in fester Reihenfolge (Referenzpalette dataviz, Light),
@@ -47,10 +55,10 @@ function verlaufsAbschnitte(von: string, bis: string) {
 
 export default async function UebersichtCockpit({ supabase, heute, zeitraum }: { supabase: any; heute: string; zeitraum: Zeitraum }) {
   const { von, bis } = zeitraum;
-  const [{ data: kategorien }, { data: rechnungen }, { data: termine }, { data: fbStand }, { data: offen }, { data: naechste }] = await Promise.all([
+  const [{ data: kategorien }, { data: rechnungen }, { data: termine }, { data: fbStand }, { data: offen }, { data: naechste }, { data: programme }, { data: programmPos }] = await Promise.all([
     supabase.from("fastbill_kategorien").select("id, name, schluessel, reihenfolge").order("reihenfolge").order("name"),
     supabase.from("fastbill_rechnungen").select("kategorie, betrag_netto, rechnungsdatum").gte("rechnungsdatum", von).lte("rechnungsdatum", bis),
-    supabase.from("seminartermine").select("id, datum_start, datum_ende, kapazitaet, seminartypen(name)").gte("datum_start", von).lte("datum_start", bis).neq("status", "abgesagt"),
+    supabase.from("seminartermine").select("id, datum_start, datum_ende, kapazitaet, seminartyp_id, seminartypen(name)").gte("datum_start", von).lte("datum_start", bis).neq("status", "abgesagt"),
     supabase.from("fastbill_rechnungen").select("rechnungsdatum").order("rechnungsdatum", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("buchungspositionen").select("buchung_id, preis, buchungen!inner(status)").eq("buchungen.status", "angefragt"),
     supabase
@@ -60,6 +68,14 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
       .in("status", ["geplant", "bestaetigt", "unterbesetzt"])
       .order("datum_start", { ascending: true })
       .limit(5),
+    supabase.from("programme").select("id, name, schluessel").order("name"),
+    supabase
+      .from("buchungspositionen")
+      .select("programm_id, preis, buchungen!inner(status, gebucht_am)")
+      .not("programm_id", "is", null)
+      .neq("buchungen.status", "storniert")
+      .gte("buchungen.gebucht_am", von)
+      .lte("buchungen.gebucht_am", `${bis}T23:59:59`),
   ]);
   const terminIds = (termine || []).map((t: any) => t.id);
   const naechsteIds = (naechste || []).map((t: any) => t.id).filter((id: string) => !terminIds.includes(id));
@@ -75,19 +91,29 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
     abschnitte.map((a) => eintraege.filter((e) => e.datum >= a.von && e.datum <= a.bis).reduce((s, e) => s + e.betrag, 0));
 
   // Seminare (Buchungssystem)
-  let durchgefuehrt = 0, gebucht = 0, tn = 0, plaetze = 0, konferenzTn = 0;
+  // Seminare ohne Konferenz; die Konferenz ist eine eigene Gruppe (Markus 10/2026).
+  let durchgefuehrt = 0, gebucht = 0, tn = 0, plaetze = 0, konferenzTn = 0, konferenzSumme = 0;
+  let seminarAnzahl = 0, konferenzAnzahl = 0;
+  let konferenzTypId: string | null = null;
   const seminarEintraege: { datum: string; betrag: number }[] = [];
+  const konferenzEintraege: { datum: string; betrag: number }[] = [];
   (termine || []).forEach((t: any) => {
     const d = db.get(t.id);
     if (!d) return;
+    if ((t.seminartypen?.name || "").toLowerCase().includes("konferenz")) {
+      konferenzTn += d.teilnehmer;
+      konferenzSumme += d.umsatz;
+      konferenzAnzahl++;
+      konferenzTypId = t.seminartyp_id;
+      konferenzEintraege.push({ datum: t.datum_start, betrag: d.umsatz });
+      return;
+    }
     if ((t.datum_ende || t.datum_start) < heute) durchgefuehrt += d.umsatz;
     else gebucht += d.umsatz;
+    seminarAnzahl++;
     seminarEintraege.push({ datum: t.datum_start, betrag: d.umsatz });
-    if ((t.seminartypen?.name || "").toLowerCase().includes("konferenz")) konferenzTn += d.teilnehmer;
-    else {
-      tn += d.teilnehmer;
-      plaetze += Number(t.kapazitaet) || 0;
-    }
+    tn += d.teilnehmer;
+    plaetze += Number(t.kapazitaet) || 0;
   });
   const seminarSumme = durchgefuehrt + gebucht;
 
@@ -95,7 +121,7 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
   type Feld = { name: string; summe: number; anzahl: number; verlauf: number[]; farbe: string };
   const felder: Feld[] = (kategorien || [])
     .filter((k: any) => k.schluessel !== "seminar")
-    .map((k: any, i: number): Feld => {
+    .map((k: any): Feld => {
       const eintraege = (rechnungen || [])
         .filter((r: any) => r.kategorie === k.name)
         .map((r: any) => ({ datum: r.rechnungsdatum as string, betrag: Number(r.betrag_netto || 0) }));
@@ -104,23 +130,55 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
         summe: eintraege.reduce((s: number, e: any) => s + e.betrag, 0),
         anzahl: eintraege.length,
         verlauf: verteile(eintraege),
-        farbe: FARBEN[(i + 1) % FARBEN.length],
+        farbe: "",
       };
     });
   const unklar = (rechnungen || []).filter((r: any) => !r.kategorie || r.kategorie === UNKLAR);
   const unklarSumme = unklar.reduce((s: number, r: any) => s + Number(r.betrag_netto || 0), 0);
-  const weitere = felder.reduce((s, f) => s + f.summe, 0);
-  const gesamt = seminarSumme + weitere;
+  const programmZeilen = (programme || []).map((p: any) => {
+    const eintraege = (programmPos || [])
+      .filter((x: any) => x.programm_id === p.id)
+      .map((x: any) => ({ datum: String(x.buchungen?.gebucht_am || "").slice(0, 10), betrag: Number(x.preis || 0) }));
+    return { p, eintraege, summe: eintraege.reduce((s: number, e: any) => s + e.betrag, 0) };
+  });
+  const zeitraumQuery = `zeitraum=${zeitraum.key}${zeitraum.key === "frei" ? `&von=${von}&bis=${bis}` : ""}`;
+
+  type Gruppe = { name: string; summe: number; farbe: string; verlauf: number[]; sub: string; href: string };
+  const gruppenOhneFarbe: Omit<Gruppe, "farbe">[] = [
+    {
+      name: "Seminare",
+      summe: seminarSumme,
+      verlauf: verteile(seminarEintraege),
+      sub: seminarAnzahl ? `${seminarAnzahl} Termin${seminarAnzahl === 1 ? "" : "e"} · ohne Konferenz${gebucht ? ` · ${formatEURGanz(gebucht)} gebucht, steht aus` : ""}` : "keine Termine im Zeitraum",
+      href: `/dashboard?ansicht=seminare&${zeitraumQuery}`,
+    },
+    {
+      name: "Konferenz",
+      summe: konferenzSumme,
+      verlauf: verteile(konferenzEintraege),
+      sub: konferenzAnzahl ? `${konferenzAnzahl === 1 ? "1 Konferenz" : `${konferenzAnzahl} Konferenzen`} · ${konferenzTn} TN` : "keine Konferenz im Zeitraum",
+      href: konferenzTypId ? `/dashboard?ansicht=seminare&${zeitraumQuery}&seminartyp=${konferenzTypId}` : "/termine",
+    },
+    ...programmZeilen.map(({ p, eintraege, summe }: any) => ({
+      name: `Programm ${p.name}`,
+      summe,
+      verlauf: verteile(eintraege),
+      sub: eintraege.length ? `${eintraege.length} Buchung${eintraege.length === 1 ? "" : "en"} · voller Vertragswert` : "noch keine Buchung im Zeitraum",
+      href: `/programme/${p.schluessel}`,
+    })),
+    ...felder.map((f) => ({
+      name: f.name,
+      summe: f.summe,
+      verlauf: f.verlauf,
+      sub: f.anzahl ? `${f.anzahl} Rechnung${f.anzahl === 1 ? "" : "en"} (FastBill)` : "keine Rechnung im Zeitraum",
+      href: "/buchungen/fastbill",
+    })),
+  ];
+  const zeilen: Gruppe[] = gruppenOhneFarbe.map((g, i) => ({ ...g, farbe: FARBEN[i % FARBEN.length] }));
+  const gesamt = zeilen.reduce((s, z) => s + z.summe, 0);
   const offenSumme = (offen || []).reduce((s: number, p: any) => s + Number(p.preis || 0), 0);
   const offenAnzahl = new Set((offen || []).map((p: any) => p.buchung_id)).size;
 
-  const zeilen = [
-    { name: "Seminare", summe: seminarSumme, farbe: FARBEN[0], verlauf: verteile(seminarEintraege), sub: `${(termine || []).length} Termine · ${formatEURGanz(gebucht)} davon gebucht, steht aus`, href: `/dashboard?ansicht=seminare&zeitraum=${zeitraum.key}${zeitraum.key === "frei" ? `&von=${von}&bis=${bis}` : ""}` },
-    ...felder
-      .filter((f) => f.anzahl > 0)
-      .map((f) => ({ name: f.name, summe: f.summe, farbe: f.farbe, verlauf: f.verlauf, sub: `${f.anzahl} Rechnung${f.anzahl === 1 ? "" : "en"}`, href: "/buchungen/fastbill" })),
-  ].sort((a, b) => b.summe - a.summe);
-  const ohneUmsatz = felder.filter((f) => f.anzahl === 0).map((f) => f.name);
   const max = Math.max(1, ...zeilen.map((z) => z.summe), unklarSumme);
   const verlaufText = art === "Monat" ? `pro Monat, ${monatKurz(abschnitte[0].von.slice(0, 7))} – ${monatKurz(abschnitte[abschnitte.length - 1].von.slice(0, 7))}` : "pro Woche";
 
@@ -149,11 +207,11 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
           </div>
         </section>
 
-        <Link href={zeilen.find((z) => z.name === "Seminare")!.href} className="au-sz-kpi au-sz-kpi-link" prefetch={false}>
+        <Link href={zeilen[0].href} className="au-sz-kpi au-sz-kpi-link" prefetch={false}>
           <div className="au-sz-kpi-kopf"><span>Umsatz Seminare</span><span className="au-sz-pfeil-klein">→</span></div>
           <div className="au-sz-kpi-wert">{formatEURGanz(seminarSumme)}</div>
-          <div className="au-sz-kpi-sub">{formatEURGanz(durchgefuehrt)} durchgeführt</div>
-          <div className="au-sz-kpi-sub">{formatEURGanz(gebucht)} gebucht, steht aus</div>
+          <div className="au-sz-kpi-sub">{formatEURGanz(durchgefuehrt)} durchgeführt · {formatEURGanz(gebucht)} gebucht</div>
+          <div className="au-sz-kpi-sub">ohne Konferenz{konferenzSumme ? ` (${formatEURGanz(konferenzSumme)} separat)` : ""}</div>
         </Link>
 
         <Link href="/termine" className="au-sz-kpi au-sz-kpi-link" prefetch={false}>
@@ -180,15 +238,15 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
         </header>
         <div className="au-sz-artliste">
           {zeilen.map((z) => (
-            <Link key={z.name} href={z.href} className="au-ue-feld" prefetch={false}>
+            <Link key={z.name} href={z.href} className={`au-ue-feld${z.summe ? "" : " leer"}`} prefetch={false}>
               <span className="au-sz-name">
                 <b><i className="au-ue-punkt" style={{ background: z.farbe }} />{z.name}</b>
                 <small>{z.sub}</small>
               </span>
               <span className="au-ue-spark">{abschnitte.length >= 2 && z.verlauf.some((v) => v) ? <Sparkline werte={z.verlauf} farbe={z.farbe} /> : null}</span>
               <span className="au-sz-db">
-                <span className="au-sz-db-spur"><span style={{ width: `${Math.max(1, (z.summe / max) * 100)}%`, background: z.farbe }} /></span>
-                <b>{formatEURGanz(z.summe)}</b>
+                <span className="au-sz-db-spur">{z.summe > 0 && <span style={{ width: `${Math.max(1, (z.summe / max) * 100)}%`, background: z.farbe }} />}</span>
+                <b>{z.summe ? formatEURGanz(z.summe) : "—"}</b>
               </span>
             </Link>
           ))}
@@ -206,7 +264,6 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
             </Link>
           )}
         </div>
-        {ohneUmsatz.length > 0 && <p className="au-ue-fuss">Ohne Umsatz im Zeitraum: {ohneUmsatz.join(", ")}</p>}
       </section>
 
       <section className="au-sz-karte">
