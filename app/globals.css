@@ -6366,3 +6366,4 @@ a.au-sz-chip { text-decoration: none; }
   .au-ue-termin .au-sz-ausl { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 0.6rem; }
   .au-ue-unten { grid-template-columns: minmax(0, 1fr); }
 }
+.au-ue-feld .au-sz-name small { white-space: normal; }
