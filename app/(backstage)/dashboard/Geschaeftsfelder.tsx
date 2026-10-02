@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { berechneDeckungsbeitraege } from "@/lib/deckungsbeitrag";
-import { formatEURGanz, formatDatum, MONATSNAMEN } from "@/lib/format";
+import { formatEURGanz, formatDatum } from "@/lib/format";
+import { zeitraumAus, monatKurz } from "@/lib/zeitraeume";
 import { Sparkline } from "./SeminarCockpit";
 
 // Geschaeftsfelder auf der Dashboard-Uebersicht, rollierend 12 Monate.
@@ -20,37 +21,6 @@ const UNKLAR = "unklar";
 const tagMinus = (iso: string, tage: number) => new Date(Date.parse(iso) - tage * 86400000).toISOString().slice(0, 10);
 const MS_TAG = 86400000;
 const isoTag = (d: Date) => d.toISOString().slice(0, 10);
-const monatKurz = (ym: string) => `${MONATSNAMEN[Number(ym.slice(5, 7)) - 1].slice(0, 3)} ${ym.slice(0, 4)}`;
-const istDatum = (s: string | undefined) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
-
-// Waehlbare Zeitraeume. Vorher stand nur "rollierend 12 Monate" ohne Datum da --
-// unklar, worauf sich die Zahlen beziehen (Markus 10/2026). Jeder Zeitraum hat
-// konkrete Daten von/bis; laufende Zeitraeume enden heute.
-export function zeitraumAus(param: string | undefined, heute: string, vonParam?: string, bisParam?: string) {
-  const [j, m] = heute.split("-").map(Number);
-  const aktuellesJahr = j;
-  const kalender = (key: string, titel: string, von: string, bisVoll: string) => {
-    const bis = bisVoll < heute ? bisVoll : heute;
-    return { key, titel, von, bis, laufend: bis === heute && bisVoll > heute };
-  };
-  if (param === "monat") return kalender("monat", `${MONATSNAMEN[m - 1]} ${j}`, isoTag(new Date(Date.UTC(j, m - 1, 1))), isoTag(new Date(Date.UTC(j, m, 0))));
-  if (param === "vormonat") {
-    const v = new Date(Date.UTC(j, m - 2, 1));
-    return kalender("vormonat", `${MONATSNAMEN[v.getUTCMonth()]} ${v.getUTCFullYear()}`, isoTag(v), isoTag(new Date(Date.UTC(j, m - 1, 0))));
-  }
-  if (param === "3m") return { key: "3m", titel: "Letzte 3 Monate", von: isoTag(new Date(Date.UTC(j, m - 4, Number(heute.slice(8)) + 1))), bis: heute, laufend: false };
-  if (param === "quartal") {
-    const q = Math.floor((m - 1) / 3);
-    return kalender("quartal", `Q${q + 1} ${j}`, isoTag(new Date(Date.UTC(j, q * 3, 1))), isoTag(new Date(Date.UTC(j, q * 3 + 3, 0))));
-  }
-  if (param === "frei" && istDatum(vonParam) && istDatum(bisParam)) {
-    const [a, b] = [vonParam!, bisParam!].sort();
-    return { key: "frei", titel: "Freier Zeitraum", von: a, bis: b, laufend: false };
-  }
-  const jahr = Number(param);
-  if (Number.isInteger(jahr) && jahr >= 2020 && jahr <= aktuellesJahr + 1) return kalender(String(jahr), `Kalenderjahr ${jahr}`, `${jahr}-01-01`, `${jahr}-12-31`);
-  return { key: "12m", titel: "Letzte 12 Monate", von: tagMinus(heute, 364), bis: heute, laufend: false };
-}
 
 // Verlauf fuer die Sparklines: bis ~3 Monate pro Woche, darueber pro Monat --
 // 12 Monatswerte ergaben bei "Dieser Monat" keinen Sinn.
@@ -87,7 +57,7 @@ export default async function Geschaeftsfelder({
   vonParam?: string;
   bisParam?: string;
 }) {
-  const zr = zeitraumAus(zeitraumParam, heute, vonParam, bisParam);
+  const zr = zeitraumAus(zeitraumParam, heute, { vonParam, bisParam, kappenBisHeute: true });
   const { von, bis } = zr;
   const aktuellesJahr = Number(heute.slice(0, 4));
   const auswahl = [

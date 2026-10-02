@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { berechneDeckungsbeitraege, ladeFremdkostenProPerson } from "@/lib/deckungsbeitrag";
 import SeminarCockpit from "./SeminarCockpit";
 import { requireAdmin } from "@/lib/rechte";
+import { zeitraumAus } from "@/lib/zeitraeume";
 import Geschaeftsfelder from "./Geschaeftsfelder";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -40,7 +41,6 @@ export default async function DashboardPage({
   await requireAdmin();
   const { ansicht: ansichtRaw, jahr: jahrRaw, seminartyp, zeitraum, von, bis } = await searchParams;
   const ansicht: Ansicht = (TABS.some((t) => t.key === ansichtRaw) ? ansichtRaw : "uebersicht") as Ansicht;
-  const jahr = Number(jahrRaw) || new Date().getFullYear();
 
   const supabase = getSupabaseAdmin();
   const heute = new Date().toISOString().slice(0, 10);
@@ -58,7 +58,7 @@ export default async function DashboardPage({
       </nav>
 
       {ansicht === "uebersicht" && <Uebersicht supabase={supabase} heute={heute} zeitraum={zeitraum} von={von} bis={bis} />}
-      {ansicht === "seminare" && <UmsatzProSeminar supabase={supabase} heute={heute} jahr={jahr} seminartypFilter={seminartyp} />}
+      {ansicht === "seminare" && <UmsatzProSeminar supabase={supabase} heute={heute} zeitraumParam={zeitraum || jahrRaw} von={von} bis={bis} seminartypFilter={seminartyp} />}
       {ansicht === "nachfrage" && <Nachfrage supabase={supabase} />}
       {ansicht === "auslastung" && <Auslastung supabase={supabase} heute={heute} />}
       {ansicht === "kunden" && <Kunden supabase={supabase} />}
@@ -249,71 +249,95 @@ async function NaechsteGeburtstage() {
 async function UmsatzProSeminar({
   supabase,
   heute,
-  jahr,
+  zeitraumParam,
+  von,
+  bis,
   seminartypFilter,
 }: {
   supabase: any;
   heute: string;
-  jahr: number;
+  zeitraumParam?: string;
+  von?: string;
+  bis?: string;
   seminartypFilter?: string;
 }) {
+  // Zeitraum nach Termin-Beginn, Standard: laufendes Jahr (Vergangenes +
+  // bereits Gebuchtes). Nicht bis heute gekappt -- kuenftige gebuchte Termine
+  // gehoeren ausdruecklich dazu (Markus 10/2026).
+  const jahr = Number(heute.slice(0, 4));
+  const zr = zeitraumAus(zeitraumParam, heute, { vonParam: von, bisParam: bis, standard: String(jahr) });
+
   let terminQuery = supabase
     .from("seminartermine")
     .select("id, titel, kennung, datum_start, kapazitaet, seminartypen(id, name, farbe)")
-    .gte("datum_start", `${jahr}-01-01`)
-    .lte("datum_start", `${jahr}-12-31`)
+    .gte("datum_start", zr.von)
+    .lte("datum_start", zr.bis)
     .neq("status", "abgesagt")
     .order("datum_start", { ascending: true });
   if (seminartypFilter) terminQuery = terminQuery.eq("seminartyp_id", seminartypFilter);
-  // Parallel statt nacheinander -- jede Abfrage ist ein eigener Round-Trip zur DB.
   const [fremdkostenProPerson, { data: seminartypen }, { data: termine }] = await Promise.all([
     ladeFremdkostenProPerson(supabase),
     supabase.from("seminartypen").select("id, name").order("name"),
     terminQuery,
   ]);
 
-  // Gleiche Rechnung wie auf der Termin-Seite (lib/deckungsbeitrag.ts).
   const dbProTermin = await berechneDeckungsbeitraege(supabase, (termine || []).map((t: any) => t.id));
   const zeilen = (termine || []).map((t: any) => ({ ...t, ...dbProTermin.get(t.id)! }));
-  // Kommend: naechster zuerst. Vergangen: neuester zuerst -- beides oben das,
-  // was gerade am meisten interessiert.
   const kommend = zeilen.filter((z: any) => z.datum_start >= heute);
   const vergangen = zeilen.filter((z: any) => z.datum_start < heute).reverse();
 
-  const jahre = [jahr - 2, jahr - 1, jahr, jahr + 1];
+  const gruppen = [
+    { titel: "Rückblick", optionen: [["vormonat", "Vormonat"], ["3m", "Letzte 3 Monate"], ["12m", "Letzte 12 Monate"], [String(jahr - 1), String(jahr - 1)]] },
+    { titel: "Aktuell", optionen: [["monat", "Dieser Monat"], ["quartal", "Dieses Quartal"], [String(jahr), String(jahr)]] },
+    { titel: "Vorschau", optionen: [["naechster-monat", "Nächster Monat"], ["naechstes-quartal", "Nächstes Quartal"], ["naechste-12m", "Nächste 12 Monate"], [String(jahr + 1), String(jahr + 1)]] },
+  ];
+  const link = (key: string) =>
+    `/dashboard?ansicht=seminare&zeitraum=${key}${seminartypFilter ? `&seminartyp=${seminartypFilter}` : ""}`;
 
   return (
-    <Panel
-      titel={`Seminare ${jahr}: Umsatz & Deckungsbeitrag`}
-      className="au-panel-breit"
-      aktion={
-        <form method="get" className="au-panel-filter">
+    <Panel titel="Seminare: Umsatz & Deckungsbeitrag" className="au-panel-breit">
+      <div className="au-zr-auswahl">
+        {gruppen.map((g) => (
+          <div key={g.titel} className="au-zr-gruppe">
+            <span className="au-zr-gruppe-titel">{g.titel}</span>
+            <nav className="au-gf-zeitraum" aria-label={`Zeitraum ${g.titel}`}>
+              {g.optionen.map(([key, label]) => (
+                <Link key={key} href={link(key)} className={key === zr.key ? "aktiv" : ""} aria-current={key === zr.key ? "true" : undefined} prefetch={false}>
+                  {label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        ))}
+        <form method="get" className="au-zr-gruppe au-zr-frei">
           <input type="hidden" name="ansicht" value="seminare" />
-          <select name="jahr" defaultValue={jahr} aria-label="Jahr" className="au-select">
-            {jahre.map((j) => (
-              <option key={j} value={j}>{j}</option>
-            ))}
-          </select>
-          <select name="seminartyp" defaultValue={seminartypFilter || ""} aria-label="Seminar" className="au-select">
-            <option value="">Alle Seminare</option>
-            {(seminartypen || []).map((s: any) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-          <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Anzeigen</button>
+          <span className="au-zr-gruppe-titel">Frei / Seminarart</span>
+          <div className="au-gf-frei" style={{ justifyContent: "flex-start", width: "auto" }}>
+            <input type="date" name="von" defaultValue={zr.von} aria-label="von" className="au-input" />
+            <span aria-hidden="true">–</span>
+            <input type="date" name="bis" defaultValue={zr.bis} aria-label="bis" className="au-input" />
+            <input type="hidden" name="zeitraum" value="frei" />
+            <select name="seminartyp" defaultValue={seminartypFilter || ""} aria-label="Seminarart" className="au-select">
+              <option value="">Alle Seminare</option>
+              {(seminartypen || []).map((t: any) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <button type="submit" className={`au-btn au-btn-sm ${zr.key === "frei" ? "au-btn-primary" : "au-btn-secondary"}`}>Anzeigen</button>
+          </div>
         </form>
-      }
-    >
-      <SeminarCockpit supabase={supabase} heute={heute} jahr={jahr} seminartypFilter={seminartypFilter} />
-      <h3 className="au-cockpit-zwischentitel" style={{ marginTop: "2rem" }}>Alle Termine {jahr} im Einzelnen</h3>
-      {!zeilen.length && <p className="au-leer">Keine Seminare in {jahr}.</p>}
-      <SeminarGruppe titel="Kommend" zeilen={kommend} />
-      <SeminarGruppe titel="Vergangen" zeilen={vergangen} />
+      </div>
+
+      <SeminarCockpit supabase={supabase} heute={heute} zeitraum={zr} seminartypFilter={seminartypFilter} />
+      <h3 className="au-cockpit-zwischentitel" style={{ marginTop: "2rem" }}>Alle Termine im Zeitraum</h3>
+      {!zeilen.length && <p className="au-leer">Keine Seminare im Zeitraum.</p>}
+      <SeminarGruppe titel="Gebucht, Termin steht aus" zeilen={kommend} />
+      <SeminarGruppe titel="Durchgeführt" zeilen={vergangen} />
 
       <p className="au-fussnote">
-        Deckungsbeitrag = Umsatz − Fremdkosten pro Person: Teilnehmer (inkl. Freiplätze) nach ihrer Option, Referenten/Mitarbeiter nach dem Personal-Satz des Termins,
-        sonst allgemeine Pauschale {formatEUR(fremdkostenProPerson)} netto (<Link href="/einstellungen" prefetch={false}>einstellbar</Link>). Umsatz und Kosten nur aus echten Buchungen – Personen nur aus den Pipedrive-Altdaten zählen nicht;
-        Stornos ausgeschlossen, unbezahlte („angefragte“) Buchungen enthalten und separat ausgewiesen. Alle Beträge netto zzgl. 19 % USt.
+        Zeitraum nach Termin-Beginn; künftige Termine mit dem heutigen Buchungsstand. Deckungsbeitrag = Umsatz − Fremdkosten pro Person: Teilnehmer (inkl. Freiplätze) nach ihrer Option, Referenten/Mitarbeiter nach dem Personal-Satz des Termins,
+        sonst allgemeine Pauschale {formatEUR(fremdkostenProPerson)} netto (<Link href="/einstellungen" prefetch={false}>einstellbar</Link>); liegt eine Hotelrechnung vor, zählen deren echte Kosten. Umsatz und Kosten nur aus echten Buchungen – Personen nur aus den Pipedrive-Altdaten zählen nicht;
+        Stornos ausgeschlossen, unbezahlte („angefragte“) Buchungen enthalten. Alle Beträge netto zzgl. 19 % USt.
       </p>
     </Panel>
   );
