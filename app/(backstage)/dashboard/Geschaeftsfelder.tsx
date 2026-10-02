@@ -99,11 +99,17 @@ export default async function Geschaeftsfelder({
     { key: String(aktuellesJahr), label: String(aktuellesJahr) },
     { key: String(aktuellesJahr - 1), label: String(aktuellesJahr - 1) },
   ];
-  const [{ data: kategorien }, { data: rechnungen }, { data: termine }] = await Promise.all([
+  const [{ data: kategorien }, { data: rechnungen }, { data: termine }, { data: fbStand }, { data: naechster }] = await Promise.all([
     supabase.from("fastbill_kategorien").select("id, name, schluessel, reihenfolge").order("reihenfolge").order("name"),
     supabase.from("fastbill_rechnungen").select("kategorie, betrag_netto, rechnungsdatum").gte("rechnungsdatum", von).lte("rechnungsdatum", bis),
     supabase.from("seminartermine").select("id, datum_start").gte("datum_start", von).lte("datum_start", bis).neq("status", "abgesagt"),
+    supabase.from("fastbill_rechnungen").select("rechnungsdatum").order("rechnungsdatum", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("seminartermine").select("kennung, titel, datum_start").gt("datum_start", bis).neq("status", "abgesagt").order("datum_start").limit(1).maybeSingle(),
   ]);
+  // Stand der FastBill-Daten: Liegt der Zeitraum (teils) nach dem letzten
+  // Import, fehlen dort Rechnungen -- sonst sieht "0 €" wie ein Fehler aus.
+  const fastbillBis: string | null = (fbStand as any)?.rechnungsdatum || null;
+  const fastbillLuecke = !!fastbillBis && bis > fastbillBis;
 
   const { art, abschnitte } = verlaufsAbschnitte(von, bis);
   const verlauf =
@@ -177,6 +183,19 @@ export default async function Geschaeftsfelder({
             Seminare: Termine mit Beginn im Zeitraum, aus dem Buchungssystem · übrige Geschäftsfelder: zugeordnete FastBill-Rechnungen nach Rechnungsdatum
             {seminarName ? ` (FastBill-Kategorie „${seminarName}“ nicht mitgezählt, sonst doppelt)` : ""}
           </div>
+          {gesamt === 0 && (
+            <div className="au-gf-hinweis">
+              Im Zeitraum gibt es noch keinen Umsatz: Seminare zählen ab Termin-Beginn
+              {naechster ? ` (nächstes: ${(naechster as any).kennung || (naechster as any).titel} am ${formatDatum((naechster as any).datum_start)})` : ""}
+              {fastbillLuecke ? ", FastBill-Rechnungen sind für diesen Zeitraum noch nicht importiert." : "."}
+            </div>
+          )}
+          {fastbillLuecke && (
+            <div className="au-gf-hinweis">
+              FastBill-Rechnungen sind bis <strong>{formatDatum(fastbillBis!)}</strong> importiert – danach fehlen sie hier noch.{" "}
+              <Link href="/buchungen/fastbill" prefetch={false}>Jetzt importieren →</Link>
+            </div>
+          )}
           {unklarSumme > 0 && (
             <div className="au-cockpit-vergleich">
               Nicht enthalten: {formatEURGanz(unklarSumme)} aus noch nicht zugeordneten Rechnungen im selben Zeitraum ·{" "}

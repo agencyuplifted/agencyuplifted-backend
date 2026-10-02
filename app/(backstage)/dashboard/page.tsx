@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/rechte";
 import Geschaeftsfelder from "./Geschaeftsfelder";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatEUR, formatEURBrutto, formatEURGanz, formatDatum, MWST_SATZ } from "@/lib/format";
+import { formatEUR, formatEURGanz, formatDatum } from "@/lib/format";
 import { ladeAnstehendeGeburtstage } from "@/lib/geburtstage";
 import FaelligWidget from "../wiedervorlage/FaelligWidget";
 import { getAktuellerBenutzer } from "@/lib/auth";
@@ -119,36 +119,15 @@ function Panel({ titel, aktion, children, className }: { titel: string; aktion?:
 }
 
 async function Uebersicht({ supabase, heute, zeitraum, von, bis }: { supabase: any; heute: string; zeitraum?: string; von?: string; bis?: string }) {
-  const in30Tagen = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-  const [
-    { count: teilnehmerCount },
-    { count: orgaCount },
-    { count: terminCount },
-    { count: termine30 },
-    { count: legacyCount },
-    { count: leadsOffen },
-    { count: wartelisteCount },
-    { data: positionen },
-    { data: naechsteTermine },
-  ] = await Promise.all([
-    supabase.from("teilnehmer").select("*", { count: "exact", head: true }).is("deaktiviert_am", null),
-    supabase.from("organisationen").select("*", { count: "exact", head: true }).is("deaktiviert_am", null),
-    supabase.from("seminartermine").select("*", { count: "exact", head: true }).gte("datum_start", heute).in("status", ["geplant", "bestaetigt", "unterbesetzt"]),
-    supabase.from("seminartermine").select("*", { count: "exact", head: true }).gte("datum_start", heute).lte("datum_start", in30Tagen).in("status", ["geplant", "bestaetigt", "unterbesetzt"]),
-    supabase.from("legacy_buchungen").select("*", { count: "exact", head: true }),
-    supabase.from("leads").select("*", { count: "exact", head: true }).not("status", "in", "(gebucht,kein_interesse)"),
-    supabase.from("warteliste").select("*", { count: "exact", head: true }),
-    supabase.from("buchungspositionen").select("preis, buchungen!inner(status)").neq("buchungen.status", "storniert"),
-    supabase
-      .from("seminartermine")
-      .select("id, titel, kennung, datum_start, datum_ende, zeit_start, format, kapazitaet, seminartypen(name, farbe), veranstaltungsorte(name, ort)")
-      .gte("datum_start", heute)
-      .in("status", ["geplant", "bestaetigt", "unterbesetzt"])
-      .order("datum_start", { ascending: true })
-      .limit(5),
-  ]);
+  const { data: naechsteTermine } = await supabase
+    .from("seminartermine")
+    .select("id, titel, kennung, datum_start, datum_ende, zeit_start, format, kapazitaet, seminartypen(name, farbe), veranstaltungsorte(name, ort)")
+    .gte("datum_start", heute)
+    .in("status", ["geplant", "bestaetigt", "unterbesetzt"])
+    .order("datum_start", { ascending: true })
+    .limit(5);
 
-  const umsatzNetto = (positionen || []).reduce((sum: number, p: any) => sum + Number(p.preis || 0), 0);
+  const jahrKpi = await ladeJahresKennzahlen(supabase, heute);
 
   // Belegung der naechsten Termine: Teilnehmer pro Person, nicht pro
   // Buchungsposition -- sonst zaehlte ein Zimmer-Upgrade als zweiter Platz.
@@ -158,11 +137,39 @@ async function Uebersicht({ supabase, heute, zeitraum, von, bis }: { supabase: a
 
   return (
     <>
-      <div className="au-kennzahlen">
-        <Kennzahl label="Anstehende Seminare" wert={terminCount ?? 0} kontext={`${termine30 ?? 0} in den nächsten 30 Tagen`} href="/termine" />
-        <Kennzahl label="Offene Leads" wert={leadsOffen ?? 0} kontext={`${wartelisteCount ?? 0} auf der Warteliste`} href="/leads" />
-        <Kennzahl label="Umsatz netto, alle Buchungen" wert={formatEURGanz(umsatzNetto)} kontext={`gesamter Bestand inkl. gebuchter künftiger Termine · brutto ${formatEURGanz(umsatzNetto * (1 + MWST_SATZ))}`} href="/buchungen" />
-        <Kennzahl label="Teilnehmer" wert={teilnehmerCount ?? 0} kontext={`${orgaCount ?? 0} Organisationen · ${legacyCount ?? 0} Alt-Teilnahmen`} href="/teilnehmer" />
+      {/* Jahreskennzahlen -- jede Kachel beantwortet eine Frage (Markus 10/2026):
+          Seminarumsatz, Gesamtumsatz, uebrige Geschaeftsfelder, Teilnehmer/
+          freie Plaetze, offene Zahlungen. Ersetzt Anzahl-Kacheln ohne Zeitbezug. */}
+      <div className="au-kennzahlen au-kennzahlen-5">
+        <Kennzahl
+          label={`Umsatz Seminare ${jahrKpi.jahr}`}
+          wert={formatEURGanz(jahrKpi.seminare.gesamt)}
+          kontext={`${formatEURGanz(jahrKpi.seminare.durchgefuehrt)} durchgeführt · ${formatEURGanz(jahrKpi.seminare.gebucht)} gebucht, Termin steht noch aus · inkl. Konferenz`}
+          href="/dashboard?ansicht=seminare"
+        />
+        <Kennzahl
+          label={`Umsatz gesamt ${jahrKpi.jahr}`}
+          wert={formatEURGanz(jahrKpi.seminare.gesamt + jahrKpi.weitere.summe)}
+          kontext={`Seminare + übrige Geschäftsfelder${jahrKpi.weitere.unklar > 0 ? ` · ohne ${formatEURGanz(jahrKpi.weitere.unklar)} noch nicht zugeordnet` : ""}`}
+        />
+        <Kennzahl
+          label={`Umsatz übrige Geschäftsfelder ${jahrKpi.jahr}`}
+          wert={formatEURGanz(jahrKpi.weitere.summe)}
+          kontext={`zugeordnete FastBill-Rechnungen (Beratung, Buch …) · Daten bis ${jahrKpi.fastbillStand ? formatDatum(jahrKpi.fastbillStand) : "—"}`}
+          href="/buchungen/fastbill/kategorisieren"
+        />
+        <Kennzahl
+          label={`Teilnehmer ${jahrKpi.jahr} bislang`}
+          wert={jahrKpi.teilnehmerBislang}
+          kontext={`ohne Konferenz · ${jahrKpi.freiePlaetze} von ${jahrKpi.plaetzeKommend} Plätzen frei bis Jahresende (${jahrKpi.termineKommend} Termine)`}
+          href="/termine"
+        />
+        <Kennzahl
+          label="Offene Zahlungen"
+          wert={formatEURGanz(jahrKpi.offen.summe)}
+          kontext={jahrKpi.offen.anzahl ? `${jahrKpi.offen.anzahl} Buchung${jahrKpi.offen.anzahl === 1 ? "" : "en"} angefragt, noch nicht bezahlt` : "alles bezahlt"}
+          href="/buchungen"
+        />
       </div>
 
       <Geschaeftsfelder supabase={supabase} heute={heute} zeitraum={zeitraum} vonParam={von} bisParam={bis} />
@@ -668,4 +675,54 @@ async function Vertrieb({ supabase }: { supabase: any }) {
       </div>
     </>
   );
+}
+
+// Jahreskennzahlen fuer die Kacheln der Uebersicht (laufendes Kalenderjahr).
+// Seminare aus dem Buchungssystem (inkl. Konferenz), uebrige Geschaeftsfelder
+// aus FastBill ohne die Kategorie mit schluessel 'seminar' (sonst doppelt).
+async function ladeJahresKennzahlen(supabase: any, heute: string) {
+  const jahr = Number(heute.slice(0, 4));
+  const [{ data: termine }, { data: kategorien }, { data: rechnungen }, { data: stand }, { data: offen }] = await Promise.all([
+    supabase.from("seminartermine").select("id, datum_start, datum_ende, kapazitaet, seminartypen(name)").gte("datum_start", `${jahr}-01-01`).lte("datum_start", `${jahr}-12-31`).neq("status", "abgesagt"),
+    supabase.from("fastbill_kategorien").select("name, schluessel"),
+    supabase.from("fastbill_rechnungen").select("kategorie, betrag_netto").gte("rechnungsdatum", `${jahr}-01-01`).lte("rechnungsdatum", heute),
+    supabase.from("fastbill_rechnungen").select("rechnungsdatum").order("rechnungsdatum", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("buchungspositionen").select("buchung_id, preis, buchungen!inner(status)").eq("buchungen.status", "angefragt"),
+  ]);
+  const db = await berechneDeckungsbeitraege(supabase, (termine || []).map((t: any) => t.id));
+  let durchgefuehrt = 0, gebucht = 0, teilnehmerBislang = 0, plaetzeKommend = 0, belegtKommend = 0, termineKommend = 0;
+  (termine || []).forEach((t: any) => {
+    const d = db.get(t.id);
+    if (!d) return;
+    const vergangen = (t.datum_ende || t.datum_start) < heute;
+    if (vergangen) durchgefuehrt += d.umsatz;
+    else gebucht += d.umsatz;
+    const konferenz = (t.seminartypen?.name || "").toLowerCase().includes("konferenz");
+    if (konferenz) return;
+    if (vergangen) teilnehmerBislang += d.teilnehmer;
+    else {
+      termineKommend++;
+      plaetzeKommend += Number(t.kapazitaet) || 0;
+      belegtKommend += Math.min(d.teilnehmer, Number(t.kapazitaet) || d.teilnehmer);
+    }
+  });
+  const seminarName = (kategorien || []).find((k: any) => k.schluessel === "seminar")?.name;
+  const weitere = { summe: 0, unklar: 0 };
+  (rechnungen || []).forEach((r: any) => {
+    const b = Number(r.betrag_netto || 0);
+    if (!r.kategorie || r.kategorie === "unklar") weitere.unklar += b;
+    else if (r.kategorie !== seminarName) weitere.summe += b;
+  });
+  const offenSumme = (offen || []).reduce((s: number, p: any) => s + Number(p.preis || 0), 0);
+  return {
+    jahr,
+    seminare: { durchgefuehrt, gebucht, gesamt: durchgefuehrt + gebucht },
+    weitere,
+    fastbillStand: (stand as any)?.rechnungsdatum || null,
+    teilnehmerBislang,
+    termineKommend,
+    plaetzeKommend,
+    freiePlaetze: Math.max(0, plaetzeKommend - belegtKommend),
+    offen: { summe: offenSumme, anzahl: new Set((offen || []).map((p: any) => p.buchung_id)).size },
+  };
 }

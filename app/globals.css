@@ -5960,3 +5960,13 @@ a.au-kliste-name:hover {
 }
 .au-gf-frei .au-input { margin: 0; width: auto; padding: 0.25rem 0.4rem; font-size: 0.8rem; }
 @media (max-width: 760px) { .au-gf-frei { justify-content: flex-start; } }
+
+.au-gf-hinweis {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-warning-soft);
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  color: var(--color-text);
+}
