@@ -6312,3 +6312,57 @@ a.au-kliste-name:hover {
   .au-sz-titel { min-width: 0; flex: 1; }
   .au-sz-filter { flex-wrap: nowrap; overflow-x: auto; }
 }
+
+/* Dashboard-Uebersicht (UebersichtCockpit.tsx), gleicher Stil wie Reiter Seminare */
+.au-sz-kpi-link { color: inherit; text-decoration: none; transition: border-color 0.12s, box-shadow 0.12s; }
+.au-sz-kpi-link:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-md); }
+.au-sz-pfeil-klein { color: var(--color-text-faint); }
+.au-sz-kpi-link:hover .au-sz-pfeil-klein { color: var(--color-accent); }
+a.au-sz-chip { text-decoration: none; }
+.au-sz-chip.warn { background: var(--color-warning-soft); color: var(--color-warning); }
+.au-sz-db b.gedimmt { color: var(--color-text-muted); }
+.au-ue-feld {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 1.6fr);
+  gap: 1rem;
+  align-items: center;
+  padding: 0.7rem 1.15rem;
+  border-bottom: 1px solid var(--color-border);
+  color: inherit;
+  text-decoration: none;
+}
+.au-ue-feld:last-child { border-bottom: 0; }
+.au-ue-feld:hover { background: var(--color-accent-soft); }
+.au-ue-feld.unklar { background: var(--color-bg); }
+.au-ue-feld.unklar:hover { background: var(--color-accent-soft); }
+.au-ue-punkt { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.au-ue-spark .au-sparkline { width: 100%; max-width: 160px; height: 32px; display: block; }
+.au-sz-db-spur > span[style*="background"] { border-radius: 0 4px 4px 0; }
+.au-ue-fuss { margin: 0; padding: 0.7rem 1.15rem; font-size: 0.78rem; color: var(--color-text-faint); border-top: 1px solid var(--color-border); }
+.au-ue-termin {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(110px, 160px);
+  gap: 1.25rem;
+  align-items: center;
+  padding: 0.65rem 1.15rem;
+  border-bottom: 1px solid var(--color-border);
+  color: inherit;
+  text-decoration: none;
+}
+.au-ue-termin:last-child { border-bottom: 0; }
+.au-ue-termin:hover { background: var(--color-accent-soft); }
+.au-ue-bis { font-size: 0.78rem; color: var(--color-text-muted); white-space: nowrap; }
+.au-ue-unten {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.au-ue-unten .au-panel { margin: 0; }
+@media (max-width: 860px) {
+  .au-ue-feld { grid-template-columns: minmax(0, 1fr); gap: 0.4rem; }
+  .au-ue-spark { display: none; }
+  .au-ue-termin { grid-template-columns: minmax(0, 1fr) auto; }
+  .au-ue-termin .au-sz-ausl { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 0.6rem; }
+  .au-ue-unten { grid-template-columns: minmax(0, 1fr); }
+}

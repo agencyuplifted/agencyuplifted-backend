@@ -43,26 +43,30 @@ const ARTEN: { art: ZeitraumArt; label: string }[] = [
   { art: "frei", label: "Eigener Zeitraum" },
 ];
 
+// Gemeinsam fuer die Reiter Uebersicht und Seminare; ohne seminartypen
+// entfaellt die Chip-Zeile.
 export function ZeitraumLeiste({
+  ansicht = "seminare",
   zeitraum,
   heute,
   seminartypen,
   seminartypFilter,
 }: {
+  ansicht?: string;
   zeitraum: Zeitraum;
   heute: string;
-  seminartypen: { id: string; name: string }[];
+  seminartypen?: { id: string; name: string }[];
   seminartypFilter?: string;
 }) {
   const art = zeitraumArt(zeitraum);
   const typ = seminartypFilter ? `&seminartyp=${seminartypFilter}` : "";
-  const link = (key: string, extra = typ) => `/dashboard?ansicht=seminare&zeitraum=${key}${extra}`;
+  const link = (key: string, extra = typ) => `/dashboard?ansicht=${ansicht}&zeitraum=${key}${extra}`;
   // Beim Wechsel Monat/Quartal/Jahr bleibt man "in der Naehe": enthaelt der
   // Zeitraum heute, landet man in der Periode von heute, sonst an seinem Anfang.
   const enthaeltHeute = zeitraum.von <= heute && zeitraum.bis >= heute;
   const anker = enthaeltHeute ? heute : zeitraum.von;
   const artLink = (a: ZeitraumArt) =>
-    a === "frei" ? `/dashboard?ansicht=seminare&zeitraum=frei&von=${zeitraum.von}&bis=${zeitraum.bis}${typ}` : link(zeitraumKey(a, anker));
+    a === "frei" ? `/dashboard?ansicht=${ansicht}&zeitraum=frei&von=${zeitraum.von}&bis=${zeitraum.bis}${typ}` : link(zeitraumKey(a, anker));
   const zustand = zeitraum.bis < heute ? "abgeschlossen" : zeitraum.von > heute ? "Vorschau" : "läuft";
 
   return (
@@ -90,7 +94,7 @@ export function ZeitraumLeiste({
           </div>
         ) : (
           <form method="get" className="au-sz-frei">
-            <input type="hidden" name="ansicht" value="seminare" />
+            <input type="hidden" name="ansicht" value={ansicht} />
             <input type="hidden" name="zeitraum" value="frei" />
             {seminartypFilter && <input type="hidden" name="seminartyp" value={seminartypFilter} />}
             <input type="date" name="von" defaultValue={zeitraum.von} aria-label="von" className="au-input" />
@@ -101,11 +105,12 @@ export function ZeitraumLeiste({
         )}
       </div>
 
+      {seminartypen && (
       <nav className="au-sz-filter" aria-label="Seminarart">
         {[{ id: "", name: "Alle Seminare" }, ...seminartypen].map((t) => {
           const aktiv = (seminartypFilter || "") === t.id;
           const mitTyp = t.id ? `&seminartyp=${t.id}` : "";
-          const ziel = art === "frei" ? `/dashboard?ansicht=seminare&zeitraum=frei&von=${zeitraum.von}&bis=${zeitraum.bis}${mitTyp}` : link(zeitraum.key, mitTyp);
+          const ziel = art === "frei" ? `/dashboard?ansicht=${ansicht}&zeitraum=frei&von=${zeitraum.von}&bis=${zeitraum.bis}${mitTyp}` : link(zeitraum.key, mitTyp);
           return (
             <Link key={t.id || "alle"} href={ziel} className={aktiv ? "aktiv" : ""} aria-current={aktiv ? "true" : undefined} prefetch={false}>
               {t.name}
@@ -113,6 +118,7 @@ export function ZeitraumLeiste({
           );
         })}
       </nav>
+      )}
     </div>
   );
 }

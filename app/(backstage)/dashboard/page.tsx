@@ -1,13 +1,12 @@
 export const dynamic = "force-dynamic";
 
-import { berechneDeckungsbeitraege } from "@/lib/deckungsbeitrag";
 import SeminarCockpit, { ZeitraumLeiste } from "./SeminarCockpit";
 import { requireAdmin } from "@/lib/rechte";
 import { zeitraumAus } from "@/lib/zeitraeume";
-import Geschaeftsfelder from "./Geschaeftsfelder";
+import UebersichtCockpit from "./UebersichtCockpit";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatEURGanz, formatDatum } from "@/lib/format";
+import { formatDatum } from "@/lib/format";
 import { ladeAnstehendeGeburtstage } from "@/lib/geburtstage";
 import FaelligWidget from "../wiedervorlage/FaelligWidget";
 import { getAktuellerBenutzer } from "@/lib/auth";
@@ -91,21 +90,6 @@ async function DashboardKopf() {
   );
 }
 
-function Kennzahl({ label, wert, kontext, href }: { label: string; wert: React.ReactNode; kontext?: React.ReactNode; href?: string }) {
-  const inhalt = (
-    <>
-      <div className="au-kennzahl-label">{label}</div>
-      <div className="au-kennzahl-wert">{wert}</div>
-      {kontext && <div className="au-kennzahl-kontext">{kontext}</div>}
-    </>
-  );
-  return href ? (
-    <Link href={href} className="au-kennzahl" prefetch={false}>{inhalt}</Link>
-  ) : (
-    <div className="au-kennzahl">{inhalt}</div>
-  );
-}
-
 function Panel({ titel, aktion, children, className }: { titel: string; aktion?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <section className={`au-panel ${className || ""}`}>
@@ -119,111 +103,20 @@ function Panel({ titel, aktion, children, className }: { titel: string; aktion?:
 }
 
 async function Uebersicht({ supabase, heute, zeitraum, von, bis }: { supabase: any; heute: string; zeitraum?: string; von?: string; bis?: string }) {
-  const { data: naechsteTermine } = await supabase
-    .from("seminartermine")
-    .select("id, titel, kennung, datum_start, datum_ende, zeit_start, format, kapazitaet, seminartypen(name, farbe), veranstaltungsorte(name, ort)")
-    .gte("datum_start", heute)
-    .in("status", ["geplant", "bestaetigt", "unterbesetzt"])
-    .order("datum_start", { ascending: true })
-    .limit(5);
-
-  const jahrKpi = await ladeJahresKennzahlen(supabase, heute);
-
-  // Belegung der naechsten Termine: Teilnehmer pro Person, nicht pro
-  // Buchungsposition -- sonst zaehlte ein Zimmer-Upgrade als zweiter Platz.
-  const dbNaechste = await berechneDeckungsbeitraege(supabase, (naechsteTermine || []).map((t: any) => t.id));
-  const belegt = new Map<string, number>();
-  dbNaechste.forEach((d, id) => belegt.set(id, d.teilnehmer));
-
+  // Ein Zeitraum fuer die ganze Seite, Standard laufendes Kalenderjahr --
+  // wie im Reiter Seminare (gleiche Leiste, gleiche Zahlen).
+  const zr = zeitraumAus(zeitraum, heute, { vonParam: von, bisParam: bis, standard: heute.slice(0, 4) });
   return (
-    <>
-      {/* Jahreskennzahlen -- jede Kachel beantwortet eine Frage (Markus 10/2026):
-          Seminarumsatz, Gesamtumsatz, uebrige Geschaeftsfelder, Teilnehmer/
-          freie Plaetze, offene Zahlungen. Ersetzt Anzahl-Kacheln ohne Zeitbezug. */}
-      <div className="au-kennzahlen au-kennzahlen-5">
-        <Kennzahl
-          label={`Umsatz Seminare ${jahrKpi.jahr}`}
-          wert={formatEURGanz(jahrKpi.seminare.gesamt)}
-          kontext={`${formatEURGanz(jahrKpi.seminare.durchgefuehrt)} durchgeführt · ${formatEURGanz(jahrKpi.seminare.gebucht)} gebucht, Termin steht noch aus · inkl. Konferenz`}
-          href="/dashboard?ansicht=seminare"
-        />
-        <Kennzahl
-          label={`Umsatz gesamt ${jahrKpi.jahr}`}
-          wert={formatEURGanz(jahrKpi.seminare.gesamt + jahrKpi.weitere.summe)}
-          kontext={`Seminare + übrige Geschäftsfelder${jahrKpi.weitere.unklar > 0 ? ` · ohne ${formatEURGanz(jahrKpi.weitere.unklar)} noch nicht zugeordnet` : ""}`}
-        />
-        <Kennzahl
-          label={`Umsatz übrige Geschäftsfelder ${jahrKpi.jahr}`}
-          wert={formatEURGanz(jahrKpi.weitere.summe)}
-          kontext={`zugeordnete FastBill-Rechnungen (Beratung, Buch …) · Daten bis ${jahrKpi.fastbillStand ? formatDatum(jahrKpi.fastbillStand) : "—"}`}
-          href="/buchungen/fastbill/kategorisieren"
-        />
-        <Kennzahl
-          label={`Teilnehmer ${jahrKpi.jahr} bislang`}
-          wert={jahrKpi.teilnehmerBislang}
-          kontext={`ohne Konferenz · ${jahrKpi.freiePlaetze} von ${jahrKpi.plaetzeKommend} Plätzen frei bis Jahresende (${jahrKpi.termineKommend} Termine)`}
-          href="/termine"
-        />
-        <Kennzahl
-          label="Offene Zahlungen"
-          wert={formatEURGanz(jahrKpi.offen.summe)}
-          kontext={jahrKpi.offen.anzahl ? `${jahrKpi.offen.anzahl} Buchung${jahrKpi.offen.anzahl === 1 ? "" : "en"} angefragt, noch nicht bezahlt` : "alles bezahlt"}
-          href="/buchungen"
-        />
+    <div className="au-sz-seite">
+      <ZeitraumLeiste ansicht="uebersicht" zeitraum={zr} heute={heute} />
+      <UebersichtCockpit supabase={supabase} heute={heute} zeitraum={zr} />
+      <div className="au-ue-unten">
+        <FaelligWidget />
+        <Panel titel="Geburtstage" aktion={<Link href="/geburtstage" className="au-panel-link" prefetch={false}>Alle →</Link>}>
+          <NaechsteGeburtstage />
+        </Panel>
       </div>
-
-      <Geschaeftsfelder supabase={supabase} heute={heute} zeitraum={zeitraum} vonParam={von} bisParam={bis} />
-
-      <div className="au-dash-raster">
-        <div className="au-dash-haupt">
-          <FaelligWidget />
-
-          <Panel titel="Nächste Seminare" aktion={<Link href="/termine" className="au-panel-link" prefetch={false}>Alle Termine →</Link>}>
-            {!naechsteTermine?.length && <p className="au-leer">Keine anstehenden Termine.</p>}
-            <ul className="au-terminliste">
-              {(naechsteTermine || []).map((t: any) => {
-                const anzahl = belegt.get(t.id) || 0;
-                const kapazitaet = Number(t.kapazitaet) || 0;
-                const anteil = kapazitaet ? Math.min(1, anzahl / kapazitaet) : 0;
-                const d = new Date(t.datum_start);
-                return (
-                  <li key={t.id}>
-                    <Link href={`/termine/${t.id}`} className="au-terminzeile" prefetch={false}>
-                      <span className="au-termin-datum" style={t.seminartypen?.farbe ? { borderColor: t.seminartypen.farbe } : undefined}>
-                        <strong>{d.getUTCDate()}</strong>
-                        <span>{d.toLocaleDateString("de-DE", { month: "short", timeZone: "UTC" })}</span>
-                      </span>
-                      <span className="au-termin-text">
-                        <strong>{t.titel || t.seminartypen?.name}</strong>
-                        <span className="au-klein">
-                          {[t.kennung, t.veranstaltungsorte?.ort || t.veranstaltungsorte?.name, t.format === "online" ? "online" : null].filter(Boolean).join(" · ")}
-                        </span>
-                      </span>
-                      {kapazitaet > 0 && (
-                        <span className="au-termin-belegung" title={`${anzahl} von ${kapazitaet} Plätzen belegt`}>
-                          <span className="au-klein">{anzahl}/{kapazitaet}</span>
-                          <span className="au-belegung-balken"><span style={{ width: `${anteil * 100}%` }} /></span>
-                        </span>
-                      )}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </Panel>
-        </div>
-
-        <div className="au-dash-seite">
-          <Panel titel="Geburtstage" aktion={<Link href="/geburtstage" className="au-panel-link" prefetch={false}>Alle →</Link>}>
-            <NaechsteGeburtstage />
-          </Panel>
-        </div>
-      </div>
-
-      <p style={{ marginTop: "1rem" }}>
-        <Link href="/dashboard?ansicht=seminare" prefetch={false}>Umsatz &amp; Deckungsbeitrag pro Seminar →</Link>
-      </p>
-    </>
+    </div>
   );
 }
 
@@ -582,52 +475,3 @@ async function Vertrieb({ supabase }: { supabase: any }) {
   );
 }
 
-// Jahreskennzahlen fuer die Kacheln der Uebersicht (laufendes Kalenderjahr).
-// Seminare aus dem Buchungssystem (inkl. Konferenz), uebrige Geschaeftsfelder
-// aus FastBill ohne die Kategorie mit schluessel 'seminar' (sonst doppelt).
-async function ladeJahresKennzahlen(supabase: any, heute: string) {
-  const jahr = Number(heute.slice(0, 4));
-  const [{ data: termine }, { data: kategorien }, { data: rechnungen }, { data: stand }, { data: offen }] = await Promise.all([
-    supabase.from("seminartermine").select("id, datum_start, datum_ende, kapazitaet, seminartypen(name)").gte("datum_start", `${jahr}-01-01`).lte("datum_start", `${jahr}-12-31`).neq("status", "abgesagt"),
-    supabase.from("fastbill_kategorien").select("name, schluessel"),
-    supabase.from("fastbill_rechnungen").select("kategorie, betrag_netto").gte("rechnungsdatum", `${jahr}-01-01`).lte("rechnungsdatum", heute),
-    supabase.from("fastbill_rechnungen").select("rechnungsdatum").order("rechnungsdatum", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("buchungspositionen").select("buchung_id, preis, buchungen!inner(status)").eq("buchungen.status", "angefragt"),
-  ]);
-  const db = await berechneDeckungsbeitraege(supabase, (termine || []).map((t: any) => t.id));
-  let durchgefuehrt = 0, gebucht = 0, teilnehmerBislang = 0, plaetzeKommend = 0, belegtKommend = 0, termineKommend = 0;
-  (termine || []).forEach((t: any) => {
-    const d = db.get(t.id);
-    if (!d) return;
-    const vergangen = (t.datum_ende || t.datum_start) < heute;
-    if (vergangen) durchgefuehrt += d.umsatz;
-    else gebucht += d.umsatz;
-    const konferenz = (t.seminartypen?.name || "").toLowerCase().includes("konferenz");
-    if (konferenz) return;
-    if (vergangen) teilnehmerBislang += d.teilnehmer;
-    else {
-      termineKommend++;
-      plaetzeKommend += Number(t.kapazitaet) || 0;
-      belegtKommend += Math.min(d.teilnehmer, Number(t.kapazitaet) || d.teilnehmer);
-    }
-  });
-  const seminarName = (kategorien || []).find((k: any) => k.schluessel === "seminar")?.name;
-  const weitere = { summe: 0, unklar: 0 };
-  (rechnungen || []).forEach((r: any) => {
-    const b = Number(r.betrag_netto || 0);
-    if (!r.kategorie || r.kategorie === "unklar") weitere.unklar += b;
-    else if (r.kategorie !== seminarName) weitere.summe += b;
-  });
-  const offenSumme = (offen || []).reduce((s: number, p: any) => s + Number(p.preis || 0), 0);
-  return {
-    jahr,
-    seminare: { durchgefuehrt, gebucht, gesamt: durchgefuehrt + gebucht },
-    weitere,
-    fastbillStand: (stand as any)?.rechnungsdatum || null,
-    teilnehmerBislang,
-    termineKommend,
-    plaetzeKommend,
-    freiePlaetze: Math.max(0, plaetzeKommend - belegtKommend),
-    offen: { summe: offenSumme, anzahl: new Set((offen || []).map((p: any) => p.buchung_id)).size },
-  };
-}
