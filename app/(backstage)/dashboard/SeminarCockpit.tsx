@@ -154,7 +154,9 @@ const PAD = { links: 64, rechts: 12, oben: 12, unten: 40 };
 
 function skala(min: number, max: number) {
   const lo = Math.min(0, min);
-  const hi = Math.max(0, max) || 1;
+  // Mindestspanne 1.000 €: Sind alle Werte 0 (z. B. kuenftiges Jahr ohne
+  // Buchungen), entstuende sonst eine Achse "0 €, 0 €, 1 €".
+  const hi = Math.max(0, max, lo + 1000);
   const roh = (hi - lo) / 4;
   const potenz = Math.pow(10, Math.floor(Math.log10(roh)));
   const schritt = [1, 2, 2.5, 5, 10].map((f) => f * potenz).find((s) => s >= roh) || roh;
