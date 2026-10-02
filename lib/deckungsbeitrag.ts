@@ -11,7 +11,7 @@ import { ladeHotellisten, type Hotelliste } from "./hotelliste";
 // - Personen nur aus den Pipedrive-Altdaten zaehlen NICHT -- die sind nur
 //   Abgleich; Umsatz und Kosten kommen aus echten Buchungen (Backstage/FastBill).
 //   Sonst stuende jeder vergangene Termin vor dem FastBill-Abgleich tief im Minus.
-// Keine Fixkosten pro Termin.
+// Keine Fixkosten pro Termin; ohne gebuchte Teilnehmer gar keine Kosten.
 // - Gibt es Kostenbelege (termin_kostenbelege, z. B. Hotelrechnung), ersetzt
 //   deren Summe die Schaetzung komplett; die Schaetzung bleibt zum Vergleich.
 
@@ -77,7 +77,11 @@ export async function berechneDeckungsbeitraege(
     const personalRoh = (termine || []).find((t: any) => t.id === id)?.fremdkosten_personal_pro_person_netto;
     const personal = personalRoh === null || personalRoh === undefined ? pauschale : Number(personalRoh);
 
-    const fremdkostenGeschaetzt = hotel.zeilen.reduce((summe, z) => {
+    // Ohne einen einzigen gebuchten Teilnehmer fallen keine Kosten an: Der
+    // Termin wuerde abgesagt, Referent/Mitarbeiter reisen nicht an. Sonst
+    // stuende jeder kuenftige, noch leere Termin mit -900 € im Minus (Markus 10/2026).
+    const ohneTeilnehmer = !hotel.zeilen.some((z) => z.typ === "Teilnehmer");
+    const fremdkostenGeschaetzt = ohneTeilnehmer ? 0 : hotel.zeilen.reduce((summe, z) => {
       if (z.typ === "Teilnehmer") return summe + (z.teilnehmerId && kostenJeTeilnehmer.has(z.teilnehmerId) ? kostenJeTeilnehmer.get(z.teilnehmerId)! : pauschale);
       return summe + personal;
     }, 0);
