@@ -67,9 +67,14 @@ export default async function Geschaeftsfelder({ supabase, heute }: { supabase: 
 
   return (
     <section className="au-panel au-panel-breit au-gf">
+      <div className="au-panel-kopf">
+        <h2>Geschäftsfelder · rollierend 12 Monate</h2>
+        <Link href="/buchungen/fastbill/kategorien" className="au-panel-link" prefetch={false}>Kategorien verwalten →</Link>
+      </div>
+      <div className="au-panel-inhalt">
       <div className="au-gf-kopf">
         <div>
-          <div className="au-cockpit-label">Gesamtumsatz, rollierend 12 Monate</div>
+          <div className="au-cockpit-label">Gesamtumsatz</div>
           <div className="au-cockpit-zahl">{formatEURGanz(gesamt)}</div>
           <div className="au-cockpit-kontext">
             Seminare aus dem Buchungssystem + zugeordnete FastBill-Rechnungen{seminarName ? ` (ohne „${seminarName}“, sonst doppelt)` : ""}
@@ -87,7 +92,7 @@ export default async function Geschaeftsfelder({ supabase, heute }: { supabase: 
         <div className="au-gf-karte">
           <div className="au-cockpit-label"><span className="au-gf-punkt" style={{ background: FARBEN[0] }} /> Seminare</div>
           <div className="au-gf-zahl">{formatEURGanz(seminarSumme)}</div>
-          <Sparkline werte={proMonat(seminarEintraege)} />
+          <Sparkline werte={proMonat(seminarEintraege)} farbe={FARBEN[0]} />
           <div className="au-klein">aus dem Buchungssystem</div>
         </div>
         {felder.map((f, i) =>
@@ -101,7 +106,7 @@ export default async function Geschaeftsfelder({ supabase, heute }: { supabase: 
             <div key={f.name} className="au-gf-karte">
               <div className="au-cockpit-label"><span className="au-gf-punkt" style={{ background: FARBEN[(i + 1) % FARBEN.length] }} /> {f.name}</div>
               <div className="au-gf-zahl">{formatEURGanz(f.summe)}</div>
-              <Sparkline werte={f.monate} />
+              <Sparkline werte={f.monate} farbe={FARBEN[(i + 1) % FARBEN.length]} />
               <div className="au-klein">{f.anzahl} Rechnung{f.anzahl === 1 ? "" : "en"}</div>
             </div>
           )
@@ -137,6 +142,7 @@ export default async function Geschaeftsfelder({ supabase, heute }: { supabase: 
           </ul>
         </>
       )}
+      </div>
     </section>
   );
 }

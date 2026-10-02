@@ -348,7 +348,7 @@ function KategorieKarten({ zeilen }: { zeilen: Zeile[] }) {
   );
 }
 
-export function Sparkline({ werte }: { werte: number[] }) {
+export function Sparkline({ werte, farbe = FARBE_VERGANGEN }: { werte: number[]; farbe?: string }) {
   const W = 160;
   const H = 36;
   const lo = Math.min(...werte);
@@ -359,7 +359,7 @@ export function Sparkline({ werte }: { werte: number[] }) {
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="au-sparkline" aria-hidden="true">
       <polyline points={pts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={FARBE_SPARK} strokeWidth={1.5} strokeLinejoin="round" />
-      <circle cx={letzter.x} cy={letzter.y} r={4} fill={FARBE_VERGANGEN} />
+      <circle cx={letzter.x} cy={letzter.y} r={4} fill={farbe} />
     </svg>
   );
 }

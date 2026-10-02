@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/rechte";
 import Geschaeftsfelder from "./Geschaeftsfelder";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatEUR, formatEURBrutto, formatDatum } from "@/lib/format";
+import { formatEUR, formatEURBrutto, formatEURGanz, formatDatum, MWST_SATZ } from "@/lib/format";
 import { ladeAnstehendeGeburtstage } from "@/lib/geburtstage";
 import FaelligWidget from "../wiedervorlage/FaelligWidget";
 import { getAktuellerBenutzer } from "@/lib/auth";
@@ -161,7 +161,7 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
       <div className="au-kennzahlen">
         <Kennzahl label="Anstehende Seminare" wert={terminCount ?? 0} kontext={`${termine30 ?? 0} in den nächsten 30 Tagen`} href="/termine" />
         <Kennzahl label="Offene Leads" wert={leadsOffen ?? 0} kontext={`${wartelisteCount ?? 0} auf der Warteliste`} href="/leads" />
-        <Kennzahl label="Umsatz netto" wert={formatEUR(umsatzNetto)} kontext={`brutto ${formatEURBrutto(umsatzNetto)} · neues System`} href="/buchungen" />
+        <Kennzahl label="Umsatz netto" wert={formatEURGanz(umsatzNetto)} kontext={`brutto ${formatEURGanz(umsatzNetto * (1 + MWST_SATZ))} · alle Buchungen`} href="/buchungen" />
         <Kennzahl label="Teilnehmer" wert={teilnehmerCount ?? 0} kontext={`${orgaCount ?? 0} Organisationen · ${legacyCount ?? 0} Alt-Teilnahmen`} href="/teilnehmer" />
       </div>
 
