@@ -1,14 +1,17 @@
-import { berechneDeckungsbeitraege, type Deckungsbeitrag } from "@/lib/deckungsbeitrag";
-import { formatEURGanz, formatDatum } from "@/lib/format";
-import { vorperiode, type Zeitraum } from "@/lib/zeitraeume";
+import Link from "next/link";
+import { berechneDeckungsbeitraege, ladeFremdkostenProPerson, type Deckungsbeitrag } from "@/lib/deckungsbeitrag";
+import { formatEURGanz, formatDatum, MONATSNAMEN } from "@/lib/format";
+import { vorperiode, zeitraumArt, zeitraumKey, zeitraumNachbar, type Zeitraum, type ZeitraumArt } from "@/lib/zeitraeume";
 
-// "Grosses Bild" im Dashboard-Reiter Seminare. Bewusst KEIN Jahresziel/Soll:
-// eingeordnet wird relativ zu den eigenen letzten Terminen und zum Vorjahr
-// (Beyond-Budgeting-Ansatz, Vorgabe Markus 10/2026). Die DB-Rechnung selbst
-// kommt unveraendert aus lib/deckungsbeitrag.ts.
+// Dashboard-Reiter "Seminare". Bewusst KEIN Jahresziel/Soll: eingeordnet
+// wird relativ zur Vorperiode (Beyond-Budgeting-Ansatz, Vorgabe Markus 10/2026).
+// Die DB-Rechnung selbst kommt unveraendert aus lib/deckungsbeitrag.ts.
 //
-// Charts als serverseitiges SVG -- das Projekt hat keine Chart-Library, und
-// fuer ein Balken- und ein Liniendiagramm lohnt keine neue Abhaengigkeit.
+// Aufbau nach Markus' Kritik "absolut unuebersichtlich" (10/2026): oben EINE
+// Zeitraum-Leiste (Monat/Quartal/Jahr + Blaettern), dann vier Kennzahlen,
+// dann EINE Terminliste, in der jede Zeile ihren DB-Balken und ihre
+// Auslastung selbst traegt -- statt zwei Diagrammen plus zwei Tabellen, die
+// man gegeneinander lesen musste.
 
 type Termin = {
   id: string;
@@ -23,14 +26,99 @@ type Termin = {
 };
 type Zeile = Termin & Deckungsbeitrag & { vergangen: boolean; istKonferenz: boolean };
 
-const FARBE_VERGANGEN = "#2a78d6";
-const FARBE_ANSTEHEND = "#b5d4f4";
-const FARBE_SONDER = "#d3d1c7";
-const FARBE_AUSLASTUNG = "#1baf7a";
 const FARBE_SPARK = "#898781";
+const FARBE_VERGANGEN = "#2a78d6";
 
 const istKonferenz = (t: Termin) => (t.seminartypen?.name || "").toLowerCase().includes("konferenz");
 const kurz = (t: Termin) => t.kennung || t.titel || "Termin";
+const prozent = (teil: number, ganz: number) => (ganz > 0 ? Math.round((teil / ganz) * 100) : 0);
+
+// ---------------------------------------------------------------------------
+// Zeitraum-Leiste
+
+const ARTEN: { art: ZeitraumArt; label: string }[] = [
+  { art: "monat", label: "Monat" },
+  { art: "quartal", label: "Quartal" },
+  { art: "jahr", label: "Jahr" },
+  { art: "frei", label: "Eigener Zeitraum" },
+];
+
+export function ZeitraumLeiste({
+  zeitraum,
+  heute,
+  seminartypen,
+  seminartypFilter,
+}: {
+  zeitraum: Zeitraum;
+  heute: string;
+  seminartypen: { id: string; name: string }[];
+  seminartypFilter?: string;
+}) {
+  const art = zeitraumArt(zeitraum);
+  const typ = seminartypFilter ? `&seminartyp=${seminartypFilter}` : "";
+  const link = (key: string, extra = typ) => `/dashboard?ansicht=seminare&zeitraum=${key}${extra}`;
+  // Beim Wechsel Monat/Quartal/Jahr bleibt man "in der Naehe": enthaelt der
+  // Zeitraum heute, landet man in der Periode von heute, sonst an seinem Anfang.
+  const enthaeltHeute = zeitraum.von <= heute && zeitraum.bis >= heute;
+  const anker = enthaeltHeute ? heute : zeitraum.von;
+  const artLink = (a: ZeitraumArt) =>
+    a === "frei" ? `/dashboard?ansicht=seminare&zeitraum=frei&von=${zeitraum.von}&bis=${zeitraum.bis}${typ}` : link(zeitraumKey(a, anker));
+  const zustand = zeitraum.bis < heute ? "abgeschlossen" : zeitraum.von > heute ? "Vorschau" : "läuft";
+
+  return (
+    <div className="au-sz-leiste">
+      <div className="au-sz-zeile-oben">
+        <nav className="au-sz-raster" aria-label="Zeitraum-Raster">
+          {ARTEN.map((a) => (
+            <Link key={a.art} href={artLink(a.art)} className={a.art === art ? "aktiv" : ""} aria-current={a.art === art ? "true" : undefined} prefetch={false}>
+              {a.label}
+            </Link>
+          ))}
+        </nav>
+
+        {art !== "frei" ? (
+          <div className="au-sz-blaettern">
+            <Link href={link(zeitraumNachbar(art, zeitraum.von, -1))} className="au-sz-pfeil" aria-label="Vorheriger Zeitraum" prefetch={false}>‹</Link>
+            <div className="au-sz-titel">
+              <strong>{art === "jahr" ? zeitraum.von.slice(0, 4) : zeitraum.titel}</strong>
+              <span>{formatDatum(zeitraum.von)} – {formatDatum(zeitraum.bis)} · {zustand}</span>
+            </div>
+            <Link href={link(zeitraumNachbar(art, zeitraum.von, 1))} className="au-sz-pfeil" aria-label="Nächster Zeitraum" prefetch={false}>›</Link>
+            {!enthaeltHeute && (
+              <Link href={link(zeitraumKey(art, heute))} className="au-sz-heute" prefetch={false}>Heute</Link>
+            )}
+          </div>
+        ) : (
+          <form method="get" className="au-sz-frei">
+            <input type="hidden" name="ansicht" value="seminare" />
+            <input type="hidden" name="zeitraum" value="frei" />
+            {seminartypFilter && <input type="hidden" name="seminartyp" value={seminartypFilter} />}
+            <input type="date" name="von" defaultValue={zeitraum.von} aria-label="von" className="au-input" />
+            <span aria-hidden="true">–</span>
+            <input type="date" name="bis" defaultValue={zeitraum.bis} aria-label="bis" className="au-input" />
+            <button type="submit" className="au-btn au-btn-sm au-btn-primary">Anzeigen</button>
+          </form>
+        )}
+      </div>
+
+      <nav className="au-sz-filter" aria-label="Seminarart">
+        {[{ id: "", name: "Alle Seminare" }, ...seminartypen].map((t) => {
+          const aktiv = (seminartypFilter || "") === t.id;
+          const mitTyp = t.id ? `&seminartyp=${t.id}` : "";
+          const ziel = art === "frei" ? `/dashboard?ansicht=seminare&zeitraum=frei&von=${zeitraum.von}&bis=${zeitraum.bis}${mitTyp}` : link(zeitraum.key, mitTyp);
+          return (
+            <Link key={t.id || "alle"} href={ziel} className={aktiv ? "aktiv" : ""} aria-current={aktiv ? "true" : undefined} prefetch={false}>
+              {t.name}
+            </Link>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Cockpit
 
 export default async function SeminarCockpit({
   supabase,
@@ -44,7 +132,7 @@ export default async function SeminarCockpit({
   seminartypFilter?: string;
 }) {
   // Gewaehlter Zeitraum nach Termin-Beginn -- inkl. bereits gebuchter
-  // kuenftiger Termine, plus die gleich lange Vorperiode fuer den Vergleich.
+  // kuenftiger Termine, plus Vorperiode fuer den Vergleich.
   const vp = vorperiode(zeitraum);
   let q = supabase
     .from("seminartermine")
@@ -54,7 +142,7 @@ export default async function SeminarCockpit({
     .neq("status", "abgesagt")
     .order("datum_start", { ascending: true });
   if (seminartypFilter) q = q.eq("seminartyp_id", seminartypFilter);
-  const { data } = await q;
+  const [{ data }, pauschale] = await Promise.all([q, ladeFremdkostenProPerson(supabase)]);
   const termine: Termin[] = data || [];
   const db = await berechneDeckungsbeitraege(supabase, termine.map((t) => t.id));
   const alle: Zeile[] = termine.map((t) => ({
@@ -66,236 +154,248 @@ export default async function SeminarCockpit({
   const zeilen = alle.filter((z) => z.datum_start >= zeitraum.von && z.datum_start <= zeitraum.bis);
   const vorher = alle.filter((z) => z.datum_start >= vp.von && z.datum_start <= vp.bis);
 
+  if (!zeilen.length) {
+    return (
+      <div className="au-sz-leer">
+        <strong>Keine Termine in diesem Zeitraum.</strong>
+        <span>Mit ‹ › weiterblättern oder ein anderes Raster wählen.</span>
+      </div>
+    );
+  }
+
   const summe = (liste: Zeile[]) => ({
     db: liste.reduce((s, z) => s + z.db, 0),
     umsatz: liste.reduce((s, z) => s + z.umsatz, 0),
+    unbezahlt: liste.reduce((s, z) => s + z.umsatzUnbezahlt, 0),
     kosten: liste.reduce((s, z) => s + z.fremdkosten, 0),
     anzahl: liste.length,
   });
   const gesamt = summe(zeilen);
-  const durchgefuehrt = summe(zeilen.filter((z) => z.vergangen));
-  const gebucht = summe(zeilen.filter((z) => !z.vergangen));
+  const durchgefuehrt = zeilen.filter((z) => z.vergangen);
+  const anstehend = zeilen.filter((z) => !z.vergangen);
+  const sDurch = summe(durchgefuehrt);
+  const sAnst = summe(anstehend);
   const vorperiodeSumme = summe(vorher);
   const vorperiodeAktiv = vorher.some((z) => z.umsatz > 0);
 
-  const konferenzen = zeilen.filter((z) => z.istKonferenz);
   const seminare = zeilen.filter((z) => !z.istKonferenz);
+  const konferenzen = zeilen.filter((z) => z.istKonferenz);
+  const tn = seminare.reduce((s, z) => s + z.teilnehmer, 0);
+  const plaetze = seminare.reduce((s, z) => s + (z.kapazitaet || 0), 0);
+  const mitBeleg = zeilen.filter((z) => z.kostenQuelle === "beleg").length;
+
+  const delta = vorperiodeAktiv && vorperiodeSumme.db !== 0 ? (gesamt.db - vorperiodeSumme.db) / Math.abs(vorperiodeSumme.db) : null;
+  const pos = (v: number) => Math.max(0, v);
+  const anteilDurch = pos(sDurch.db) + pos(sAnst.db) > 0 ? (pos(sDurch.db) / (pos(sDurch.db) + pos(sAnst.db))) * 100 : 0;
 
   return (
-    <div className="au-cockpit">
-      {/* 1. Eine Leitzahl fuer den gewaehlten Zeitraum */}
-      <section className="au-cockpit-hero">
-        <div className="au-cockpit-label">
-          Deckungsbeitrag · {zeitraum.titel} · <strong>{formatDatum(zeitraum.von)} – {formatDatum(zeitraum.bis)}</strong> · Termine nach Beginn, inkl. Konferenz
-        </div>
-        <div className="au-cockpit-zahl">{formatEURGanz(gesamt.db)}</div>
-        <div className="au-cockpit-zeilen">
-          <div><span>durchgeführt</span><strong>{formatEURGanz(durchgefuehrt.db)}</strong><em>{durchgefuehrt.anzahl} Termin{durchgefuehrt.anzahl === 1 ? "" : "e"}</em></div>
-          <div><span>gebucht, Termin steht aus</span><strong>{formatEURGanz(gebucht.db)}</strong><em>{gebucht.anzahl} Termin{gebucht.anzahl === 1 ? "" : "e"} · Stand heutiger Buchungen</em></div>
-          <div><span>Umsatz / Fremdkosten</span><strong>{formatEURGanz(gesamt.umsatz)}</strong><em>− {formatEURGanz(gesamt.kosten)} Fremdkosten</em></div>
-        </div>
-        <div className="au-cockpit-vergleich">
-          Vorperiode {formatDatum(vp.von)} – {formatDatum(vp.bis)}:{" "}
-          {vorperiodeAktiv ? (
-            <strong>{formatEURGanz(vorperiodeSumme.db)} DB · {formatEURGanz(vorperiodeSumme.umsatz)} Umsatz</strong>
-          ) : (
-            <>noch keine Termine mit Buchungen im System.</>
+    <div className="au-sz">
+      {/* Kennzahlen */}
+      <div className="au-sz-kpis">
+        <section className="au-sz-kpi au-sz-kpi-haupt">
+          <div className="au-sz-kpi-kopf">
+            <span>Deckungsbeitrag</span>
+            {delta !== null ? (
+              <span className={`au-sz-chip ${delta >= 0 ? "plus" : "minus"}`} title={`Vorperiode ${formatDatum(vp.von)} – ${formatDatum(vp.bis)}: ${formatEURGanz(vorperiodeSumme.db)}`}>
+                {delta >= 0 ? "▲" : "▼"} {Math.abs(Math.round(delta * 100))} % zur Vorperiode
+              </span>
+            ) : (
+              <span className="au-sz-chip" title={`${formatDatum(vp.von)} – ${formatDatum(vp.bis)}`}>Vorperiode ohne Daten</span>
+            )}
+          </div>
+          <div className="au-sz-kpi-wert gross">{formatEURGanz(gesamt.db)}</div>
+          {pos(sDurch.db) + pos(sAnst.db) > 0 && (
+            <div className="au-sz-stapel" aria-hidden="true">
+              {anteilDurch > 0 && <span style={{ width: `${anteilDurch}%` }} className="durch" />}
+              {anteilDurch < 100 && <span style={{ width: `${100 - anteilDurch}%` }} className="anst" />}
+            </div>
           )}
-        </div>
-      </section>
-
-      {/* 2. Konferenz separat */}
-      {konferenzen.map((k) => (
-        <section key={k.id} className="au-cockpit-konferenz">
-          <div className="au-cockpit-label">Konferenz (separat) · {kurz(k)} · {formatDatum(k.datum_start)}</div>
-          <div className="au-cockpit-konferenz-werte">
-            <strong>{formatEURGanz(k.db)}</strong>
-            <span>Umsatz {formatEURGanz(k.umsatz)} · Fremdkosten {formatEURGanz(k.fremdkosten)}{k.vergangen ? "" : " · gebucht, Termin steht aus"}</span>
+          <div className="au-sz-legende">
+            <span><i className="durch" />{formatEURGanz(sDurch.db)} durchgeführt <em>· {sDurch.anzahl}</em></span>
+            <span><i className="anst" />{formatEURGanz(sAnst.db)} gebucht, steht aus <em>· {sAnst.anzahl}</em></span>
           </div>
         </section>
-      ))}
 
-      {/* 3. + 5. Charts pro Termin (ohne Konferenz) */}
-      <section className="au-cockpit-chart">
-        <h3>Deckungsbeitrag pro Termin</h3>
-        {seminare.length ? <div className="au-cockpit-scroll"><DbBalken zeilen={seminare} /></div> : <p className="au-leer">Keine Seminartermine im Zeitraum.</p>}
-        <p className="au-cockpit-schluessel">
-          <span style={{ background: FARBE_VERGANGEN }} /> durchgeführt <span style={{ background: FARBE_ANSTEHEND }} /> gebucht, Termin steht aus{" "}
-          <span style={{ background: FARBE_SONDER }} /> mit Sondereffekt
-        </p>
-        {seminare.some((z) => z.sondereffekt_notiz) && (
-          <p className="au-cockpit-fussnote">
-            {seminare
-              .filter((z) => z.sondereffekt_notiz)
-              .map((z) => `${kurz(z)}: ${z.sondereffekt_notiz}`)
-              .join(" · ")}
-          </p>
-        )}
+        <section className="au-sz-kpi">
+          <div className="au-sz-kpi-kopf"><span>Umsatz</span></div>
+          <div className="au-sz-kpi-wert">{formatEURGanz(gesamt.umsatz)}</div>
+          <div className="au-sz-kpi-sub">{gesamt.unbezahlt > 0 ? `davon ${formatEURGanz(gesamt.unbezahlt)} noch unbezahlt` : "alles bezahlt"}</div>
+          {konferenzen.length > 0 && <div className="au-sz-kpi-sub">inkl. Konferenz {formatEURGanz(konferenzen.reduce((s, z) => s + z.umsatz, 0))}</div>}
+        </section>
+
+        <section className="au-sz-kpi">
+          <div className="au-sz-kpi-kopf"><span>Fremdkosten</span></div>
+          <div className="au-sz-kpi-wert">{formatEURGanz(gesamt.kosten)}</div>
+          <div className="au-sz-kpi-sub">
+            {mitBeleg === zeilen.length ? "alle aus Hotelrechnungen" : mitBeleg ? `${mitBeleg} von ${zeilen.length} Terminen aus Hotelrechnung, Rest geschätzt` : "geschätzt (Pauschalen)"}
+          </div>
+        </section>
+
+        <section className="au-sz-kpi">
+          <div className="au-sz-kpi-kopf"><span>Teilnehmer Seminare</span></div>
+          <div className="au-sz-kpi-wert">
+            {tn}
+            <small> / {plaetze} Plätze</small>
+          </div>
+          {plaetze > 0 && <div className="au-sz-mini breit" aria-hidden="true"><span style={{ width: `${Math.min(100, prozent(tn, plaetze))}%` }} /></div>}
+          <div className="au-sz-kpi-sub">
+            {prozent(tn, plaetze)} % ausgelastet · ohne Konferenz
+            {konferenzen.length > 0 && ` (+${konferenzen.reduce((s, z) => s + z.teilnehmer, 0)})`}
+          </div>
+        </section>
+      </div>
+
+      {/* Terminliste */}
+      <section className="au-sz-karte">
+        <header className="au-sz-karte-kopf">
+          <h3>Termine</h3>
+          <span>{zeilen.length} im Zeitraum · Klick öffnet den Termin</span>
+        </header>
+        <TerminListe
+          gruppen={[
+            { titel: "Durchgeführt", zeilen: durchgefuehrt, summe: sDurch },
+            { titel: "Gebucht, Termin steht aus", zeilen: anstehend, summe: sAnst },
+          ]}
+        />
       </section>
 
-      {seminare.length > 0 && (
-        <section className="au-cockpit-chart">
-          <h3>Auslastung pro Termin</h3>
-          <div className="au-cockpit-scroll"><AuslastungLinie zeilen={seminare} /></div>
-        </section>
-      )}
+      {!seminartypFilter && <NachArt zeilen={zeilen} zeitraum={zeitraum} />}
 
-      {/* 6. Kategorie-Karten (Termine im Zeitraum) */}
-      <KategorieKarten zeilen={seminare} />
+      <details className="au-sz-erklaerung">
+        <summary>Wie wird gerechnet?</summary>
+        <p>
+          Zeitraum nach Termin-Beginn; künftige Termine mit dem heutigen Buchungsstand. Deckungsbeitrag = Umsatz − Fremdkosten pro Person vor Ort: Teilnehmer
+          (inkl. Freiplätze) nach ihrer Option, Referenten/Mitarbeiter nach dem Personal-Satz des Termins, sonst Pauschale {formatEURGanz(pauschale)} netto (
+          <Link href="/einstellungen" prefetch={false}>einstellbar</Link>). Liegt eine Hotelrechnung vor (✓), zählen deren echte Kosten. Ein Termin ohne gebuchte
+          Teilnehmer hat keine Kosten. Personen nur aus den Pipedrive-Altdaten zählen nicht; Stornos ausgeschlossen, unbezahlte Buchungen enthalten. Vorperiode:{" "}
+          {formatDatum(vp.von)} – {formatDatum(vp.bis)}. Alle Beträge netto.
+        </p>
+      </details>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Balken: DB pro Termin, chronologisch. Negative Werte unter die Nulllinie.
+// Terminliste: eine Zeile pro Termin mit Auslastung und DB-Balken.
 
-const B = 720; // viewBox-Breite
-const PAD = { links: 64, rechts: 12, oben: 12, unten: 40 };
-
-function skala(min: number, max: number) {
-  const lo = Math.min(0, min);
-  // Mindestspanne 1.000 €: Sind alle Werte 0 (z. B. kuenftiges Jahr ohne
-  // Buchungen), entstuende sonst eine Achse "0 €, 0 €, 1 €".
-  const hi = Math.max(0, max, lo + 1000);
-  const roh = (hi - lo) / 4;
-  const potenz = Math.pow(10, Math.floor(Math.log10(roh)));
-  const schritt = [1, 2, 2.5, 5, 10].map((f) => f * potenz).find((s) => s >= roh) || roh;
-  const unten = Math.floor(lo / schritt) * schritt;
-  const oben = Math.ceil(hi / schritt) * schritt;
-  const ticks: number[] = [];
-  for (let v = unten; v <= oben + 1e-6; v += schritt) ticks.push(Math.round(v));
-  return { unten, oben, ticks };
+function TerminListe({ gruppen }: { gruppen: { titel: string; zeilen: Zeile[]; summe: { db: number; anzahl: number } }[] }) {
+  const maxAbs = Math.max(1, ...gruppen.flatMap((g) => g.zeilen).map((z) => Math.abs(z.db)));
+  return (
+    <div className="au-sz-liste">
+      <div className="au-sz-spalten" aria-hidden="true">
+        <span>Termin</span>
+        <span>Auslastung</span>
+        <span className="r">Umsatz</span>
+        <span className="r">Fremdkosten</span>
+        <span>Deckungsbeitrag</span>
+      </div>
+      {gruppen.map((g) =>
+        g.zeilen.length ? (
+          <div key={g.titel}>
+            <div className="au-sz-gruppe">
+              <span>{g.titel} <em>· {g.summe.anzahl}</em></span>
+              <span>DB {formatEURGanz(g.summe.db)}</span>
+            </div>
+            {g.zeilen.map((z) => <TerminZeile key={z.id} z={z} maxAbs={maxAbs} />)}
+          </div>
+        ) : null
+      )}
+    </div>
+  );
 }
 
-const kEuro = (v: number) => (Math.abs(v) >= 1000 ? `${Math.round(v / 1000)} T€` : `${Math.round(v)} €`);
-
-function DbBalken({ zeilen }: { zeilen: Zeile[] }) {
-  const H = 260;
-  const { unten, oben, ticks } = skala(Math.min(...zeilen.map((z) => z.db)), Math.max(...zeilen.map((z) => z.db)));
-  const innenB = B - PAD.links - PAD.rechts;
-  const innenH = H - PAD.oben - PAD.unten;
-  const y = (v: number) => PAD.oben + innenH - ((v - unten) / (oben - unten)) * innenH;
-  const slot = innenB / zeilen.length;
-  const breite = Math.min(48, slot * 0.6);
+function TerminZeile({ z, maxAbs }: { z: Zeile; maxAbs: number }) {
+  const d = new Date(z.datum_start + "T00:00:00Z");
+  const quote = z.kapazitaet ? Math.min(100, prozent(z.teilnehmer, z.kapazitaet)) : 0;
+  const leer = !z.vergangen && z.teilnehmer === 0 && z.umsatz === 0;
+  const klasse = z.sondereffekt_notiz ? "sonder" : z.db < 0 ? "minus" : z.vergangen ? "durch" : "anst";
   return (
-    <svg viewBox={`0 0 ${B} ${H}`} className="au-cockpit-svg" role="img" aria-label="Deckungsbeitrag pro Termin, chronologisch">
-      {ticks.map((t) => (
-        <g key={t}>
-          <line x1={PAD.links} x2={B - PAD.rechts} y1={y(t)} y2={y(t)} className={t === 0 ? "au-achse-null" : "au-raster"} />
-          <text x={PAD.links - 8} y={y(t) + 4} textAnchor="end" className="au-achse-text">{kEuro(t)}</text>
-        </g>
-      ))}
-      {zeilen.map((z, i) => {
-        const x = PAD.links + slot * i + (slot - breite) / 2;
-        const y0 = y(0);
-        const y1 = y(z.db);
-        const farbe = z.sondereffekt_notiz ? FARBE_SONDER : z.vergangen ? FARBE_VERGANGEN : FARBE_ANSTEHEND;
-        const h = Math.max(1, Math.abs(y1 - y0));
-        const r = Math.min(4, h / 2, breite / 2);
-        const top = Math.min(y0, y1);
-        // nur das Datenende rund, die Basis an der Nulllinie bleibt eckig
-        const pfad =
-          z.db >= 0
-            ? `M${x},${top + h} V${top + r} Q${x},${top} ${x + r},${top} H${x + breite - r} Q${x + breite},${top} ${x + breite},${top + r} V${top + h} Z`
-            : `M${x},${top} V${top + h - r} Q${x},${top + h} ${x + r},${top + h} H${x + breite - r} Q${x + breite},${top + h} ${x + breite},${top + h - r} V${top} Z`;
-        return (
-          <g key={z.id} className="au-balken">
-            <title>
-              {`${kurz(z)} · ${formatDatum(z.datum_start)}\nDB ${formatEURGanz(z.db)} · Umsatz ${formatEURGanz(z.umsatz)} · Fremdkosten ${formatEURGanz(z.fremdkosten)}${z.kostenQuelle === "beleg" ? " (Beleg)" : ""}${z.sondereffekt_notiz ? `\nSondereffekt: ${z.sondereffekt_notiz}` : ""}`}
-            </title>
-            {/* grosse Trefferflaeche fuer den Tooltip */}
-            <rect x={PAD.links + slot * i} y={PAD.oben} width={slot} height={innenH} fill="transparent" />
-            <path d={pfad} fill={farbe} />
-            <text x={x + breite / 2} y={H - PAD.unten + 16} textAnchor="middle" className="au-achse-text">{kurz(z)}</text>
-            <text x={x + breite / 2} y={H - PAD.unten + 30} textAnchor="middle" className="au-achse-text au-achse-klein">
-              {formatDatum(z.datum_start).slice(0, 6)}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    <Link href={`/termine/${z.id}`} className={`au-sz-zeile${leer ? " leer" : ""}`} prefetch={false}>
+      <span className="au-sz-termin">
+        <span className="au-sz-datum">
+          <b>{d.getUTCDate()}</b>
+          <small>{MONATSNAMEN[d.getUTCMonth()].slice(0, 3)} {String(d.getUTCFullYear()).slice(2)}</small>
+        </span>
+        <span className="au-sz-name">
+          <b>
+            {kurz(z)}
+            {z.istKonferenz && <em className="au-sz-tag">Konferenz</em>}
+          </b>
+          <small>{z.seminartypen?.name || z.titel}</small>
+          {z.sondereffekt_notiz && <small className="au-sz-sonder">⚑ {z.sondereffekt_notiz}</small>}
+        </span>
+      </span>
+      <span className="au-sz-ausl">
+        <span className="au-sz-mini"><span style={{ width: `${quote}%` }} /></span>
+        <small>{z.teilnehmer}{z.kapazitaet ? ` / ${z.kapazitaet}` : ""} TN</small>
+      </span>
+      <span className="au-sz-betrag">
+        <span className="au-sz-mlabel">Umsatz</span>
+        <b>{formatEURGanz(z.umsatz)}</b>
+        {z.umsatzUnbezahlt > 0 && <small className="offen">{formatEURGanz(z.umsatzUnbezahlt)} offen</small>}
+      </span>
+      <span className="au-sz-betrag gedimmt">
+        <span className="au-sz-mlabel">Fremdkosten</span>
+        <b>{formatEURGanz(z.fremdkosten)}</b>
+        {!leer && <small>{z.kostenQuelle === "beleg" ? "✓ Hotelrechnung" : "geschätzt"}</small>}
+      </span>
+      <span className="au-sz-db">
+        {leer ? (
+          <span className="au-sz-db-leer">noch keine Buchung</span>
+        ) : (
+          <>
+            <span className="au-sz-db-spur"><span className={klasse} style={{ width: `${Math.max(2, (Math.abs(z.db) / maxAbs) * 100)}%` }} /></span>
+            <b className={z.db < 0 ? "minus" : ""}>{formatEURGanz(z.db)}</b>
+          </>
+        )}
+      </span>
+    </Link>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Linie: Auslastung (Teilnehmer / Kapazitaet), vergangen durchgezogen,
-// anstehend gestrichelt. Eigener Chart, keine zweite Achse.
+// Verdichtung nach Seminarart; Klick filtert.
 
-function AuslastungLinie({ zeilen }: { zeilen: Zeile[] }) {
-  const H = 180;
-  const innenB = B - PAD.links - PAD.rechts;
-  const innenH = H - PAD.oben - PAD.unten;
-  const slot = innenB / zeilen.length;
-  const punkte = zeilen.map((z, i) => ({
-    z,
-    x: PAD.links + slot * i + slot / 2,
-    wert: z.kapazitaet ? Math.min(1, z.teilnehmer / z.kapazitaet) : 0,
-  }));
-  const y = (v: number) => PAD.oben + innenH - v * innenH;
-  const letzteVergangen = punkte.map((p) => p.z.vergangen).lastIndexOf(true);
-  const pfad = (liste: typeof punkte) => liste.map((p, i) => `${i ? "L" : "M"}${p.x},${y(p.wert)}`).join(" ");
-  const durchgezogen = letzteVergangen >= 0 ? punkte.slice(0, letzteVergangen + 1) : [];
-  const gestrichelt = punkte.slice(Math.max(0, letzteVergangen));
-  return (
-    <svg viewBox={`0 0 ${B} ${H}`} className="au-cockpit-svg" role="img" aria-label="Auslastung pro Termin in Prozent">
-      {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-        <g key={t}>
-          <line x1={PAD.links} x2={B - PAD.rechts} y1={y(t)} y2={y(t)} className={t === 0 ? "au-achse-null" : "au-raster"} />
-          <text x={PAD.links - 8} y={y(t) + 4} textAnchor="end" className="au-achse-text">{Math.round(t * 100)} %</text>
-        </g>
-      ))}
-      {durchgezogen.length > 1 && <path d={pfad(durchgezogen)} fill="none" stroke={FARBE_AUSLASTUNG} strokeWidth={2} strokeLinejoin="round" />}
-      {gestrichelt.length > 1 && <path d={pfad(gestrichelt)} fill="none" stroke={FARBE_AUSLASTUNG} strokeWidth={2} strokeDasharray="5 4" strokeLinejoin="round" />}
-      {punkte.map((p) => (
-        <g key={p.z.id}>
-          <title>{`${kurz(p.z)} · ${p.z.teilnehmer} von ${p.z.kapazitaet ?? "?"} Plätzen (${Math.round(p.wert * 100)} %)`}</title>
-          <rect x={p.x - slot / 2} y={PAD.oben} width={slot} height={innenH} fill="transparent" />
-          <circle cx={p.x} cy={y(p.wert)} r={4} fill={p.z.vergangen ? FARBE_AUSLASTUNG : "var(--color-surface, #fff)"} stroke={FARBE_AUSLASTUNG} strokeWidth={2} />
-          <text x={p.x} y={H - PAD.unten + 16} textAnchor="middle" className="au-achse-text">{kurz(p.z)}</text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Kategorie-Karten mit Sparkline der letzten echten Termine.
-
-function KategorieKarten({ zeilen }: { zeilen: Zeile[] }) {
-  const gruppen = new Map<string, { name: string; zeilen: Zeile[] }>();
+function NachArt({ zeilen, zeitraum }: { zeilen: Zeile[]; zeitraum: Zeitraum }) {
+  const gruppen = new Map<string, { id: string; name: string; zeilen: Zeile[] }>();
   zeilen.forEach((z) => {
-    const key = z.seminartyp_id || "ohne";
-    if (!gruppen.has(key)) gruppen.set(key, { name: z.seminartypen?.name || "Ohne Kategorie", zeilen: [] });
-    gruppen.get(key)!.zeilen.push(z);
+    const id = z.seminartyp_id || "";
+    if (!gruppen.has(id)) gruppen.set(id, { id, name: z.seminartypen?.name || "Ohne Seminarart", zeilen: [] });
+    gruppen.get(id)!.zeilen.push(z);
   });
-  if (!gruppen.size) return null;
+  if (gruppen.size < 2) return null;
+  const liste = [...gruppen.values()]
+    .map((g) => ({
+      ...g,
+      db: g.zeilen.reduce((s, z) => s + z.db, 0),
+      umsatz: g.zeilen.reduce((s, z) => s + z.umsatz, 0),
+      tn: g.zeilen.reduce((s, z) => s + z.teilnehmer, 0),
+      plaetze: g.zeilen.reduce((s, z) => s + (z.kapazitaet || 0), 0),
+    }))
+    .sort((a, b) => b.db - a.db);
+  const max = Math.max(1, ...liste.map((g) => Math.abs(g.db)));
+  const basis = zeitraum.key === "frei" ? `zeitraum=frei&von=${zeitraum.von}&bis=${zeitraum.bis}` : `zeitraum=${zeitraum.key}`;
   return (
-    <section>
-      <h3 className="au-cockpit-zwischentitel">Nach Kategorie, zum Nachschauen</h3>
-      <div className="au-cockpit-kategorien">
-        {[...gruppen.values()]
-          .sort((a, b) => a.name.localeCompare(b.name, "de"))
-          .map((g) => {
-            // "echt" = durchgefuehrt und mit Buchungen (Umsatz oder Personen)
-            const echt = g.zeilen.filter((z) => z.vergangen && (z.umsatz > 0 || z.personen > 0));
-            const letzter = echt[echt.length - 1];
-            const werte = echt.map((z) => z.db);
-            return (
-              <div key={g.name} className="au-cockpit-kategorie">
-                <div className="au-cockpit-label">{g.name}</div>
-                <div className="au-cockpit-kategorie-zahl">{letzter ? formatEURGanz(letzter.db) : "—"}</div>
-                {letzter && <div className="au-klein">letzter Termin: {kurz(letzter)}</div>}
-                {werte.length >= 2 && <Sparkline werte={werte} />}
-                <div className="au-klein">
-                  {werte.length >= 2
-                    ? `Spanne letzte ${werte.length}: ${formatEURGanz(Math.min(...werte))} – ${formatEURGanz(Math.max(...werte))}`
-                    : werte.length === 1
-                      ? "einziger Termin bisher"
-                      : "noch offen"}
-                </div>
-              </div>
-            );
-          })}
+    <section className="au-sz-karte">
+      <header className="au-sz-karte-kopf">
+        <h3>Nach Seminarart</h3>
+        <span>Klick filtert</span>
+      </header>
+      <div className="au-sz-artliste">
+        {liste.map((g) => (
+          <Link key={g.id || "ohne"} href={`/dashboard?ansicht=seminare&${basis}${g.id ? `&seminartyp=${g.id}` : ""}`} className="au-sz-art" prefetch={false}>
+            <span className="au-sz-name">
+              <b>{g.name}</b>
+              <small>
+                {g.zeilen.length} Termin{g.zeilen.length === 1 ? "" : "e"} · {g.tn}{g.plaetze ? ` / ${g.plaetze}` : ""} TN · Umsatz {formatEURGanz(g.umsatz)}
+              </small>
+            </span>
+            <span className="au-sz-db">
+              <span className="au-sz-db-spur"><span className={g.db < 0 ? "minus" : "durch"} style={{ width: `${Math.max(2, (Math.abs(g.db) / max) * 100)}%` }} /></span>
+              <b className={g.db < 0 ? "minus" : ""}>{formatEURGanz(g.db)}</b>
+            </span>
+          </Link>
+        ))}
       </div>
     </section>
   );

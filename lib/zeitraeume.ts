@@ -52,6 +52,17 @@ export function zeitraumAus(
         return { key: "frei", titel: "Freier Zeitraum", von: a, bis: b, laufend: false };
       }
   }
+  // Konkrete Monate/Quartale ("2026-10", "2026-q4") -- zum Blaettern im Reiter Seminare.
+  const mm = /^(\d{4})-(\d{2})$/.exec(p);
+  if (mm && Number(mm[2]) >= 1 && Number(mm[2]) <= 12 && Number(mm[1]) >= 2020 && Number(mm[1]) <= j + 5) {
+    const a = utc(Number(mm[1]), Number(mm[2]) - 1, 1);
+    return fertig(p, `${MONATSNAMEN[a.getUTCMonth()]} ${mm[1]}`, iso(a), iso(utc(Number(mm[1]), Number(mm[2]), 0)));
+  }
+  const mq = /^(\d{4})-q([1-4])$/.exec(p);
+  if (mq && Number(mq[1]) >= 2020 && Number(mq[1]) <= j + 5) {
+    const q = Number(mq[2]);
+    return fertig(p, `Q${q} ${mq[1]}`, iso(utc(Number(mq[1]), (q - 1) * 3, 1)), iso(utc(Number(mq[1]), q * 3, 0)));
+  }
   const jahr = Number(p);
   if (Number.isInteger(jahr) && jahr >= 2020 && jahr <= j + 5) return fertig(String(jahr), `Kalenderjahr ${jahr}`, `${jahr}-01-01`, `${jahr}-12-31`);
   return zeitraumAus(opt.standard || "12m", heute, { ...opt, standard: "12m" });
@@ -73,3 +84,32 @@ export function vorperiode(z: Zeitraum): { von: string; bis: string } {
 }
 
 export const monatKurz = (ym: string) => `${MONATSNAMEN[Number(ym.slice(5, 7)) - 1].slice(0, 3)} ${ym.slice(0, 4)}`;
+
+// Raster fuer die Zeitraum-Leiste (Reiter Seminare): Monat/Quartal/Jahr mit
+// Blaettern, alles andere ist "frei".
+export type ZeitraumArt = "monat" | "quartal" | "jahr" | "frei";
+
+export function zeitraumArt(z: Zeitraum): ZeitraumArt {
+  if (z.von.slice(8) !== "01" || tagPlus(z.bis, 1).slice(8) !== "01") return "frei";
+  const monate = (Number(z.bis.slice(0, 4)) - Number(z.von.slice(0, 4))) * 12 + Number(z.bis.slice(5, 7)) - Number(z.von.slice(5, 7)) + 1;
+  const startMonat = Number(z.von.slice(5, 7));
+  if (monate === 1) return "monat";
+  if (monate === 3 && (startMonat - 1) % 3 === 0) return "quartal";
+  if (monate === 12 && startMonat === 1) return "jahr";
+  return "frei";
+}
+
+/** Schluessel des Monats/Quartals/Jahres, in dem der Tag liegt. */
+export function zeitraumKey(art: Exclude<ZeitraumArt, "frei">, tag: string): string {
+  const j = tag.slice(0, 4);
+  if (art === "monat") return tag.slice(0, 7);
+  if (art === "quartal") return `${j}-q${Math.floor((Number(tag.slice(5, 7)) - 1) / 3) + 1}`;
+  return j;
+}
+
+/** Schluessel der vorigen (-1) bzw. naechsten (+1) Periode gleicher Art. */
+export function zeitraumNachbar(art: Exclude<ZeitraumArt, "frei">, von: string, richtung: -1 | 1): string {
+  const schritt = art === "monat" ? 1 : art === "quartal" ? 3 : 12;
+  const d = utc(Number(von.slice(0, 4)), Number(von.slice(5, 7)) - 1 + richtung * schritt, 1);
+  return zeitraumKey(art, iso(d));
+}

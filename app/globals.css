@@ -5971,40 +5971,344 @@ a.au-kliste-name:hover {
   color: var(--color-text);
 }
 
-/* Zeitraumauswahl Reiter Seminare */
-.au-zr-auswahl {
+
+/* ------------------------------------------------------------------ */
+/* Dashboard-Reiter Seminare (SeminarCockpit.tsx), Neuaufbau 10/2026   */
+
+.au-sz-seite { display: flex; flex-direction: column; gap: 1rem; }
+.au-sz { display: flex; flex-direction: column; gap: 1rem; }
+
+/* Zeitraum-Leiste */
+.au-sz-leiste {
   display: flex;
   flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.au-sz-zeile-oben {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  flex-wrap: wrap;
+}
+.au-sz-raster {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+.au-sz-raster a {
+  padding: 0.38rem 0.85rem;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.au-sz-raster a:hover { color: var(--color-text); }
+.au-sz-raster a.aktiv {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.1), 0 0 0 1px var(--color-border);
+}
+.au-sz-blaettern { display: flex; align-items: center; gap: 0.5rem; }
+.au-sz-pfeil {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 1.25rem;
+  line-height: 1;
+  text-decoration: none;
+}
+.au-sz-pfeil:hover { background: var(--color-bg); border-color: var(--color-border-strong); }
+.au-sz-titel { display: flex; flex-direction: column; align-items: center; min-width: 11.5rem; text-align: center; }
+.au-sz-titel strong { font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
+.au-sz-titel span { font-size: 0.74rem; color: var(--color-text-muted); }
+.au-sz-heute {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+.au-sz-heute:hover { background: var(--color-accent-soft); }
+.au-sz-frei { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.au-sz-frei .au-input { width: auto; margin: 0; padding: 0.3rem 0.45rem; font-size: 0.84rem; }
+.au-sz-filter {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+.au-sz-filter a {
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.au-sz-filter a:hover { color: var(--color-text); border-color: var(--color-border-strong); }
+.au-sz-filter a.aktiv { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+
+/* Kennzahlen */
+.au-sz-kpis {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.au-sz-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1rem 1.15rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.au-sz-kpi-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 0.5rem;
-  margin-bottom: 1.25rem;
-  padding-bottom: 1rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+.au-sz-kpi-wert {
+  font-size: 1.55rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.au-sz-kpi-wert.gross { font-size: 2.2rem; }
+.au-sz-kpi-wert small { font-size: 0.85rem; font-weight: 500; color: var(--color-text-muted); letter-spacing: 0; }
+.au-sz-kpi-sub { font-size: 0.78rem; color: var(--color-text-muted); }
+.au-sz-chip {
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.au-sz-chip.plus { background: var(--color-success-soft); color: var(--color-success); }
+.au-sz-chip.minus { background: var(--color-danger-soft); color: var(--color-danger); }
+.au-sz-stapel {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin: 0.35rem 0 0.15rem;
+}
+.au-sz-stapel span { border-radius: 4px; }
+.au-sz-stapel .durch, .au-sz-legende i.durch, .au-sz-db-spur .durch { background: #2a78d6; }
+.au-sz-stapel .anst, .au-sz-legende i.anst, .au-sz-db-spur .anst { background: #9ec5f4; }
+.au-sz-db-spur .sonder { background: #c3c2b7; }
+.au-sz-db-spur .minus { background: #e34948; }
+.au-sz-legende { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 0.8rem; color: var(--color-text); }
+.au-sz-legende span { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+.au-sz-legende i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.au-sz-legende em { font-style: normal; color: var(--color-text-faint); }
+
+/* Mini-Balken (Auslastung) */
+.au-sz-mini {
+  display: block;
+  height: 6px;
+  width: 100%;
+  max-width: 120px;
+  border-radius: 3px;
+  background: var(--color-bg);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  overflow: hidden;
+}
+.au-sz-mini.breit { max-width: none; margin: 0.35rem 0 0.15rem; }
+.au-sz-mini > span { display: block; height: 100%; background: #1baf7a; border-radius: 3px; }
+
+/* Karten */
+.au-sz-karte {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.au-sz-karte-kopf {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1.15rem;
   border-bottom: 1px solid var(--color-border);
 }
-.au-zr-gruppe {
+.au-sz-karte-kopf h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.au-sz-karte-kopf span { font-size: 0.78rem; color: var(--color-text-faint); }
+
+/* Terminliste */
+.au-sz-spalten,
+.au-sz-zeile {
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 1rem;
   align-items: center;
-  gap: 0.75rem;
+  padding: 0.65rem 1.15rem;
 }
-.au-zr-gruppe-titel {
-  font-size: 0.72rem;
+.au-sz-spalten {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--color-text-faint);
+  border-bottom: 1px solid var(--color-border);
 }
-.au-zr-frei select { width: auto; margin: 0; padding: 0.25rem 0.4rem; font-size: 0.8rem; }
-@media (max-width: 640px) {
-  .au-zr-gruppe { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; }
+.au-sz-spalten .r { text-align: right; }
+.au-sz-gruppe {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1.15rem;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
 }
-.au-cockpit-zeilen {
+.au-sz-gruppe em { font-style: normal; font-weight: 400; color: var(--color-text-faint); }
+.au-sz-zeile {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-border);
+  transition: background 0.12s;
+}
+.au-sz-liste > div:last-child .au-sz-zeile:last-child { border-bottom: 0; }
+.au-sz-zeile:hover { background: var(--color-accent-soft); }
+.au-sz-zeile.leer { color: var(--color-text-muted); }
+.au-sz-termin { display: flex; align-items: center; gap: 0.85rem; min-width: 0; }
+.au-sz-datum {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  line-height: 1.05;
+}
+.au-sz-datum b { font-size: 1.05rem; font-weight: 650; }
+.au-sz-datum small { font-size: 0.66rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.au-sz-name { display: flex; flex-direction: column; min-width: 0; }
+.au-sz-name b { font-size: 0.92rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
+.au-sz-name small { font-size: 0.78rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.au-sz-name small.au-sz-sonder { color: var(--color-warning); white-space: normal; }
+.au-sz-tag {
+  font-style: normal;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  letter-spacing: 0.02em;
+}
+.au-sz-ausl { display: flex; flex-direction: column; gap: 0.3rem; }
+.au-sz-ausl small { font-size: 0.76rem; color: var(--color-text-muted); }
+.au-sz-betrag { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+.au-sz-betrag b { font-size: 0.9rem; font-weight: 500; }
+.au-sz-betrag small { font-size: 0.72rem; color: var(--color-text-faint); }
+.au-sz-betrag small.offen { color: var(--color-warning); }
+.au-sz-betrag.gedimmt b { color: var(--color-text-muted); }
+.au-sz-mlabel { display: none; }
+.au-sz-db { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.au-sz-db-spur { flex: 1; min-width: 40px; height: 10px; display: block; }
+.au-sz-db-spur > span { display: block; height: 100%; border-radius: 0 4px 4px 0; }
+.au-sz-db b { font-size: 0.95rem; font-weight: 650; min-width: 5.5rem; text-align: right; }
+.au-sz-db b.minus { color: var(--color-danger); }
+.au-sz-db-leer { font-size: 0.8rem; color: var(--color-text-faint); font-style: italic; }
+
+/* Nach Seminarart */
+.au-sz-art {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-top: 0.5rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 1rem;
+  align-items: center;
+  padding: 0.7rem 1.15rem;
+  border-bottom: 1px solid var(--color-border);
+  color: inherit;
+  text-decoration: none;
 }
-.au-cockpit-zeilen > div { display: flex; flex-direction: column; gap: 0.1rem; }
-.au-cockpit-zeilen span { font-size: 0.72rem; color: var(--color-text-muted); }
-.au-cockpit-zeilen strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
-.au-cockpit-zeilen em { font-style: normal; font-size: 0.75rem; color: var(--color-text-faint); }
-@media (max-width: 640px) { .au-cockpit-zeilen { grid-template-columns: minmax(0, 1fr); } }
+.au-sz-art:last-child { border-bottom: 0; }
+.au-sz-art:hover { background: var(--color-accent-soft); }
+
+.au-sz-leer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 3rem 1rem;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+.au-sz-leer strong { color: var(--color-text); font-size: 0.95rem; }
+
+.au-sz-erklaerung { font-size: 0.8rem; color: var(--color-text-muted); }
+.au-sz-erklaerung summary { cursor: pointer; color: var(--color-text-muted); font-weight: 500; }
+.au-sz-erklaerung p { margin: 0.5rem 0 0; line-height: 1.55; max-width: 70rem; }
+
+@media (max-width: 1100px) {
+  .au-sz-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .au-sz-kpi-haupt { grid-column: 1 / -1; }
+}
+@media (max-width: 860px) {
+  .au-sz-spalten { display: none; }
+  .au-sz-zeile {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "termin termin" "ausl ausl" "umsatz kosten" "db db";
+    gap: 0.6rem 1rem;
+    padding: 0.85rem 1rem;
+  }
+  .au-sz-termin { grid-area: termin; }
+  .au-sz-ausl { grid-area: ausl; flex-direction: row; align-items: center; gap: 0.6rem; }
+  .au-sz-ausl .au-sz-mini { max-width: 160px; }
+  .au-sz-zeile > .au-sz-betrag:nth-child(3) { grid-area: umsatz; align-items: flex-start; text-align: left; }
+  .au-sz-zeile > .au-sz-betrag:nth-child(4) { grid-area: kosten; align-items: flex-start; text-align: left; }
+  .au-sz-zeile > .au-sz-db { grid-area: db; }
+  .au-sz-mlabel { display: block; font-size: 0.68rem; color: var(--color-text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+  .au-sz-art { grid-template-columns: minmax(0, 1fr); gap: 0.4rem; }
+}
+@media (max-width: 640px) {
+  .au-sz-kpis { grid-template-columns: minmax(0, 1fr); }
+  .au-sz-zeile-oben { flex-direction: column; align-items: stretch; }
+  .au-sz-raster { display: flex; }
+  .au-sz-raster a { flex: 1; text-align: center; padding: 0.38rem 0.4rem; }
+  .au-sz-blaettern { justify-content: space-between; }
+  .au-sz-titel { min-width: 0; flex: 1; }
+  .au-sz-filter { flex-wrap: nowrap; overflow-x: auto; }
+}

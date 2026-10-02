@@ -1,13 +1,13 @@
 export const dynamic = "force-dynamic";
 
-import { berechneDeckungsbeitraege, ladeFremdkostenProPerson } from "@/lib/deckungsbeitrag";
-import SeminarCockpit from "./SeminarCockpit";
+import { berechneDeckungsbeitraege } from "@/lib/deckungsbeitrag";
+import SeminarCockpit, { ZeitraumLeiste } from "./SeminarCockpit";
 import { requireAdmin } from "@/lib/rechte";
 import { zeitraumAus } from "@/lib/zeitraeume";
 import Geschaeftsfelder from "./Geschaeftsfelder";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { formatEUR, formatEURGanz, formatDatum } from "@/lib/format";
+import { formatEURGanz, formatDatum } from "@/lib/format";
 import { ladeAnstehendeGeburtstage } from "@/lib/geburtstage";
 import FaelligWidget from "../wiedervorlage/FaelligWidget";
 import { getAktuellerBenutzer } from "@/lib/auth";
@@ -264,132 +264,13 @@ async function UmsatzProSeminar({
   // Zeitraum nach Termin-Beginn, Standard: laufendes Jahr (Vergangenes +
   // bereits Gebuchtes). Nicht bis heute gekappt -- kuenftige gebuchte Termine
   // gehoeren ausdruecklich dazu (Markus 10/2026).
-  const jahr = Number(heute.slice(0, 4));
-  const zr = zeitraumAus(zeitraumParam, heute, { vonParam: von, bisParam: bis, standard: String(jahr) });
-
-  let terminQuery = supabase
-    .from("seminartermine")
-    .select("id, titel, kennung, datum_start, kapazitaet, seminartypen(id, name, farbe)")
-    .gte("datum_start", zr.von)
-    .lte("datum_start", zr.bis)
-    .neq("status", "abgesagt")
-    .order("datum_start", { ascending: true });
-  if (seminartypFilter) terminQuery = terminQuery.eq("seminartyp_id", seminartypFilter);
-  const [fremdkostenProPerson, { data: seminartypen }, { data: termine }] = await Promise.all([
-    ladeFremdkostenProPerson(supabase),
-    supabase.from("seminartypen").select("id, name").order("name"),
-    terminQuery,
-  ]);
-
-  const dbProTermin = await berechneDeckungsbeitraege(supabase, (termine || []).map((t: any) => t.id));
-  const zeilen = (termine || []).map((t: any) => ({ ...t, ...dbProTermin.get(t.id)! }));
-  const kommend = zeilen.filter((z: any) => z.datum_start >= heute);
-  const vergangen = zeilen.filter((z: any) => z.datum_start < heute).reverse();
-
-  const gruppen = [
-    { titel: "Rückblick", optionen: [["vormonat", "Vormonat"], ["3m", "Letzte 3 Monate"], ["12m", "Letzte 12 Monate"], [String(jahr - 1), String(jahr - 1)]] },
-    { titel: "Aktuell", optionen: [["monat", "Dieser Monat"], ["quartal", "Dieses Quartal"], [String(jahr), String(jahr)]] },
-    { titel: "Vorschau", optionen: [["naechster-monat", "Nächster Monat"], ["naechstes-quartal", "Nächstes Quartal"], ["naechste-12m", "Nächste 12 Monate"], [String(jahr + 1), String(jahr + 1)]] },
-  ];
-  const link = (key: string) =>
-    `/dashboard?ansicht=seminare&zeitraum=${key}${seminartypFilter ? `&seminartyp=${seminartypFilter}` : ""}`;
-
+  const zr = zeitraumAus(zeitraumParam, heute, { vonParam: von, bisParam: bis, standard: heute.slice(0, 4) });
+  const { data: seminartypen } = await supabase.from("seminartypen").select("id, name").order("name");
   return (
-    <Panel titel="Seminare: Umsatz & Deckungsbeitrag" className="au-panel-breit">
-      <div className="au-zr-auswahl">
-        {gruppen.map((g) => (
-          <div key={g.titel} className="au-zr-gruppe">
-            <span className="au-zr-gruppe-titel">{g.titel}</span>
-            <nav className="au-gf-zeitraum" aria-label={`Zeitraum ${g.titel}`}>
-              {g.optionen.map(([key, label]) => (
-                <Link key={key} href={link(key)} className={key === zr.key ? "aktiv" : ""} aria-current={key === zr.key ? "true" : undefined} prefetch={false}>
-                  {label}
-                </Link>
-              ))}
-            </nav>
-          </div>
-        ))}
-        <form method="get" className="au-zr-gruppe au-zr-frei">
-          <input type="hidden" name="ansicht" value="seminare" />
-          <span className="au-zr-gruppe-titel">Frei / Seminarart</span>
-          <div className="au-gf-frei" style={{ justifyContent: "flex-start", width: "auto" }}>
-            <input type="date" name="von" defaultValue={zr.von} aria-label="von" className="au-input" />
-            <span aria-hidden="true">–</span>
-            <input type="date" name="bis" defaultValue={zr.bis} aria-label="bis" className="au-input" />
-            <input type="hidden" name="zeitraum" value="frei" />
-            <select name="seminartyp" defaultValue={seminartypFilter || ""} aria-label="Seminarart" className="au-select">
-              <option value="">Alle Seminare</option>
-              {(seminartypen || []).map((t: any) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-            <button type="submit" className={`au-btn au-btn-sm ${zr.key === "frei" ? "au-btn-primary" : "au-btn-secondary"}`}>Anzeigen</button>
-          </div>
-        </form>
-      </div>
-
+    <div className="au-sz-seite">
+      <ZeitraumLeiste zeitraum={zr} heute={heute} seminartypen={seminartypen || []} seminartypFilter={seminartypFilter} />
       <SeminarCockpit supabase={supabase} heute={heute} zeitraum={zr} seminartypFilter={seminartypFilter} />
-      <h3 className="au-cockpit-zwischentitel" style={{ marginTop: "2rem" }}>Alle Termine im Zeitraum</h3>
-      {!zeilen.length && <p className="au-leer">Keine Seminare im Zeitraum.</p>}
-      <SeminarGruppe titel="Gebucht, Termin steht aus" zeilen={kommend} />
-      <SeminarGruppe titel="Durchgeführt" zeilen={vergangen} />
-
-      <p className="au-fussnote">
-        Zeitraum nach Termin-Beginn; künftige Termine mit dem heutigen Buchungsstand. Deckungsbeitrag = Umsatz − Fremdkosten pro Person: Teilnehmer (inkl. Freiplätze) nach ihrer Option, Referenten/Mitarbeiter nach dem Personal-Satz des Termins,
-        sonst allgemeine Pauschale {formatEUR(fremdkostenProPerson)} netto (<Link href="/einstellungen" prefetch={false}>einstellbar</Link>); liegt eine Hotelrechnung vor, zählen deren echte Kosten. Umsatz und Kosten nur aus echten Buchungen – Personen nur aus den Pipedrive-Altdaten zählen nicht;
-        Stornos ausgeschlossen, unbezahlte („angefragte“) Buchungen enthalten. Alle Beträge netto zzgl. 19 % USt.
-      </p>
-    </Panel>
-  );
-}
-
-function SeminarGruppe({ titel, zeilen }: { titel: string; zeilen: any[] }) {
-  if (!zeilen.length) return null;
-  const umsatz = zeilen.reduce((s: number, z: any) => s + z.umsatz, 0);
-  const db = zeilen.reduce((s: number, z: any) => s + z.db, 0);
-  return (
-    <section style={{ marginTop: "1.5rem" }}>
-      <h3 style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1rem", flexWrap: "wrap", margin: "0 0 0.5rem" }}>
-        <span>{titel} · {zeilen.length} {zeilen.length === 1 ? "Termin" : "Termine"}</span>
-        <span className="au-klein" style={{ fontWeight: 400 }}>Umsatz {formatEUR(umsatz)} · DB {formatEUR(Math.round(db))}</span>
-      </h3>
-      <div style={{ overflowX: "auto" }}>
-        <table className="au-table">
-          <thead>
-            <tr>
-              <th>Datum</th>
-              <th>Seminar</th>
-              <th style={{ textAlign: "right" }}>TN</th>
-              <th style={{ textAlign: "right" }}>vor Ort</th>
-              <th style={{ textAlign: "right" }}>Umsatz</th>
-              <th style={{ textAlign: "right" }}>davon unbezahlt</th>
-              <th style={{ textAlign: "right" }}>Fremdkosten</th>
-              <th style={{ textAlign: "right" }}>DB</th>
-            </tr>
-          </thead>
-          <tbody>
-            {zeilen.map((z: any) => (
-              <tr key={z.id}>
-                <td style={{ whiteSpace: "nowrap" }}>{formatDatum(z.datum_start)}</td>
-                <td>
-                  <Link href={`/termine/${z.id}`} prefetch={false}>{z.titel || z.seminartypen?.name}</Link>
-                  {z.kennung && <span className="au-klein"> · {z.kennung}</span>}
-                </td>
-                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{z.teilnehmer}{z.kapazitaet ? ` / ${z.kapazitaet}` : ""}</td>
-                <td style={{ textAlign: "right" }}>{z.personen}</td>
-                <td style={{ textAlign: "right" }}>{formatEUR(z.umsatz)}</td>
-                <td style={{ textAlign: "right", color: "var(--color-text-muted)" }}>{z.umsatzUnbezahlt ? formatEUR(z.umsatzUnbezahlt) : "—"}</td>
-                <td style={{ textAlign: "right", color: "var(--color-text-muted)" }}>
-                  {formatEUR(z.fremdkosten)}
-                  {z.kostenQuelle === "beleg" && <span className="au-klein" title="Echte Kosten aus Belegen"> ✓</span>}
-                </td>
-                <td style={{ textAlign: "right", fontWeight: 600, color: z.db < 0 ? "var(--color-danger)" : undefined }}>{formatEUR(Math.round(z.db))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    </div>
   );
 }
 
