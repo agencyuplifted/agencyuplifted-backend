@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { berechneDeckungsbeitraege } from "@/lib/deckungsbeitrag";
-import { formatEURGanz } from "@/lib/format";
+import { formatEURGanz, formatDatum, MONATSNAMEN } from "@/lib/format";
 import { Sparkline } from "./SeminarCockpit";
 
 // Geschaeftsfelder auf der Dashboard-Uebersicht, rollierend 12 Monate.
@@ -18,26 +18,100 @@ const FARBE_UNKLAR = "#d3d1c7";
 const UNKLAR = "unklar";
 
 const tagMinus = (iso: string, tage: number) => new Date(Date.parse(iso) - tage * 86400000).toISOString().slice(0, 10);
+const MS_TAG = 86400000;
+const isoTag = (d: Date) => d.toISOString().slice(0, 10);
+const monatKurz = (ym: string) => `${MONATSNAMEN[Number(ym.slice(5, 7)) - 1].slice(0, 3)} ${ym.slice(0, 4)}`;
+const istDatum = (s: string | undefined) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 
-function monatsReihe(heute: string) {
+// Waehlbare Zeitraeume. Vorher stand nur "rollierend 12 Monate" ohne Datum da --
+// unklar, worauf sich die Zahlen beziehen (Markus 10/2026). Jeder Zeitraum hat
+// konkrete Daten von/bis; laufende Zeitraeume enden heute.
+export function zeitraumAus(param: string | undefined, heute: string, vonParam?: string, bisParam?: string) {
   const [j, m] = heute.split("-").map(Number);
-  return Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(Date.UTC(j, m - 1 - 11 + i, 1));
-    return d.toISOString().slice(0, 7);
-  });
+  const aktuellesJahr = j;
+  const kalender = (key: string, titel: string, von: string, bisVoll: string) => {
+    const bis = bisVoll < heute ? bisVoll : heute;
+    return { key, titel, von, bis, laufend: bis === heute && bisVoll > heute };
+  };
+  if (param === "monat") return kalender("monat", `${MONATSNAMEN[m - 1]} ${j}`, isoTag(new Date(Date.UTC(j, m - 1, 1))), isoTag(new Date(Date.UTC(j, m, 0))));
+  if (param === "vormonat") {
+    const v = new Date(Date.UTC(j, m - 2, 1));
+    return kalender("vormonat", `${MONATSNAMEN[v.getUTCMonth()]} ${v.getUTCFullYear()}`, isoTag(v), isoTag(new Date(Date.UTC(j, m - 1, 0))));
+  }
+  if (param === "3m") return { key: "3m", titel: "Letzte 3 Monate", von: isoTag(new Date(Date.UTC(j, m - 4, Number(heute.slice(8)) + 1))), bis: heute, laufend: false };
+  if (param === "quartal") {
+    const q = Math.floor((m - 1) / 3);
+    return kalender("quartal", `Q${q + 1} ${j}`, isoTag(new Date(Date.UTC(j, q * 3, 1))), isoTag(new Date(Date.UTC(j, q * 3 + 3, 0))));
+  }
+  if (param === "frei" && istDatum(vonParam) && istDatum(bisParam)) {
+    const [a, b] = [vonParam!, bisParam!].sort();
+    return { key: "frei", titel: "Freier Zeitraum", von: a, bis: b, laufend: false };
+  }
+  const jahr = Number(param);
+  if (Number.isInteger(jahr) && jahr >= 2020 && jahr <= aktuellesJahr + 1) return kalender(String(jahr), `Kalenderjahr ${jahr}`, `${jahr}-01-01`, `${jahr}-12-31`);
+  return { key: "12m", titel: "Letzte 12 Monate", von: tagMinus(heute, 364), bis: heute, laufend: false };
 }
 
-export default async function Geschaeftsfelder({ supabase, heute }: { supabase: any; heute: string }) {
-  const von = tagMinus(heute, 365);
+// Verlauf fuer die Sparklines: bis ~3 Monate pro Woche, darueber pro Monat --
+// 12 Monatswerte ergaben bei "Dieser Monat" keinen Sinn.
+function verlaufsAbschnitte(von: string, bis: string) {
+  const tage = (Date.parse(bis) - Date.parse(von)) / MS_TAG + 1;
+  if (tage <= 100) {
+    const abschnitte: { von: string; bis: string }[] = [];
+    for (let t = Date.parse(von); t <= Date.parse(bis); t += 7 * MS_TAG) {
+      const ende = Math.min(t + 6 * MS_TAG, Date.parse(bis));
+      abschnitte.push({ von: isoTag(new Date(t)), bis: isoTag(new Date(ende)) });
+    }
+    return { art: "Woche" as const, abschnitte };
+  }
+  const abschnitte: { von: string; bis: string }[] = [];
+  let d = new Date(Date.UTC(Number(von.slice(0, 4)), Number(von.slice(5, 7)) - 1, 1));
+  while (isoTag(d) <= bis) {
+    const n = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+    abschnitte.push({ von: isoTag(d) < von ? von : isoTag(d), bis: isoTag(new Date(n.getTime() - MS_TAG)) > bis ? bis : isoTag(new Date(n.getTime() - MS_TAG)) });
+    d = n;
+  }
+  return { art: "Monat" as const, abschnitte };
+}
+
+export default async function Geschaeftsfelder({
+  supabase,
+  heute,
+  zeitraum: zeitraumParam,
+  vonParam,
+  bisParam,
+}: {
+  supabase: any;
+  heute: string;
+  zeitraum?: string;
+  vonParam?: string;
+  bisParam?: string;
+}) {
+  const zr = zeitraumAus(zeitraumParam, heute, vonParam, bisParam);
+  const { von, bis } = zr;
+  const aktuellesJahr = Number(heute.slice(0, 4));
+  const auswahl = [
+    { key: "monat", label: "Dieser Monat" },
+    { key: "vormonat", label: "Vormonat" },
+    { key: "3m", label: "Letzte 3 Monate" },
+    { key: "quartal", label: "Quartal" },
+    { key: "12m", label: "Letzte 12 Monate" },
+    { key: String(aktuellesJahr), label: String(aktuellesJahr) },
+    { key: String(aktuellesJahr - 1), label: String(aktuellesJahr - 1) },
+  ];
   const [{ data: kategorien }, { data: rechnungen }, { data: termine }] = await Promise.all([
     supabase.from("fastbill_kategorien").select("id, name, schluessel, reihenfolge").order("reihenfolge").order("name"),
-    supabase.from("fastbill_rechnungen").select("kategorie, betrag_netto, rechnungsdatum").gt("rechnungsdatum", von).lte("rechnungsdatum", heute),
-    supabase.from("seminartermine").select("id, datum_start").gt("datum_start", von).lte("datum_start", heute).neq("status", "abgesagt"),
+    supabase.from("fastbill_rechnungen").select("kategorie, betrag_netto, rechnungsdatum").gte("rechnungsdatum", von).lte("rechnungsdatum", bis),
+    supabase.from("seminartermine").select("id, datum_start").gte("datum_start", von).lte("datum_start", bis).neq("status", "abgesagt"),
   ]);
 
-  const monate = monatsReihe(heute);
+  const { art, abschnitte } = verlaufsAbschnitte(von, bis);
+  const verlauf =
+    art === "Monat"
+      ? `Verlauf pro Monat, ${monatKurz(abschnitte[0].von.slice(0, 7))} – ${monatKurz(abschnitte[abschnitte.length - 1].von.slice(0, 7))}`
+      : `Verlauf pro Woche, ${formatDatum(von).slice(0, 6)} – ${formatDatum(bis).slice(0, 6)}`;
   const proMonat = (eintraege: { datum: string; betrag: number }[]) =>
-    monate.map((m) => eintraege.filter((e) => e.datum.startsWith(m)).reduce((s, e) => s + e.betrag, 0));
+    abschnitte.map((a) => eintraege.filter((e) => e.datum >= a.von && e.datum <= a.bis).reduce((s, e) => s + e.betrag, 0));
 
   // Seminare: bestehende Berechnung (lib/deckungsbeitrag.ts)
   const db = await berechneDeckungsbeitraege(supabase, (termine || []).map((t: any) => t.id));
@@ -68,20 +142,44 @@ export default async function Geschaeftsfelder({ supabase, heute }: { supabase: 
   return (
     <section className="au-panel au-panel-breit au-gf">
       <div className="au-panel-kopf">
-        <h2>Geschäftsfelder · rollierend 12 Monate</h2>
-        <Link href="/buchungen/fastbill/kategorien" className="au-panel-link" prefetch={false}>Kategorien verwalten →</Link>
+        <h2>Umsatz nach Geschäftsfeldern</h2>
+        <nav className="au-gf-zeitraum" aria-label="Zeitraum wählen">
+          {auswahl.map((a) => (
+            <Link
+              key={a.key}
+              href={`/dashboard?ansicht=uebersicht${a.key === "12m" ? "" : `&zeitraum=${a.key}`}`}
+              className={a.key === zr.key ? "aktiv" : ""}
+              aria-current={a.key === zr.key ? "true" : undefined}
+              prefetch={false}
+            >
+              {a.label}
+            </Link>
+          ))}
+        </nav>
+        <form method="get" className="au-gf-frei" aria-label="Freien Zeitraum wählen">
+          <input type="hidden" name="ansicht" value="uebersicht" />
+          <input type="hidden" name="zeitraum" value="frei" />
+          <input type="date" name="von" defaultValue={zr.von} aria-label="von" className="au-input" required />
+          <span aria-hidden="true">–</span>
+          <input type="date" name="bis" defaultValue={zr.bis} aria-label="bis" className="au-input" required />
+          <button type="submit" className={`au-btn au-btn-sm ${zr.key === "frei" ? "au-btn-primary" : "au-btn-secondary"}`}>Anzeigen</button>
+        </form>
       </div>
       <div className="au-panel-inhalt">
       <div className="au-gf-kopf">
         <div>
-          <div className="au-cockpit-label">Gesamtumsatz</div>
+          <div className="au-cockpit-label">
+            Umsatz netto · {zr.titel} · <strong>{formatDatum(von)} – {formatDatum(bis)}</strong>
+            {zr.laufend && zr.key !== "12m" ? " (bis heute)" : ""}
+          </div>
           <div className="au-cockpit-zahl">{formatEURGanz(gesamt)}</div>
           <div className="au-cockpit-kontext">
-            Seminare aus dem Buchungssystem + zugeordnete FastBill-Rechnungen{seminarName ? ` (ohne „${seminarName}“, sonst doppelt)` : ""}
+            Seminare: Termine mit Beginn im Zeitraum, aus dem Buchungssystem · übrige Geschäftsfelder: zugeordnete FastBill-Rechnungen nach Rechnungsdatum
+            {seminarName ? ` (FastBill-Kategorie „${seminarName}“ nicht mitgezählt, sonst doppelt)` : ""}
           </div>
           {unklarSumme > 0 && (
             <div className="au-cockpit-vergleich">
-              zusätzlich {formatEURGanz(unklarSumme)} noch nicht zugeordnet ·{" "}
+              Nicht enthalten: {formatEURGanz(unklarSumme)} aus noch nicht zugeordneten Rechnungen im selben Zeitraum ·{" "}
               <Link href="/buchungen/fastbill/kategorisieren" prefetch={false}>jetzt kategorisieren →</Link>
             </div>
           )}
@@ -92,22 +190,22 @@ export default async function Geschaeftsfelder({ supabase, heute }: { supabase: 
         <div className="au-gf-karte">
           <div className="au-cockpit-label"><span className="au-gf-punkt" style={{ background: FARBEN[0] }} /> Seminare</div>
           <div className="au-gf-zahl">{formatEURGanz(seminarSumme)}</div>
-          <Sparkline werte={proMonat(seminarEintraege)} farbe={FARBEN[0]} />
-          <div className="au-klein">aus dem Buchungssystem</div>
+          {abschnitte.length >= 2 && <Sparkline werte={proMonat(seminarEintraege)} farbe={FARBEN[0]} />}
+          <div className="au-klein">{verlauf} · Termine nach Beginn</div>
         </div>
         {felder.map((f, i) =>
           f.anzahl === 0 ? (
             <div key={f.name} className="au-gf-karte leer">
               <div className="au-cockpit-label"><span className="au-gf-punkt" style={{ background: FARBEN[(i + 1) % FARBEN.length] }} /> {f.name}</div>
               <div className="au-gf-zahl">—</div>
-              <div className="au-klein">noch keine zugeordneten Rechnungen</div>
+              <div className="au-klein">keine zugeordneten Rechnungen im Zeitraum</div>
             </div>
           ) : (
             <div key={f.name} className="au-gf-karte">
               <div className="au-cockpit-label"><span className="au-gf-punkt" style={{ background: FARBEN[(i + 1) % FARBEN.length] }} /> {f.name}</div>
               <div className="au-gf-zahl">{formatEURGanz(f.summe)}</div>
-              <Sparkline werte={f.monate} farbe={FARBEN[(i + 1) % FARBEN.length]} />
-              <div className="au-klein">{f.anzahl} Rechnung{f.anzahl === 1 ? "" : "en"}</div>
+              {abschnitte.length >= 2 && <Sparkline werte={f.monate} farbe={FARBEN[(i + 1) % FARBEN.length]} />}
+              <div className="au-klein">{verlauf} · {f.anzahl} Rechnung{f.anzahl === 1 ? "" : "en"}</div>
             </div>
           )
         )}

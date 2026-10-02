@@ -34,11 +34,11 @@ function balken(anteil: number, farbe = "var(--color-accent)"): React.ReactNode 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ansicht?: string; jahr?: string; seminartyp?: string }>;
+  searchParams: Promise<{ ansicht?: string; jahr?: string; seminartyp?: string; zeitraum?: string; von?: string; bis?: string }>;
 }) {
   // Dashboard mit Umsatz/DB nur fuer Admins (Rechtemanagement lib/rechte.ts)
   await requireAdmin();
-  const { ansicht: ansichtRaw, jahr: jahrRaw, seminartyp } = await searchParams;
+  const { ansicht: ansichtRaw, jahr: jahrRaw, seminartyp, zeitraum, von, bis } = await searchParams;
   const ansicht: Ansicht = (TABS.some((t) => t.key === ansichtRaw) ? ansichtRaw : "uebersicht") as Ansicht;
   const jahr = Number(jahrRaw) || new Date().getFullYear();
 
@@ -57,7 +57,7 @@ export default async function DashboardPage({
         ))}
       </nav>
 
-      {ansicht === "uebersicht" && <Uebersicht supabase={supabase} heute={heute} />}
+      {ansicht === "uebersicht" && <Uebersicht supabase={supabase} heute={heute} zeitraum={zeitraum} von={von} bis={bis} />}
       {ansicht === "seminare" && <UmsatzProSeminar supabase={supabase} heute={heute} jahr={jahr} seminartypFilter={seminartyp} />}
       {ansicht === "nachfrage" && <Nachfrage supabase={supabase} />}
       {ansicht === "auslastung" && <Auslastung supabase={supabase} heute={heute} />}
@@ -118,7 +118,7 @@ function Panel({ titel, aktion, children, className }: { titel: string; aktion?:
   );
 }
 
-async function Uebersicht({ supabase, heute }: { supabase: any; heute: string }) {
+async function Uebersicht({ supabase, heute, zeitraum, von, bis }: { supabase: any; heute: string; zeitraum?: string; von?: string; bis?: string }) {
   const in30Tagen = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
   const [
     { count: teilnehmerCount },
@@ -161,11 +161,11 @@ async function Uebersicht({ supabase, heute }: { supabase: any; heute: string })
       <div className="au-kennzahlen">
         <Kennzahl label="Anstehende Seminare" wert={terminCount ?? 0} kontext={`${termine30 ?? 0} in den nächsten 30 Tagen`} href="/termine" />
         <Kennzahl label="Offene Leads" wert={leadsOffen ?? 0} kontext={`${wartelisteCount ?? 0} auf der Warteliste`} href="/leads" />
-        <Kennzahl label="Umsatz netto" wert={formatEURGanz(umsatzNetto)} kontext={`brutto ${formatEURGanz(umsatzNetto * (1 + MWST_SATZ))} · alle Buchungen`} href="/buchungen" />
+        <Kennzahl label="Umsatz netto, alle Buchungen" wert={formatEURGanz(umsatzNetto)} kontext={`gesamter Bestand inkl. gebuchter künftiger Termine · brutto ${formatEURGanz(umsatzNetto * (1 + MWST_SATZ))}`} href="/buchungen" />
         <Kennzahl label="Teilnehmer" wert={teilnehmerCount ?? 0} kontext={`${orgaCount ?? 0} Organisationen · ${legacyCount ?? 0} Alt-Teilnahmen`} href="/teilnehmer" />
       </div>
 
-      <Geschaeftsfelder supabase={supabase} heute={heute} />
+      <Geschaeftsfelder supabase={supabase} heute={heute} zeitraum={zeitraum} vonParam={von} bisParam={bis} />
 
       <div className="au-dash-raster">
         <div className="au-dash-haupt">

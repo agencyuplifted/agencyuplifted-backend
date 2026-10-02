@@ -103,31 +103,35 @@ export default async function SeminarCockpit({
       {/* 1. Hero: rollierend und Kalenderjahr nebeneinander */}
       <div className="au-cockpit-hero-raster">
       <section className="au-cockpit-hero">
-        <div className="au-cockpit-label">Deckungsbeitrag, rollierend 12 Monate</div>
+        <div className="au-cockpit-label">
+          Deckungsbeitrag · letzte 12 Monate · <strong>{formatDatum(tagMinus(heute, 364))} – {formatDatum(heute)}</strong>
+        </div>
         <div className="au-cockpit-zahl">{formatEURGanz(rollierend.db)}</div>
         <div className="au-cockpit-kontext">
-          Umsatz {formatEURGanz(rollierend.umsatz)} · Fremdkosten {formatEURGanz(rollierend.kosten)}
+          Umsatz {formatEURGanz(rollierend.umsatz)} · Fremdkosten {formatEURGanz(rollierend.kosten)} · Termine mit Beginn im Zeitraum, inkl. Konferenz
         </div>
         <div className="au-cockpit-vergleich">
           {veraenderung === null ? (
-            <>Vorjahr, gleicher Stichtag: noch keine Daten – aktiviert sich automatisch, sobald 2025 nachgetragen ist.</>
+            <>Vergleich mit den 12 Monaten davor ({formatDatum(tagMinus(heute, 729))} – {formatDatum(tagMinus(heute, 365))}): noch keine Daten – erscheint automatisch, sobald diese Termine mit Buchungen im System sind.</>
           ) : (
             <>
               <span className={veraenderung >= 0 ? "au-cockpit-plus" : "au-cockpit-minus"} aria-hidden="true">
                 {veraenderung >= 0 ? "▲" : "▼"}
               </span>{" "}
               {veraenderung >= 0 ? "+" : "−"}
-              {Math.abs(Math.round(veraenderung * 100))} % ggü. Vorjahr, gleicher Stichtag ({formatEURGanz(vorjahr.db)})
+              {Math.abs(Math.round(veraenderung * 100))} % ggü. den 12 Monaten davor ({formatEURGanz(vorjahr.db)})
             </>
           )}
         </div>
       </section>
 
       <section className="au-cockpit-hero">
-        <div className="au-cockpit-label">Deckungsbeitrag im Jahr {jahr}</div>
+        <div className="au-cockpit-label">
+          Deckungsbeitrag · Kalenderjahr {jahr} · <strong>01.01. – 31.12.{jahr}</strong>
+        </div>
         <div className="au-cockpit-zahl">{formatEURGanz(jahrDurchgefuehrt.db)}</div>
         <div className="au-cockpit-kontext">
-          durchgeführt · Umsatz {formatEURGanz(jahrDurchgefuehrt.umsatz)} · Fremdkosten {formatEURGanz(jahrDurchgefuehrt.kosten)}
+          bereits durchgeführte Termine · Umsatz {formatEURGanz(jahrDurchgefuehrt.umsatz)} · Fremdkosten {formatEURGanz(jahrDurchgefuehrt.kosten)}
         </div>
         {jahrAnstehend.umsatz !== 0 || jahrAnstehend.kosten !== 0 ? (
           <div className="au-cockpit-kontext" style={{ marginTop: "0.35rem" }}>
@@ -139,7 +143,7 @@ export default async function SeminarCockpit({
           {jahr !== Number(heute.slice(0, 4)) ? (
             <>{jahr < Number(heute.slice(0, 4)) ? "Abgeschlossenes Jahr." : "Noch kein Termin durchgeführt."}</>
           ) : jahrVeraenderung === null ? (
-            <>Vorjahr bis heute: noch keine Daten – aktiviert sich automatisch, sobald {jahr - 1} nachgetragen ist.</>
+            <>Vergleich mit {jahr - 1} bis zum {formatDatum(stichtagVorjahr)}: noch keine Daten – erscheint automatisch, sobald {jahr - 1} mit Buchungen im System ist.</>
           ) : (
             <>
               <span className={jahrVeraenderung >= 0 ? "au-cockpit-plus" : "au-cockpit-minus"} aria-hidden="true">
