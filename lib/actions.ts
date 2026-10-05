@@ -12,6 +12,8 @@ import { PROGRAMM_SYSTEM_MAIL_BESTAETIGT } from "./programm-buchung";
 import { signSession, SESSION_COOKIE_NAME, SESSION_TTL } from "./session";
 import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
+import { del } from "@vercel/blob";
+import { getBlobToken } from "./medien-server";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter } from "./funnel";
 import { INBOX_TEXT_MAX, INBOX_TYPEN, INBOX_STATUS, INBOX_BEREICHE, INBOX_FORMATE, nurErlaubte } from "./inbox";
@@ -5786,4 +5788,20 @@ export async function setzeTeilnehmerTags(formData: FormData) {
   }
   revalidatePath(`/teilnehmer/${teilnehmerId}`);
   redirect(`/teilnehmer/${teilnehmerId}`);
+}
+
+// Medien (Vercel Blob): Datei endgueltig loeschen. Nur Adressen aus dem
+// eigenen Blob-Store -- das Formular schickt die URL mit.
+export async function loescheMedium(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const url = String(formData.get("url") || "");
+  if (!/^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\//.test(url)) return { fehler: "Ungültige Datei-Adresse." };
+  try {
+    await del(url, { token: getBlobToken() });
+  } catch (e: any) {
+    return { fehler: `Löschen fehlgeschlagen: ${e?.message || "unbekannter Fehler"}` };
+  }
+  revalidatePath("/medien");
+  return { fehler: null };
 }

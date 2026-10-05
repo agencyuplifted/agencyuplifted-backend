@@ -78,6 +78,7 @@ const BEREICHE: NavBereich[] = [
       { href: "/content-creation", label: "Content Creation", stichworte: "themen radar" },
       { href: "/buch-versand", label: "Buch-Versand" },
       { href: "/buch-empfaenger", label: "Buch-Empfänger" },
+      { href: "/medien", label: "Medien", stichworte: "video upload dateien onepage mp4 blob" },
     ],
   },
   {
