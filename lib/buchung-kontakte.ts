@@ -20,6 +20,17 @@ export type ErkannterTeilnehmer = { id: string; email: string; vorname: string; 
 
 export type Rechnungsadresse = { strasse: string; plz: string; ort: string };
 
+// Wiedererkennung per ilike (Gross-/Kleinschreibung egal). Frueher mit
+// .maybeSingle(): Gab es schon zwei Datensaetze mit derselben E-Mail bzw.
+// demselben Firmennamen, lieferte maybeSingle einen Fehler statt eines
+// Treffers -- und die Buchung legte einen WEITEREN Datensatz an, die
+// Dubletten vermehrten sich also selbst. Jetzt deterministisch der aelteste
+// Treffer. % und _ werden maskiert, sonst waere "max_m@x.de" ein Muster,
+// das auch fremde Adressen trifft.
+function ilikeExakt(wert: string): string {
+  return wert.trim().replace(/[\\%_]/g, (zeichen) => "\\" + zeichen);
+}
+
 export async function ermittleKontakte(
   supabase: any,
   personen: Teilnehmerangabe[],
@@ -32,7 +43,10 @@ export async function ermittleKontakte(
     const { data: bestehendeOrga } = await supabase
       .from("organisationen")
       .select("id, rechnungsadresse_strasse, rechnungsadresse_plz, rechnungsadresse_ort")
-      .ilike("name", personen[0].company)
+      .ilike("name", ilikeExakt(personen[0].company))
+      .order("erstellt_am", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(1)
       .maybeSingle();
     if (bestehendeOrga) {
       organisationId = bestehendeOrga.id;
@@ -77,7 +91,10 @@ export async function ermittleKontakte(
     const { data: bestehenderTeilnehmer } = await supabase
       .from("teilnehmer")
       .select("id, privatadresse_strasse, privatadresse_plz, privatadresse_ort")
-      .ilike("email", person.email)
+      .ilike("email", ilikeExakt(person.email))
+      .order("erstellt_am", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(1)
       .maybeSingle();
 
     if (bestehenderTeilnehmer) {
