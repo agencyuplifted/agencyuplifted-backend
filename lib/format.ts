@@ -30,6 +30,24 @@ export function formatDatumsspanne(start: string, ende?: string | null) {
   return `${tag(startDatum)}. – ${tag(endeDatum)}.${monat(endeDatum)}.${jahr(endeDatum)}`;
 }
 
+// Datumsspanne mit ausgeschriebenem Monat fuer Mail-Texte (Funnel-Platzhalter
+// {{seminarzeitraum}}): "7. – 9. Oktober" liest sich in einer Mail besser als
+// die kompakte Listenform "07. – 09.10.2026". Das Jahr steht nur dabei, wenn
+// der Termin ueber den Jahreswechsel laeuft -- in einer Mail kurz vor dem
+// Seminar ist das laufende Jahr sonst nur Ballast.
+export function formatDatumsspanneLang(start: string, ende?: string | null) {
+  const tag = (iso: string) => Number(iso.slice(8, 10));
+  const monat = (iso: string) => monatsName(Number(iso.slice(5, 7)) - 1);
+  const jahr = (iso: string) => iso.slice(0, 4);
+  const a = start.slice(0, 10);
+  const b = (ende || start).slice(0, 10);
+
+  if (b === a) return `${tag(a)}. ${monat(a)}`;
+  if (jahr(a) !== jahr(b)) return `${tag(a)}. ${monat(a)} ${jahr(a)} – ${tag(b)}. ${monat(b)} ${jahr(b)}`;
+  if (monat(a) !== monat(b)) return `${tag(a)}. ${monat(a)} – ${tag(b)}. ${monat(b)}`;
+  return `${tag(a)}. – ${tag(b)}. ${monat(b)}`;
+}
+
 // Anzahl Uebernachtungen aus dem Datumsbereich eines Termins (datum_start bis
 // datum_ende, beide vom Typ "date" ohne Uhrzeit) -- z.B. 14. bis 15. August =
 // 1 Nacht. Grundlage fuer den Zimmerupgrade-Gesamtpreis (Aufpreis pro Nacht x

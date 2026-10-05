@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "./supabase";
 import { getResend, ABSENDER } from "./email";
-import { formatDatum, splitName } from "./format";
+import { formatDatum, formatDatumsspanneLang, splitName } from "./format";
 import { seminarLinks } from "./seminar-links";
 import { ladeBausteine, schalterAus, baueMailHtml, abmeldeUrl, abmeldeHeader, ladeSperrliste, type AbmeldeTyp } from "./mail-bausteine";
 
@@ -36,6 +36,10 @@ export const PLATZHALTER_HILFE: { key: string; beschreibung: string; verfuegbarB
   { key: "{{seminartitel}}", beschreibung: "Titel bzw. Name des Seminars", verfuegbarBei: ["buchung_erstellt", "vor_seminarstart", "nach_seminarende"] },
   { key: "{{seminardatum}}", beschreibung: "Datum des Seminartermins", verfuegbarBei: ["buchung_erstellt", "vor_seminarstart", "nach_seminarende"] },
   { key: "{{datum_start}}", beschreibung: "Erster Seminartag, ausgeschrieben (z. B. Mittwoch, 7. Oktober 2026)", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
+  { key: "{{seminarzeitraum}}", beschreibung: "Offizieller Seminarzeitraum ohne Vorabend (z. B. 7. – 9. Oktober)", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
+  { key: "{{vorabend_datum}}", beschreibung: "Vorabend-/Anreisetag (z. B. 06.10.2026) – ohne hinterlegten Vorabendanreise-Tag der Tag vor dem Seminarstart", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
+  { key: "{{vorabend_datum_lang}}", beschreibung: "Vorabend-/Anreisetag ausgeschrieben (z. B. Dienstag, 6. Oktober 2026)", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
+  { key: "{{vorabend_zeit}}", beschreibung: "Uhrzeit der Vorabendanreise (leer, wenn am Termin keine hinterlegt ist)", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
   { key: "{{zeit_start}}", beschreibung: "Beginn-Uhrzeit (z. B. 09:00)", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
   { key: "{{ort}}", beschreibung: "Veranstaltungsort mit Adresse bzw. Ort", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
   { key: "{{veranstaltungsort}}", beschreibung: "Ort des Seminars (nur Ortsname)", verfuegbarBei: ["vor_seminarstart", "nach_seminarende"] },
@@ -166,7 +170,9 @@ async function sammleFaelligeEmpfaenger(
   if (funnel.trigger_typ === "vor_seminarstart" || funnel.trigger_typ === "nach_seminarende") {
     const { data: termine } = await supabase
       .from("seminartermine")
-      .select("id, titel, datum_start, datum_ende, zeit_start, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, ort, adresse)")
+      .select(
+        "id, titel, datum_start, datum_ende, zeit_start, vorabend_anreise_datum, vorabend_anreise_uhrzeit, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, ort, adresse)"
+      )
       .is("deaktiviert_am", null)
       .neq("status", "abgesagt");
     for (const t of termine || []) {
@@ -189,6 +195,15 @@ async function sammleFaelligeEmpfaenger(
       const ort = t.veranstaltungsorte?.ort || "";
       const ortLang = [t.veranstaltungsorte?.name, t.veranstaltungsorte?.adresse || t.veranstaltungsorte?.ort].filter(Boolean).join(", ");
       const teilnehmerliste = await teilnehmerlisteText(supabase, t.id);
+      // {{seminarzeitraum}} meint bewusst nur die offiziellen Seminartage --
+      // der Vorabend steckt nicht in datum_start, sondern in
+      // vorabend_anreise_datum und hat eigene Platzhalter. Ist am Termin kein
+      // Vorabendanreise-Tag gepflegt, nehmen wir den Tag vor dem Start, damit
+      // die Mail nicht mit einer Leerstelle rausgeht.
+      const seminarzeitraum = formatDatumsspanneLang(String(t.datum_start), t.datum_ende ? String(t.datum_ende) : null);
+      const vorabendISO = t.vorabend_anreise_datum
+        ? String(t.vorabend_anreise_datum).slice(0, 10)
+        : tageVerschieben(String(t.datum_start).slice(0, 10), -1);
 
       // Wie bei "buchung_erstellt": Seminar-Mails gehen nur an bezahlte
       // Buchungen; unbezahlte haben ihren Platz, aber noch keine Strecke.
@@ -209,6 +224,10 @@ async function sammleFaelligeEmpfaenger(
             veranstaltungsort: ort,
             teilnehmerliste,
             datum_start: datumLang(String(t.datum_start)),
+            seminarzeitraum,
+            vorabend_datum: formatDatum(vorabendISO),
+            vorabend_datum_lang: datumLang(vorabendISO),
+            vorabend_zeit: t.vorabend_anreise_uhrzeit ? String(t.vorabend_anreise_uhrzeit).slice(0, 5) : "",
             zeit_start: t.zeit_start ? String(t.zeit_start).slice(0, 5) : "",
             ort: ortLang || ort,
             ...seminarLinks(p.teilnehmer.id, t.id),
