@@ -6441,3 +6441,39 @@ a.au-sz-chip { text-decoration: none; }
   .au-medien-zeile { grid-template-columns: minmax(0, 1fr); }
   .au-medien-aktionen { flex-direction: row; }
 }
+
+/* Funnel: Handversand an ein Seminar (Handversand.tsx) */
+.au-handversand {
+  margin-top: 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.au-handversand h3 { margin: 0; font-size: 0.95rem; }
+.au-handversand-termin { display: flex; flex-direction: column; gap: 0.25rem; max-width: 22rem; }
+.au-handversand-termin .au-select { margin: 0; }
+.au-handversand-liste { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); }
+.au-handversand-liste li { border-bottom: 1px solid var(--color-border); }
+.au-handversand-liste li:last-child { border-bottom: 0; }
+.au-handversand-liste label { display: flex; align-items: center; gap: 0.75rem; padding: 0.55rem 0.8rem; cursor: pointer; flex-wrap: wrap; }
+.au-handversand-liste li.gesperrt label { cursor: not-allowed; opacity: 0.6; }
+.au-handversand-liste input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex: none; }
+.au-handversand-name { display: flex; flex-direction: column; min-width: 12rem; flex: 1; }
+.au-handversand-name b { font-size: 0.88rem; font-weight: 600; }
+.au-handversand-name small { font-size: 0.76rem; color: var(--color-text-muted); }
+.au-handversand-info { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.au-handversand-mail { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.au-handversand-mail iframe { width: 100%; height: 520px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: #fff; }
+.au-handversand-bestaetigung {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--color-warning-border);
+  background: var(--color-warning-soft);
+  border-radius: var(--radius-sm);
+}
+.au-handversand-bestaetigung p { margin: 0 0 0.6rem; font-size: 0.88rem; }
+.au-handversand-knoepfe { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.au-handversand-knoepfe .au-input { width: 10rem; margin: 0; }

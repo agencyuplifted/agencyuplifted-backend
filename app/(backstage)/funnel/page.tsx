@@ -14,11 +14,12 @@ import { ladeBausteine } from "@/lib/mail-bausteine";
 import BausteinEditor from "./BausteinEditor";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatDatum, formatDatumZeit } from "@/lib/format";
-import { TRIGGER_LABEL, PLATZHALTER_HILFE, SYSTEM_FUNNEL_IDS, type TriggerTyp } from "@/lib/funnel";
+import { TRIGGER_LABEL, PLATZHALTER_HILFE, SYSTEM_FUNNEL_IDS, HANDVERSAND_TRIGGER, type TriggerTyp } from "@/lib/funnel";
 import FunnelImport from "./FunnelImport";
 import FunnelEditor from "./FunnelEditor";
 import FunnelZeitstrahl, { type ZeitstrahlMail } from "./FunnelZeitstrahl";
 import TerminWahl from "./TerminWahl";
+import Handversand from "./Handversand";
 
 const TRIGGER_TYPEN: TriggerTyp[] = [
   "buchung_erstellt",
@@ -240,6 +241,19 @@ export default async function FunnelPage({
                   <p className="au-klein" style={{ marginTop: 0 }}>Aktiv seit {formatDatum(ausgewaehlt.aktiviert_am)} – verschickt nur für Stichtage ab diesem Tag.</p>
                 ) : null}
                 <FunnelEditor key={ausgewaehlt.id + (ausgewaehlt.aktualisiert_am || "")} mail={ausgewaehlt} trigger={triggerOptionen} platzhalter={PLATZHALTER_HILFE} speichernAction={updateFunnelMail} bausteine={bausteine} tags={tags} seminartypen={seminartypen} optionen={optionen} istSystem={istSystem} />
+                {!istSystem && HANDVERSAND_TRIGGER.includes(ausgewaehlt.trigger_typ) && (
+                  <Handversand
+                    key={`hv-${ausgewaehlt.id}`}
+                    mailId={ausgewaehlt.id}
+                    termine={terminListe.map((t) => ({ id: t.id, label: `${formatDatum(t.datum_start)} · ${t.kennung || t.titel}` }))}
+                    vorauswahl={
+                      // vorher-Mails: naechstes Seminar; nachher-Mails: zuletzt beendetes
+                      ausgewaehlt.trigger_typ === "vor_seminarstart"
+                        ? terminListe.find((t) => t.datum_start >= heute)?.id || null
+                        : [...terminListe].reverse().find((t) => (t.datum_ende || t.datum_start) < heute)?.id || null
+                    }
+                  />
+                )}
               </div>
             </>
           )}

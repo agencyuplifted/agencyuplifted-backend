@@ -107,6 +107,57 @@ type Empfaenger = {
   option?: string | null;
 };
 
+// Platzhalter eines Seminartermins -- gemeinsam fuer den taeglichen Funnel
+// und den Handversand (sendeFunnelMailManuell), damit beide gleich aussehen.
+async function seminarWerteBasis(supabase: any, t: any) {
+  // {{seminarzeitraum}} meint bewusst nur die offiziellen Seminartage --
+  // der Vorabend steckt nicht in datum_start, sondern in
+  // vorabend_anreise_datum und hat eigene Platzhalter. Ist am Termin kein
+  // Vorabendanreise-Tag gepflegt, nehmen wir den Tag vor dem Start, damit
+  // die Mail nicht mit einer Leerstelle rausgeht.
+  const vorabendISO = t.vorabend_anreise_datum
+    ? String(t.vorabend_anreise_datum).slice(0, 10)
+    : tageVerschieben(String(t.datum_start).slice(0, 10), -1);
+  return {
+    seminarzeitraum: formatDatumsspanneLang(String(t.datum_start), t.datum_ende ? String(t.datum_ende) : null),
+    vorabendDatum: formatDatum(vorabendISO),
+    vorabendDatumLang: datumLang(vorabendISO),
+    vorabendZeit: t.vorabend_anreise_uhrzeit ? String(t.vorabend_anreise_uhrzeit).slice(0, 5) : "",
+    titel: t.titel || t.seminartypen?.name || "Seminar",
+    seminardatum: formatDatum(t.datum_start),
+    ort: t.veranstaltungsorte?.ort || "",
+    ortLang: [t.veranstaltungsorte?.name, t.veranstaltungsorte?.adresse || t.veranstaltungsorte?.ort].filter(Boolean).join(", "),
+    teilnehmerliste: await teilnehmerlisteText(supabase, t.id),
+    datumStart: datumLang(String(t.datum_start)),
+    zeitStart: t.zeit_start ? String(t.zeit_start).slice(0, 5) : "",
+  };
+}
+
+function seminarEmpfaenger(p: any, terminId: string, basis: Awaited<ReturnType<typeof seminarWerteBasis>>): Empfaenger {
+  return {
+    email: p.teilnehmer.email,
+    werte: {
+      vorname: p.teilnehmer.vorname,
+      nachname: p.teilnehmer.nachname,
+      seminartitel: basis.titel,
+      seminardatum: basis.seminardatum,
+      veranstaltungsort: basis.ort,
+      teilnehmerliste: basis.teilnehmerliste,
+      datum_start: basis.datumStart,
+      seminarzeitraum: basis.seminarzeitraum,
+      vorabend_datum: basis.vorabendDatum,
+      vorabend_datum_lang: basis.vorabendDatumLang,
+      vorabend_zeit: basis.vorabendZeit,
+      zeit_start: basis.zeitStart,
+      ort: basis.ortLang || basis.ort,
+      ...seminarLinks(p.teilnehmer.id, terminId),
+      option: p.seminartermin_optionen?.titel || "",
+    },
+    abmelde: { typ: "t" as const, id: p.teilnehmer.id },
+    option: p.seminartermin_optionen?.titel || null,
+  };
+}
+
 async function sammleFaelligeEmpfaenger(
   supabase: any,
   funnel: { id: string; trigger_typ: TriggerTyp; versatz_tage: number; aktiviert_am?: string | null; nur_seminartyp_id?: string | null }
@@ -170,9 +221,7 @@ async function sammleFaelligeEmpfaenger(
   if (funnel.trigger_typ === "vor_seminarstart" || funnel.trigger_typ === "nach_seminarende") {
     const { data: termine } = await supabase
       .from("seminartermine")
-      .select(
-        "id, titel, datum_start, datum_ende, zeit_start, vorabend_anreise_datum, vorabend_anreise_uhrzeit, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, ort, adresse)"
-      )
+      .select("id, titel, datum_start, datum_ende, zeit_start, vorabend_anreise_datum, vorabend_anreise_uhrzeit, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, ort, adresse)")
       .is("deaktiviert_am", null)
       .neq("status", "abgesagt");
     for (const t of termine || []) {
@@ -190,20 +239,7 @@ async function sammleFaelligeEmpfaenger(
         .from("buchungspositionen")
         .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status), buchungen(status), seminartermin_optionen(titel)")
         .eq("seminartermin_id", t.id);
-      const titel = t.titel || t.seminartypen?.name || "Seminar";
-      const seminardatum = formatDatum(t.datum_start);
-      const ort = t.veranstaltungsorte?.ort || "";
-      const ortLang = [t.veranstaltungsorte?.name, t.veranstaltungsorte?.adresse || t.veranstaltungsorte?.ort].filter(Boolean).join(", ");
-      const teilnehmerliste = await teilnehmerlisteText(supabase, t.id);
-      // {{seminarzeitraum}} meint bewusst nur die offiziellen Seminartage --
-      // der Vorabend steckt nicht in datum_start, sondern in
-      // vorabend_anreise_datum und hat eigene Platzhalter. Ist am Termin kein
-      // Vorabendanreise-Tag gepflegt, nehmen wir den Tag vor dem Start, damit
-      // die Mail nicht mit einer Leerstelle rausgeht.
-      const seminarzeitraum = formatDatumsspanneLang(String(t.datum_start), t.datum_ende ? String(t.datum_ende) : null);
-      const vorabendISO = t.vorabend_anreise_datum
-        ? String(t.vorabend_anreise_datum).slice(0, 10)
-        : tageVerschieben(String(t.datum_start).slice(0, 10), -1);
+      const basis = await seminarWerteBasis(supabase, t);
 
       // Wie bei "buchung_erstellt": Seminar-Mails gehen nur an bezahlte
       // Buchungen; unbezahlte haben ihren Platz, aber noch keine Strecke.
@@ -214,28 +250,7 @@ async function sammleFaelligeEmpfaenger(
             p.teilnehmer?.email &&
             p.teilnehmer?.marketing_consent_status !== "abgemeldet"
         )
-        .map((p: any) => ({
-          email: p.teilnehmer.email,
-          werte: {
-            vorname: p.teilnehmer.vorname,
-            nachname: p.teilnehmer.nachname,
-            seminartitel: titel,
-            seminardatum,
-            veranstaltungsort: ort,
-            teilnehmerliste,
-            datum_start: datumLang(String(t.datum_start)),
-            seminarzeitraum,
-            vorabend_datum: formatDatum(vorabendISO),
-            vorabend_datum_lang: datumLang(vorabendISO),
-            vorabend_zeit: t.vorabend_anreise_uhrzeit ? String(t.vorabend_anreise_uhrzeit).slice(0, 5) : "",
-            zeit_start: t.zeit_start ? String(t.zeit_start).slice(0, 5) : "",
-            ort: ortLang || ort,
-            ...seminarLinks(p.teilnehmer.id, t.id),
-            option: p.seminartermin_optionen?.titel || "",
-          },
-          abmelde: { typ: "t" as const, id: p.teilnehmer.id },
-          option: p.seminartermin_optionen?.titel || null,
-        }));
+        .map((p: any) => seminarEmpfaenger(p, t.id, basis));
       if (empfaenger.length) ergebnis.push({ bezugTyp: "seminartermin", bezugId: t.id, empfaenger });
     }
   }
@@ -473,4 +488,178 @@ export async function pruefeUndSendeFaelligeFunnelMails(): Promise<{
   }
 
   return { geprueft, gesendet, fehler, uebersprungen };
+}
+
+// ---------------------------------------------------------------------------
+// Handversand: eine Seminar-Mail gezielt fuer EINEN Termin jetzt verschicken,
+// unabhaengig von Zeitschalter und "aktiv" (Fall Markus 05.10.2026: letzter
+// Reminder vor SPS326 war nicht aktiv, Stichtag verpasst). Protokolliert in
+// funnel_versand_log wie der automatische Versand -- wird die Mail spaeter
+// aktiv, bekommt bei diesem Termin niemand sie doppelt.
+
+export const HANDVERSAND_TRIGGER: TriggerTyp[] = ["vor_seminarstart", "nach_seminarende"];
+
+export type HandversandEmpfaenger = {
+  teilnehmerId: string;
+  name: string;
+  email: string;
+  option: string | null;
+  buchungsstatus: string;
+  freiplatz: boolean;
+  /** Grund, warum nicht verschickt werden darf (abgemeldet, Bounce …) */
+  gesperrt: string | null;
+  /** Zeitpunkt, falls diese Mail fuer den Termin schon rausging */
+  bereitsAm: string | null;
+  /** Vorauswahl: bezahlt/Freiplatz, nicht gesperrt, noch nicht erhalten */
+  vorausgewaehlt: boolean;
+};
+
+async function handversandDaten(supabase: any, funnelMailId: string, terminId: string) {
+  const [{ data: mail }, { data: termin }] = await Promise.all([
+    supabase.from("funnel_mails").select("*").eq("id", funnelMailId).maybeSingle(),
+    supabase
+      .from("seminartermine")
+      .select("id, kennung, titel, datum_start, datum_ende, zeit_start, vorabend_anreise_datum, vorabend_anreise_uhrzeit, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, ort, adresse)")
+      .eq("id", terminId)
+      .maybeSingle(),
+  ]);
+  if (!mail || mail.geloescht_am) throw new Error("Mail nicht gefunden.");
+  if (SYSTEM_FUNNEL_IDS[mail.id]) throw new Error("System-Mails werden automatisch verschickt.");
+  if (!HANDVERSAND_TRIGGER.includes(mail.trigger_typ)) throw new Error("Nur Seminar-Mails (vor Seminarstart / nach Seminarende) lassen sich an ein Seminar senden.");
+  if (!termin) throw new Error("Seminar nicht gefunden.");
+
+  const [{ data: positionen }, { data: log }, sperrliste, basis] = await Promise.all([
+    supabase
+      .from("buchungspositionen")
+      .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status), buchungen(status, metadata), seminartermin_optionen(titel)")
+      .eq("seminartermin_id", terminId),
+    supabase.from("funnel_versand_log").select("empfaenger_email, gesendet_am, status").eq("funnel_mail_id", funnelMailId).eq("bezug_id", terminId),
+    ladeSperrliste(supabase),
+    seminarWerteBasis(supabase, termin),
+  ]);
+  const erhalten = new Map<string, string>();
+  (log || []).filter((l: any) => l.status === "gesendet").forEach((l: any) => erhalten.set(String(l.empfaenger_email).trim().toLowerCase(), l.gesendet_am));
+
+  // Pro Teilnehmer einmal (mehrere Positionen, z. B. Zimmer-Upgrade-Zeile)
+  const proTeilnehmer = new Map<string, any>();
+  (positionen || []).forEach((p: any) => {
+    if (!p.teilnehmer?.id || p.buchungen?.status === "storniert") return;
+    const vorhanden = proTeilnehmer.get(p.teilnehmer.id);
+    if (!vorhanden || (!vorhanden.seminartermin_optionen?.titel && p.seminartermin_optionen?.titel)) proTeilnehmer.set(p.teilnehmer.id, p);
+  });
+
+  const liste = [...proTeilnehmer.values()].map((p: any) => {
+    const email = String(p.teilnehmer.email || "").trim();
+    const gesperrt = !email
+      ? "keine E-Mail-Adresse"
+      : p.teilnehmer.marketing_consent_status === "abgemeldet"
+        ? "abgemeldet"
+        : sperrliste.has(email.toLowerCase())
+          ? "gesperrt (Abmeldung, Bounce oder Beschwerde)"
+          : null;
+    const bereitsAm = erhalten.get(email.toLowerCase()) || null;
+    const freiplatz = p.buchungen?.metadata?.buchungsart === "freiplatz";
+    const empfaenger: HandversandEmpfaenger = {
+      teilnehmerId: p.teilnehmer.id,
+      name: `${p.teilnehmer.vorname || ""} ${p.teilnehmer.nachname || ""}`.trim(),
+      email,
+      option: p.seminartermin_optionen?.titel || null,
+      buchungsstatus: p.buchungen?.status || "",
+      freiplatz,
+      gesperrt,
+      bereitsAm,
+      vorausgewaehlt: !gesperrt && !bereitsAm && p.buchungen?.status === "bestaetigt",
+    };
+    return { empfaenger, position: p };
+  });
+  liste.sort((a, b) => a.empfaenger.name.localeCompare(b.empfaenger.name, "de"));
+  return { mail, termin, basis, liste };
+}
+
+export async function ladeHandversand(funnelMailId: string, terminId: string) {
+  const supabase = getSupabaseAdmin();
+  const { mail, termin, basis, liste } = await handversandDaten(supabase, funnelMailId, terminId);
+  const bausteine = await ladeBausteine(supabase);
+  // Vorschau mit den echten Daten der ersten vorausgewaehlten Person
+  const muster = liste.find((x) => x.empfaenger.vorausgewaehlt) || liste.find((x) => !x.empfaenger.gesperrt) || null;
+  let vorschau: { fuer: string; betreff: string; html: string } | null = null;
+  if (muster) {
+    const e = seminarEmpfaenger(muster.position, termin.id, basis);
+    vorschau = {
+      fuer: muster.empfaenger.name,
+      betreff: renderPlatzhalter(mail.betreff, e.werte),
+      html: baueMailHtml(renderPlatzhalter(mail.inhalt, e.werte), bausteine, schalterAus(mail), abmeldeUrl(e.abmelde.typ, e.abmelde.id)),
+    };
+  }
+  return {
+    termin: { id: termin.id, kennung: termin.kennung || termin.titel || "Seminar", titel: basis.titel, datum: basis.seminardatum },
+    empfaenger: liste.map((x) => x.empfaenger),
+    vorschau,
+  };
+}
+
+export async function sendeFunnelMailManuell(
+  funnelMailId: string,
+  terminId: string,
+  teilnehmerIds: string[]
+): Promise<{ gesendet: number; fehler: number; uebersprungen: number; fehlerText: string[] }> {
+  const supabase = getSupabaseAdmin();
+  const { mail, termin, basis, liste } = await handversandDaten(supabase, funnelMailId, terminId);
+  const bausteine = await ladeBausteine(supabase);
+  const gewuenscht = new Set(teilnehmerIds);
+  const { data: aktiveTags } = await supabase.from("tags").select("id").eq("aktiv", true);
+  const tagAktiv = !!mail.tag_nach_versand && (aktiveTags || []).some((t: any) => t.id === mail.tag_nach_versand);
+
+  let gesendet = 0, fehler = 0, uebersprungen = 0;
+  const fehlerText: string[] = [];
+  // Nur Personen dieses Termins -- die IDs aus dem Formular werden gegen die
+  // frisch geladene Liste geprueft, gesperrte/schon versorgte nie angeschrieben.
+  for (const { empfaenger: em, position } of liste) {
+    if (!gewuenscht.has(em.teilnehmerId)) continue;
+    if (em.gesperrt || em.bereitsAm) {
+      uebersprungen++;
+      continue;
+    }
+    const e = seminarEmpfaenger(position, termin.id, basis);
+    let status: "gesendet" | "fehler" = "gesendet";
+    let fehlermeldung: string | null = null;
+    let resendEmailId: string | null = null;
+    try {
+      const { data, error } = await getResend().emails.send({
+        from: ABSENDER,
+        to: [em.email],
+        subject: renderPlatzhalter(mail.betreff, e.werte),
+        html: baueMailHtml(renderPlatzhalter(mail.inhalt, e.werte), bausteine, schalterAus(mail), abmeldeUrl(e.abmelde.typ, e.abmelde.id)),
+        headers: schalterAus(mail).abmelden ? abmeldeHeader(e.abmelde.typ, e.abmelde.id) : undefined,
+      });
+      if (error) {
+        status = "fehler";
+        fehlermeldung = error.message;
+      } else resendEmailId = data?.id || null;
+    } catch (err: any) {
+      status = "fehler";
+      fehlermeldung = err?.message || "Unbekannter Fehler beim Versand.";
+    }
+    await supabase.from("funnel_versand_log").insert({
+      funnel_mail_id: mail.id,
+      bezug_typ: "seminartermin",
+      bezug_id: termin.id,
+      empfaenger_email: em.email,
+      status,
+      fehlermeldung,
+      resend_email_id: resendEmailId,
+    });
+    if (status === "gesendet") {
+      gesendet++;
+      if (tagAktiv) {
+        await supabase
+          .from("teilnehmer_tags")
+          .upsert({ teilnehmer_id: em.teilnehmerId, tag_id: mail.tag_nach_versand, quelle: "automatisch" }, { onConflict: "teilnehmer_id,tag_id", ignoreDuplicates: true });
+      }
+    } else {
+      fehler++;
+      fehlerText.push(`${em.name}: ${fehlermeldung}`);
+    }
+  }
+  return { gesendet, fehler, uebersprungen, fehlerText };
 }

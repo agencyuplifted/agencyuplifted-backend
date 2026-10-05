@@ -14,7 +14,7 @@ import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
 import { del } from "@vercel/blob";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
-import { renderPlatzhalter } from "./funnel";
+import { renderPlatzhalter, ladeHandversand, sendeFunnelMailManuell } from "./funnel";
 import { INBOX_TEXT_MAX, INBOX_TYPEN, INBOX_STATUS, INBOX_BEREICHE, INBOX_FORMATE, nurErlaubte } from "./inbox";
 import { TEILNAHME, TURNUS, EVENT_ROLLEN, KONTAKT_STATUS, nurErlaubterWert, berlinHeute, tagPlus } from "./events";
 import { FREQUENZEN, sendeErinnerung, type Erinnerung } from "./erinnerungen";
@@ -5821,4 +5821,43 @@ export async function loescheMedium(formData: FormData): Promise<VorlagenAktions
   }
   revalidatePath("/medien");
   return { fehler: null };
+}
+
+// Funnel-Handversand: Empfaenger + Vorschau einer Seminar-Mail fuer einen Termin.
+export async function ladeFunnelHandversand(
+  funnelMailId: string,
+  terminId: string
+): Promise<{ fehler: string | null; daten?: Awaited<ReturnType<typeof ladeHandversand>> }> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  try {
+    return { fehler: null, daten: await ladeHandversand(funnelMailId, terminId) };
+  } catch (e: any) {
+    return { fehler: e?.message || "Konnte nicht geladen werden." };
+  }
+}
+
+// Funnel-Handversand: jetzt verschicken. Die doppelte Bestaetigung passiert im
+// Formular; hier wird die Kennung des Termins noch einmal geprueft, damit kein
+// versehentlicher Aufruf ohne die zweite Bestaetigung durchgeht.
+export async function sendeFunnelHandversand(
+  funnelMailId: string,
+  terminId: string,
+  teilnehmerIds: string[],
+  bestaetigteKennung: string
+): Promise<{ fehler: string | null; ergebnis?: Awaited<ReturnType<typeof sendeFunnelMailManuell>> }> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  if (!teilnehmerIds.length) return { fehler: "Keine Empfänger ausgewählt." };
+  const supabase = getSupabaseAdmin();
+  const { data: termin } = await supabase.from("seminartermine").select("kennung, titel").eq("id", terminId).maybeSingle();
+  const kennung = String(termin?.kennung || termin?.titel || "").trim();
+  if (!kennung || bestaetigteKennung.trim().toUpperCase() !== kennung.toUpperCase()) return { fehler: `Bitte zur Bestätigung „${kennung}“ eintippen.` };
+  try {
+    const ergebnis = await sendeFunnelMailManuell(funnelMailId, terminId, teilnehmerIds);
+    revalidatePath("/funnel");
+    return { fehler: null, ergebnis };
+  } catch (e: any) {
+    return { fehler: e?.message || "Versand fehlgeschlagen." };
+  }
 }
