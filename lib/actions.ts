@@ -13,7 +13,6 @@ import { signSession, SESSION_COOKIE_NAME, SESSION_TTL } from "./session";
 import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
 import { del } from "@vercel/blob";
-import { getBlobToken } from "./medien-server";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter } from "./funnel";
 import { INBOX_TEXT_MAX, INBOX_TYPEN, INBOX_STATUS, INBOX_BEREICHE, INBOX_FORMATE, nurErlaubte } from "./inbox";
@@ -5798,7 +5797,7 @@ export async function loescheMedium(formData: FormData): Promise<VorlagenAktions
   const url = String(formData.get("url") || "");
   if (!/^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\//.test(url)) return { fehler: "Ungültige Datei-Adresse." };
   try {
-    await del(url, { token: getBlobToken() });
+    await del(url);
   } catch (e: any) {
     return { fehler: `Löschen fehlgeschlagen: ${e?.message || "unbekannter Fehler"}` };
   }

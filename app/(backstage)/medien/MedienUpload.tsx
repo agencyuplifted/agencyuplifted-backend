@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { upload } from "@vercel/blob/client";
+import { uploadPresigned } from "@vercel/blob/client";
 import { MEDIEN_TYPEN, MEDIEN_MAX_BYTES, medienOrdner, sichererDateiname, formatGroesse } from "@/lib/medien";
 
 type Eintrag = { id: string; name: string; groesse: number; prozent: number; status: "laeuft" | "fertig" | "fehler"; meldung?: string; url?: string };
@@ -33,7 +33,7 @@ export default function MedienUpload() {
         continue;
       }
       try {
-        const blob = await upload(`${ordner}/${sichererDateiname(datei.name)}`, datei, {
+        const blob = await uploadPresigned(`${ordner}/${sichererDateiname(datei.name)}`, datei, {
           access: "public",
           handleUploadUrl: "/api/medien/upload",
           contentType: datei.type,
