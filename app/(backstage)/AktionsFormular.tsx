@@ -15,6 +15,7 @@ export default function AktionsFormular({
   style,
   zuruecksetzen = false,
   bestaetigung,
+  onErfolg,
 }: {
   action: (formData: FormData) => Promise<VorlagenAktionsErgebnis>;
   children: ReactNode;
@@ -22,6 +23,8 @@ export default function AktionsFormular({
   style?: CSSProperties;
   zuruecksetzen?: boolean;
   bestaetigung?: string;
+  /** Nach erfolgreicher Aktion, z. B. Zeile sofort ausblenden. */
+  onErfolg?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -34,7 +37,10 @@ export default function AktionsFormular({
       try {
         const r = await action(fd);
         if (r.fehler) setFehler(r.fehler);
-        else if (zuruecksetzen) formRef.current?.reset();
+        else {
+          if (zuruecksetzen) formRef.current?.reset();
+          onErfolg?.();
+        }
       } catch (e: any) {
         setFehler(`Fehlgeschlagen: ${e?.message || "unbekannter Fehler"}`);
       }
