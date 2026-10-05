@@ -21,6 +21,7 @@ import { FREQUENZEN, sendeErinnerung, type Erinnerung } from "./erinnerungen";
 import { randomBytes } from "crypto";
 import { getNetzwerkGruppen, sendeNetzwerkLink, getNetzwerkAuthKonfig } from "./netzwerk";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
+import { findeTeilnehmerPerEmail, UNIQUE_VERSTOSS } from "./kontakt-suche";
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
 import { erzeugeSlug, eindeutigerSlug, erzeugeTagSlug } from "./insights";
@@ -95,18 +96,33 @@ export async function createOrganisation(formData: FormData) {
   redirect("/organisationen");
 }
 
-export async function createTeilnehmer(formData: FormData) {
+// Gibt { fehler } zurueck statt zu werfen, damit die Dubletten-Meldung direkt
+// am Formular steht (siehe AktionsFormular) -- in Production ersetzt Next.js
+// geworfene Fehlertexte durch einen generischen Hinweis.
+export async function createTeilnehmer(formData: FormData): Promise<VorlagenAktionsErgebnis> {
   await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const vorname = String(formData.get("vorname"));
+  const email = String(formData.get("email") || "").trim();
   const { anrede, anrede_quelle } = ermittleAnredeUndQuelle(formData.get("anrede"), vorname);
+
+  // Abgleich vor dem Anlegen: Dieses Formular hat jede Adresse ungeprueft ein
+  // weiteres Mal angelegt -- so entstand die Dublette markus@agencyuplifted.de
+  // (03.08.2026), die danach beide Buchungsstrecken verwirrte.
+  const vorhanden = await findeTeilnehmerPerEmail(supabase, email);
+  if (vorhanden) {
+    return {
+      fehler: `Diese E-Mail gehört schon zu ${vorhanden.vorname} ${vorhanden.nachname} (/teilnehmer/${vorhanden.id}). Bitte dort bearbeiten statt neu anzulegen – oder eine andere Adresse verwenden.`,
+    };
+  }
+
   const { error } = await supabase.from("teilnehmer").insert({
     anrede,
     anrede_quelle,
     unternehmer_status: formData.get("unternehmer_status") || "unbekannt",
     vorname,
     nachname: String(formData.get("nachname")),
-    email: String(formData.get("email")),
+    email,
     email_zweite: formData.get("email_zweite") || null,
     telefon: formData.get("telefon") || null,
     mobiltelefon: formData.get("mobiltelefon") || null,
@@ -116,9 +132,16 @@ export async function createTeilnehmer(formData: FormData) {
     firma_freitext: formData.get("firma_freitext") || null,
     ernaehrung_sonderwuensche: formData.get("ernaehrung") || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // Falls zwischen Abgleich und Insert jemand anders dieselbe Adresse
+    // angelegt hat (Unique-Index teilnehmer_email_eindeutig).
+    if (error.code === UNIQUE_VERSTOSS) {
+      return { fehler: "Diese E-Mail wurde zwischenzeitlich für eine andere Person angelegt. Bitte die Liste neu laden." };
+    }
+    return { fehler: error.message };
+  }
   revalidatePath("/teilnehmer");
-  redirect("/teilnehmer");
+  return { fehler: null };
 }
 
 export async function updateSeminartypFarbe(formData: FormData) {
@@ -1287,12 +1310,7 @@ export async function fuegeTeilnehmerZuTerminHinzu(formData: FormData) {
   const optionRaw = formData.get("seminartermin_option_id");
   if (!email) throw new Error("Bitte eine E-Mail-Adresse angeben.");
 
-  const { data: bestehend } = await supabase
-    .from("teilnehmer")
-    .select("id")
-    .ilike("email", email)
-    .limit(1)
-    .maybeSingle();
+  const bestehend = await findeTeilnehmerPerEmail(supabase, email);
   let teilnehmerId = bestehend?.id as string | undefined;
   if (!teilnehmerId) {
     if (!vorname || !nachname) throw new Error("Neue Person: Vor- und Nachname sind Pflicht.");
@@ -4838,7 +4856,7 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
     // Dubletten, wenn die Person kurz vorher schon angelegt wurde (Ronny
     // Ullrich, 12.09.2026: leerer Doppel-Datensatz 5 Min. vor der Zuordnung).
     if (!teilnehmerId && neuEmail) {
-      const { data: bestehend } = await supabase.from("teilnehmer").select("id").ilike("email", neuEmail).limit(1).maybeSingle();
+      const bestehend = await findeTeilnehmerPerEmail(supabase, neuEmail);
       if (bestehend) teilnehmerId = bestehend.id;
     }
 

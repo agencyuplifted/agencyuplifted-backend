@@ -1,5 +1,6 @@
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
+import { findeOrganisationPerName, findeTeilnehmerPerEmail, UNIQUE_VERSTOSS } from "./kontakt-suche";
 
 // Gemeinsame Kontakt-Logik der oeffentlichen Buchungsstrecken (Seminare:
 // /api/public/buchungen, Programme: /api/public/programm-buchungen) --
@@ -20,17 +21,6 @@ export type ErkannterTeilnehmer = { id: string; email: string; vorname: string; 
 
 export type Rechnungsadresse = { strasse: string; plz: string; ort: string };
 
-// Wiedererkennung per ilike (Gross-/Kleinschreibung egal). Frueher mit
-// .maybeSingle(): Gab es schon zwei Datensaetze mit derselben E-Mail bzw.
-// demselben Firmennamen, lieferte maybeSingle einen Fehler statt eines
-// Treffers -- und die Buchung legte einen WEITEREN Datensatz an, die
-// Dubletten vermehrten sich also selbst. Jetzt deterministisch der aelteste
-// Treffer. % und _ werden maskiert, sonst waere "max_m@x.de" ein Muster,
-// das auch fremde Adressen trifft.
-function ilikeExakt(wert: string): string {
-  return wert.trim().replace(/[\\%_]/g, (zeichen) => "\\" + zeichen);
-}
-
 export async function ermittleKontakte(
   supabase: any,
   personen: Teilnehmerangabe[],
@@ -40,14 +30,11 @@ export async function ermittleKontakte(
   // Organisation anlegen/wiedererkennen (nur beim Hauptkontakt abgefragt).
   let organisationId: string | null = null;
   if (personen[0].company) {
-    const { data: bestehendeOrga } = await supabase
-      .from("organisationen")
-      .select("id, rechnungsadresse_strasse, rechnungsadresse_plz, rechnungsadresse_ort")
-      .ilike("name", ilikeExakt(personen[0].company))
-      .order("erstellt_am", { ascending: true })
-      .order("id", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    const bestehendeOrga = await findeOrganisationPerName(
+      supabase,
+      personen[0].company,
+      "id, rechnungsadresse_strasse, rechnungsadresse_plz, rechnungsadresse_ort"
+    );
     if (bestehendeOrga) {
       organisationId = bestehendeOrga.id;
       // Rechnungsadresse nur nachtragen, wenn noch keine hinterlegt ist -
@@ -88,14 +75,8 @@ export async function ermittleKontakte(
     // bekommen keine eigene Adresse (kein Feld im Formular).
     const istHauptkontaktOhneOrganisation = i === 0 && !organisationId;
 
-    const { data: bestehenderTeilnehmer } = await supabase
-      .from("teilnehmer")
-      .select("id, privatadresse_strasse, privatadresse_plz, privatadresse_ort")
-      .ilike("email", ilikeExakt(person.email))
-      .order("erstellt_am", { ascending: true })
-      .order("id", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    const TEILNEHMER_SPALTEN = "id, privatadresse_strasse, privatadresse_plz, privatadresse_ort";
+    const bestehenderTeilnehmer = await findeTeilnehmerPerEmail(supabase, person.email, TEILNEHMER_SPALTEN);
 
     if (bestehenderTeilnehmer) {
       teilnehmer.push({ id: bestehenderTeilnehmer.id, email: person.email, vorname: person.firstName, roomOption: person.roomOption });
@@ -141,7 +122,21 @@ export async function ermittleKontakte(
       })
       .select("id")
       .single();
-    if (teilnehmerError) return { fehler: { code: "teilnehmer_fehler", detail: teilnehmerError.message }, organisationId, teilnehmer };
+    if (teilnehmerError) {
+      // Der Unique-Index auf lower(trim(email)) kann hier zuschlagen, wenn
+      // zwischen Abgleich und Insert eine zweite Buchung derselben Person
+      // durchlief (zwei Formulare gleichzeitig, oder beide Buchungsstrecken).
+      // Das ist kein Fehlerfall fuer den Buchenden: der Datensatz existiert ja
+      // jetzt, wir nehmen ihn.
+      if (teilnehmerError.code === UNIQUE_VERSTOSS) {
+        const nachtraeglich = await findeTeilnehmerPerEmail(supabase, person.email, TEILNEHMER_SPALTEN);
+        if (nachtraeglich) {
+          teilnehmer.push({ id: nachtraeglich.id, email: person.email, vorname: person.firstName, roomOption: person.roomOption });
+          continue;
+        }
+      }
+      return { fehler: { code: "teilnehmer_fehler", detail: teilnehmerError.message }, organisationId, teilnehmer };
+    }
     teilnehmer.push({ id: neuerTeilnehmer.id, email: person.email, vorname: person.firstName, roomOption: person.roomOption });
   }
 

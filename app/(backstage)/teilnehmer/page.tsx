@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createTeilnehmer } from "@/lib/actions";
 import TeilnehmerTable from "./TeilnehmerTable";
 import AufklappBereich from "../AufklappBereich";
+import AktionsFormular from "../AktionsFormular";
 
 export default async function TeilnehmerPage() {
   const supabase = getSupabaseAdmin();
@@ -65,7 +66,10 @@ export default async function TeilnehmerPage() {
       </header>
 
       <AufklappBereich merkSchluessel="teilnehmer-neu" oeffnenBeiHash="neu" className="au-aufklapp-panel au-neu-panel" zusammenfassung={<strong id="neu">Neuen Teilnehmer anlegen</strong>}>
-        <form action={createTeilnehmer} style={{ maxWidth: 640 }}>
+        {/* AktionsFormular statt plain form: zeigt den Dubletten-Hinweis
+            ("E-Mail gehört schon zu …") direkt am Formular an, statt die Seite
+            mit einem geworfenen Fehler abzubrechen. */}
+        <AktionsFormular action={createTeilnehmer} zuruecksetzen style={{ maxWidth: 640 }}>
           <div className="au-row-3">
             <div>
               <label className="au-label">Anrede</label>
@@ -140,7 +144,7 @@ export default async function TeilnehmerPage() {
           <input className="au-input" name="ernaehrung" />
 
           <button type="submit" className="au-btn au-btn-primary">Anlegen</button>
-        </form>
+        </AktionsFormular>
       </AufklappBereich>
 
       <TeilnehmerTable teilnehmer={rows} segmente={segmente || []} tags={(tags || []) as any[]} />
