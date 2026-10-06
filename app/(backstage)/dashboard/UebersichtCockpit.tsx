@@ -93,25 +93,29 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
   // Seminare (Buchungssystem)
   // Seminare ohne Konferenz; die Konferenz ist eine eigene Gruppe (Markus 10/2026).
   let durchgefuehrt = 0, gebucht = 0, tn = 0, plaetze = 0, konferenzTn = 0, konferenzSumme = 0;
-  let seminarAnzahl = 0, konferenzAnzahl = 0;
+  let seminarAnzahl = 0, konferenzAnzahl = 0, paketSumme = 0;
   let konferenzTypId: string | null = null;
   const seminarEintraege: { datum: string; betrag: number }[] = [];
   const konferenzEintraege: { datum: string; betrag: number }[] = [];
   (termine || []).forEach((t: any) => {
     const d = db.get(t.id);
     if (!d) return;
+    // Paket-Buchungen (Seminar im Coaching-Paket) nicht in den Umsatz: das
+    // Geld steckt in der Coaching-Rechnung (FastBill), sonst doppelt.
+    const umsatz = d.umsatz - d.umsatzPaket;
+    paketSumme += d.umsatzPaket;
     if ((t.seminartypen?.name || "").toLowerCase().includes("konferenz")) {
       konferenzTn += d.teilnehmer;
-      konferenzSumme += d.umsatz;
+      konferenzSumme += umsatz;
       konferenzAnzahl++;
       konferenzTypId = t.seminartyp_id;
-      konferenzEintraege.push({ datum: t.datum_start, betrag: d.umsatz });
+      konferenzEintraege.push({ datum: t.datum_start, betrag: umsatz });
       return;
     }
-    if ((t.datum_ende || t.datum_start) < heute) durchgefuehrt += d.umsatz;
-    else gebucht += d.umsatz;
+    if ((t.datum_ende || t.datum_start) < heute) durchgefuehrt += umsatz;
+    else gebucht += umsatz;
     seminarAnzahl++;
-    seminarEintraege.push({ datum: t.datum_start, betrag: d.umsatz });
+    seminarEintraege.push({ datum: t.datum_start, betrag: umsatz });
     tn += d.teilnehmer;
     plaetze += Number(t.kapazitaet) || 0;
   });
@@ -149,7 +153,9 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
       name: "Seminare",
       summe: seminarSumme,
       verlauf: verteile(seminarEintraege),
-      sub: seminarAnzahl ? `${seminarAnzahl} Termin${seminarAnzahl === 1 ? "" : "e"} · ohne Konferenz${gebucht ? ` · ${formatEURGanz(gebucht)} gebucht, steht aus` : ""}` : "keine Termine im Zeitraum",
+      sub: seminarAnzahl
+        ? `${seminarAnzahl} Termin${seminarAnzahl === 1 ? "" : "e"} · ohne Konferenz${gebucht ? ` · ${formatEURGanz(gebucht)} gebucht, steht aus` : ""}${paketSumme ? ` · ohne ${formatEURGanz(paketSumme)} aus Paket-Buchungen` : ""}`
+        : "keine Termine im Zeitraum",
       href: `/dashboard?ansicht=seminare&${zeitraumQuery}`,
     },
     {

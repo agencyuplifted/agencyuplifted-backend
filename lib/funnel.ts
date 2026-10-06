@@ -195,6 +195,9 @@ async function sammleFaelligeEmpfaenger(
       // Freiplaetze sind keine Kaufentscheidung -- "Buchung erstellt"-Mails
       // (Danke fuer die Buchung …) passen nicht. Vor-/Nach-Seminar laufen weiter.
       if ((b as any).metadata?.buchungsart === "freiplatz") continue;
+      // Paket-Buchungen (Seminar im Coaching-Paket) werden still angelegt --
+      // der Kunde soll dazu nichts bekommen, Vor-/Nach-Seminar-Mails schon.
+      if ((b as any).metadata?.buchungsart === "paket") continue;
       const anchor = tageVerschieben(String(b.bestaetigt_am || b.gebucht_am).slice(0, 10), funnel.versatz_tage);
       if (!imFenster(anchor)) continue;
       const { data: positionen } = await supabase

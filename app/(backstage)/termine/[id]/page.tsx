@@ -304,6 +304,7 @@ export default async function TerminDetailPage({
     quelle: "aktuell" | "legacy";
     rolle: string;
     freiplatz?: boolean;
+    paket?: boolean;
   };
 
   const teilnehmerMap = new Map<string, TeilnehmerZeile>();
@@ -328,6 +329,7 @@ export default async function TerminDetailPage({
       quelle: "aktuell",
       rolle: p.teilnehmer.rolle || "teilnehmer",
       freiplatz: p.buchungen?.metadata?.buchungsart === "freiplatz",
+      paket: p.buchungen?.metadata?.buchungsart === "paket",
     });
   });
 
@@ -643,6 +645,11 @@ export default async function TerminDetailPage({
                   {t.freiplatz && (
                     <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.5rem", fontSize: "0.72rem" }} title="Kostenlose Teilnahme: belegt einen Platz, kein Umsatz">
                       Freiplatz
+                    </span>
+                  )}
+                  {t.paket && (
+                    <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.5rem", fontSize: "0.72rem" }} title="Im Paket (z. B. Coaching) enthalten, ohne Kundeninfo angelegt">
+                      Paket
                     </span>
                   )}
                 </td>

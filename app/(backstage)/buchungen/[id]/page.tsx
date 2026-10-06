@@ -156,6 +156,14 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
         </div>
       )}
 
+      {buchung.metadata?.buchungsart === "paket" && (
+        <div className="au-banner au-card-tint">
+          <strong>Paket-Buchung.</strong> Im Paket (z. B. Coaching) enthalten, ohne Info an den Kunden angelegt: keine „Buchung erstellt“-Mail, die Mails vor
+          Seminarstart und nach Seminarende gehen wie bei allen anderen raus. Der Preis zählt für den Deckungsbeitrag des Termins, aber nicht im Gesamtumsatz
+          der Übersicht – das Geld steckt in der Paket-Rechnung.
+        </div>
+      )}
+
       {buchung.metadata?.buchungsart === "freiplatz" && (
         <div className="au-banner au-card-tint">
           <strong>Freiplatz.</strong> Kostenlose Teilnahme: belegt einen Platz, keine Rechnung, kein Umsatz.

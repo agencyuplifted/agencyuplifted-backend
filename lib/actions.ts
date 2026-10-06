@@ -1198,6 +1198,11 @@ export async function createBuchung(formData: FormData) {
   // Rechnungsempfänger, falls keine Organisation angegeben ist.
   const ersterTeilnehmerId = String(formData.get("teilnehmer_id_0") || formData.get("teilnehmer_id"));
 
+  // Paket-Buchung (z. B. Seminar im Coaching-Paket): nur anlegen, Kunde wird
+  // nicht informiert ("Buchung erstellt"-Funnel uebersprungen, lib/funnel.ts);
+  // der offizielle Preis zaehlt fuer den Termin-DB, nicht im Gesamtumsatz der
+  // Uebersicht -- das Geld steckt in der Coaching-Rechnung (Markus 06.10.2026).
+  const paket = modus === "seminar" && formData.get("buchungsart") === "paket";
   const { data: buchung, error } = await supabase
     .from("buchungen")
     .insert({
@@ -1207,6 +1212,7 @@ export async function createBuchung(formData: FormData) {
       // Von Hand angelegte Buchung gilt sofort als bestaetigt -- Stichtag der
       // Funnel-Strecke ist damit heute
       bestaetigt_am: new Date().toISOString(),
+      ...(paket ? { metadata: { buchungsart: "paket" } } : {}),
     })
     .select()
     .single();

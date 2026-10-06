@@ -18,6 +18,9 @@ import { ladeHotellisten, type Hotelliste } from "./hotelliste";
 export type Deckungsbeitrag = {
   umsatz: number;
   umsatzUnbezahlt: number;
+  /** Davon Paket-Buchungen (Seminar im Coaching-Paket): zaehlt fuer den DB,
+   *  aber nicht im Gesamtumsatz der Uebersicht (steckt in der Coaching-Rechnung). */
+  umsatzPaket: number;
   /** Personen mit Kosten: Teilnehmer mit Buchung + Referenten + Mitarbeiter */
   personen: number;
   /** Teilnehmer fuer die Belegungsanzeige (inkl. Altdaten-Personen) */
@@ -50,7 +53,7 @@ export async function berechneDeckungsbeitraege(
     vorgeladen ?? ladeHotellisten(supabase, terminIds),
     supabase
       .from("buchungspositionen")
-      .select("seminartermin_id, teilnehmer_id, preis, buchungen!inner(status), seminartermin_optionen(fremdkosten_pro_person_netto)")
+      .select("seminartermin_id, teilnehmer_id, preis, buchungen!inner(status, metadata), seminartermin_optionen(fremdkosten_pro_person_netto)")
       .in("seminartermin_id", terminIds)
       .neq("buchungen.status", "storniert"),
     supabase.from("legacy_buchungen").select("seminartermin_id, teilnehmer_id").in("seminartermin_id", terminIds),
@@ -64,6 +67,9 @@ export async function berechneDeckungsbeitraege(
     const umsatz = eigene.reduce((s: number, p: any) => s + Number(p.preis || 0), 0);
     const umsatzUnbezahlt = eigene
       .filter((p: any) => p.buchungen?.status === "angefragt")
+      .reduce((s: number, p: any) => s + Number(p.preis || 0), 0);
+    const umsatzPaket = eigene
+      .filter((p: any) => p.buchungen?.metadata?.buchungsart === "paket")
       .reduce((s: number, p: any) => s + Number(p.preis || 0), 0);
 
     // Kosten je Teilnehmer aus seiner Option; mehrere Positionen (z. B.
@@ -102,6 +108,7 @@ export async function berechneDeckungsbeitraege(
     ergebnis.set(id, {
       umsatz,
       umsatzUnbezahlt,
+      umsatzPaket,
       personen: hotel.zeilen.length,
       teilnehmer,
       fremdkostenProPerson: pauschale,

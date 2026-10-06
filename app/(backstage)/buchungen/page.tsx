@@ -44,6 +44,9 @@ export default async function BuchungenPage() {
                 {b.metadata?.buchungsart === "freiplatz" && (
                   <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.5rem", fontSize: "0.72rem" }}>Freiplatz</span>
                 )}
+                {b.metadata?.buchungsart === "paket" && (
+                  <span className="au-badge au-badge-neutral" style={{ marginLeft: "0.5rem", fontSize: "0.72rem" }} title="Im Paket enthalten, ohne Kundeninfo angelegt">Paket</span>
+                )}
               </td>
             </tr>
           ))}

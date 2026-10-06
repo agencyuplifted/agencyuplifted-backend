@@ -39,6 +39,7 @@ export default function BuchungForm({
   initialSeminarterminId?: string;
 }) {
   const [modus, setModus] = useState<"seminar" | "individuell">("seminar");
+  const [abrechnung, setAbrechnung] = useState<"normal" | "paket">("normal");
   const [seminarterminId, setSeminarterminId] = useState(initialSeminarterminId || "");
   const [teilnehmerZeilen, setTeilnehmerZeilen] = useState([
     { key: 0, teilnehmerId: initialTeilnehmerId || "", optionId: "", listenpreis: "", rabatt: "0" },
@@ -126,6 +127,24 @@ export default function BuchungForm({
 
       {modus === "seminar" ? (
         <>
+          <input type="hidden" name="buchungsart" value={abrechnung} />
+          <label className="au-label">Abrechnung</label>
+          <div style={{ display: "flex", gap: "1.5rem", marginBottom: abrechnung === "paket" ? "0.5rem" : "1rem", flexWrap: "wrap" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
+              <input type="radio" checked={abrechnung === "normal"} onChange={() => setAbrechnung("normal")} />
+              Normal (Rechnung an den Kunden)
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
+              <input type="radio" checked={abrechnung === "paket"} onChange={() => setAbrechnung("paket")} />
+              Paket / ohne Kundeninfo (z. B. im Coaching-Paket enthalten)
+            </label>
+          </div>
+          {abrechnung === "paket" && (
+            <p className="au-banner au-card-tint" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+              Wird nur angelegt: keine Buchungs- oder Zahlungsmail an den Kunden, nie „unbezahlt“. Die Mails vor Seminarstart und nach Seminarende bekommt er wie alle.
+              Der Preis unten (vorgeschlagen: offizieller Listenpreis) zählt für den Deckungsbeitrag des Termins, aber nicht im Gesamtumsatz der Übersicht – das Geld steckt in der Paket-/Coaching-Rechnung.
+            </p>
+          )}
           <label className="au-label">Seminartermin</label>
           <select
             className="au-input"
