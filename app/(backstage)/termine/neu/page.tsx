@@ -121,6 +121,15 @@ export default async function NeuerTerminPage() {
           </div>
         </div>
 
+        <div className="au-row-2">
+          <div>
+            <label className="au-label">Buchungsschluss (Stunden vor Start)</label>
+            <input className="au-input" name="buchungsschluss_stunden_vor_start" type="number" min={0} defaultValue={48} />
+            <p className="au-fussnote">Ab diesem Vorlauf nimmt die Website keine Buchung mehr an. Leer = bis zum Start buchbar.</p>
+          </div>
+          <div />
+        </div>
+
         <div>
           <label className="au-label">Anzeige-Modus Verfügbarkeit (Onepage-Hero)</label>
           <select className="au-select" name="verfuegbarkeit_anzeige_modus" defaultValue="zahlen">

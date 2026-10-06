@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MWST_SATZ, MONATSNAMEN, effektiveTerminNaechte } from "@/lib/format";
-import { ladeWebsiteVerfuegbarkeit } from "@/lib/verfuegbarkeit";
+import { ladeWebsiteVerfuegbarkeit, buchungsschlussErreicht, buchungsschlussZeitpunkt } from "@/lib/verfuegbarkeit";
 import { aktuellerPreisNetto, sortierteStaffeln, gueltigBisText } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Schnittstelle fuer die Onepage-Website.
@@ -62,7 +62,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, format, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, deaktiviert_am, ratenzahlung_aktiv, ratenzahlung_anzahl_raten, vorspann_text, vorspann_anzeigen, seminartermin_options_features(text, label, hervorgehoben, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, untertitel, eyebrow_text, urgency_label_template, datum_start, datum_ende, zeit_start, zeit_ende, buchungsschluss_stunden_vor_start, format, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, selbstauskunft_label, selbstauskunft_aktiv, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name), veranstaltungsorte(name, ort, nahe_grossstadt), seminartermin_optionen(id, titel, beschreibung, badge, sortierung, zimmerupgrade_zusatznaechte, deaktiviert_am, ratenzahlung_aktiv, ratenzahlung_anzahl_raten, vorspann_text, vorspann_anzeigen, seminartermin_options_features(text, label, hervorgehoben, sortierung), preisstaffeln(name, stichtag_tage_vor_start, stichtag_datum, preis))"
       )
     .eq("id", id)
     .single();
@@ -87,6 +87,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   // Terminseite als "Website zeigt" an.
   const verfuegbarkeit = await ladeWebsiteVerfuegbarkeit(supabase, [termin as any]);
   const { freiePlaetze, belegtProzent, dringlichkeitstext } = verfuegbarkeit.get(termin.id)!;
+  const schlussZeitpunkt = buchungsschlussZeitpunkt(termin as any);
+  const schlussErreicht = buchungsschlussErreicht(termin as any);
 
   const optionen = ((termin as any).seminartermin_optionen || [])
     // Deaktivierte Optionen (deaktiviert_am gesetzt) nie oeffentlich ausliefern.
@@ -188,6 +190,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       kapazitaet: termin.kapazitaet,
       freie_plaetze: freiePlaetze,
       belegt_prozent: Math.round(belegtProzent),
+      // Siehe Listen-API: buchbar ist die fertige Aussage fuer das
+      // Buchungsformular, damit Onepage den Buchungsschluss nicht selbst
+      // (und womoeglich in der falschen Zeitzone) nachrechnet.
+      buchungsschluss_erreicht: schlussErreicht,
+      buchungsschluss_datum: schlussZeitpunkt !== null ? new Date(schlussZeitpunkt).toISOString() : null,
+      buchbar: !schlussErreicht && freiePlaetze > 0,
       // "zahlen" = Restplatzzahl + Fuellstandsbalken anzeigen (bisheriges
       // Verhalten), "neutral" = Onepage soll Zahlen/Balken ausblenden und
       // stattdessen nur dringlichkeitstext (den festen neutralen Text) zeigen.

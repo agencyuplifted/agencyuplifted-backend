@@ -520,6 +520,10 @@ export async function createSeminartermin(formData: FormData) {
       kapazitaet: Number(formData.get("kapazitaet") || 12),
       mindestteilnehmerzahl: Number(formData.get("mindestteilnehmerzahl") || 5),
       ueberbuchungspuffer: Number(formData.get("ueberbuchungspuffer") || 3),
+      // Leer = kein Buchungsschluss (bis zum Start buchbar), siehe lib/verfuegbarkeit.ts
+      buchungsschluss_stunden_vor_start: formData.get("buchungsschluss_stunden_vor_start")
+        ? Number(formData.get("buchungsschluss_stunden_vor_start"))
+        : null,
       angezeigte_restplaetze: formData.get("angezeigte_restplaetze")
         ? Number(formData.get("angezeigte_restplaetze"))
         : null,
@@ -593,6 +597,9 @@ export async function updateSeminartermin(formData: FormData) {
     kapazitaet: Number(formData.get("kapazitaet") || 12),
     mindestteilnehmerzahl: Number(formData.get("mindestteilnehmerzahl") || 5),
     ueberbuchungspuffer: Number(formData.get("ueberbuchungspuffer") || 3),
+    buchungsschluss_stunden_vor_start: formData.get("buchungsschluss_stunden_vor_start")
+      ? Number(formData.get("buchungsschluss_stunden_vor_start"))
+      : null,
     vorabendanreise_inklusive: formData.get("vorabendanreise_inklusive") === "on",
     zusatzteilnehmer_preis: formData.get("zusatzteilnehmer_preis")
       ? Number(formData.get("zusatzteilnehmer_preis"))

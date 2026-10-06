@@ -146,3 +146,16 @@ export const TERMIN_FELD_LABELS: Record<string, string> = {
   selbstauskunft_label: "Selbstauskunft-Checkbox Text",
   selbstauskunft_aktiv: "Selbstauskunft-Checkbox aktiv",
 };
+
+// UTC-Abstand Berlins zum gegebenen Zeitpunkt (1 = Winterzeit, 2 = Sommerzeit).
+// Gemeinsam genutzt von der Preisstaffel-Logik (Stichtag "23:59:59 Berlin") und
+// der Buchungsschluss-Berechnung -- beide muessen dieselbe Sommerzeit-Regel
+// verwenden, sonst laufen Anzeige und Sperre an den Umstellungstagen auseinander.
+export function berlinOffsetStunden(zeitpunktUTC: Date): number {
+  const teile = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Berlin",
+    timeZoneName: "shortOffset",
+  }).formatToParts(zeitpunktUTC);
+  const offsetText = teile.find((t) => t.type === "timeZoneName")?.value || "GMT+1";
+  return Number(offsetText.replace("GMT", "")) || 1;
+}

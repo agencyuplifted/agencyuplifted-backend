@@ -1709,6 +1709,9 @@ export default async function TerminDetailPage({
             <div>
               <label className="au-label">Überbuchungspuffer (intern)</label>
               <input className="au-input" name="ueberbuchungspuffer" type="number" defaultValue={termin.ueberbuchungspuffer} />
+              <label className="au-label" style={{ marginTop: "0.8rem" }}>Buchungsschluss (Stunden vor Start)</label>
+              <input className="au-input" name="buchungsschluss_stunden_vor_start" type="number" min={0} defaultValue={termin.buchungsschluss_stunden_vor_start ?? ""} placeholder="leer = bis zum Start buchbar" />
+              <p className="au-fussnote">Ab diesem Vorlauf nimmt die Website keine Buchung mehr an. Leer = bis zum Start buchbar.</p>
             </div>
             <div>
               <p style={{ fontSize: "0.82rem", color: "var(--color-text-faint)", margin: "1.6rem 0 0" }}>

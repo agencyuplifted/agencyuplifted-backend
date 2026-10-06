@@ -1,4 +1,4 @@
-import { MONATSNAMEN } from "./format";
+import { MONATSNAMEN, berlinOffsetStunden } from "./format";
 
 // Gemeinsame Logik fuer Preisstaffeln (Fruehbucher-/Normalpreise einer
 // Seminaroption) -- verwendet sowohl von den oeffentlichen APIs (Onepage-
@@ -74,14 +74,6 @@ export function aktuellerPreisNetto(preisstaffeln: Preisstaffel[], datumStart: s
   return staffel ? Number(staffel.preis) : null;
 }
 
-function berlinOffsetStunden(zeitpunktUTC: Date): number {
-  const teile = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Berlin",
-    timeZoneName: "shortOffset",
-  }).formatToParts(zeitpunktUTC);
-  const offsetText = teile.find((t) => t.type === "timeZoneName")?.value || "GMT+1";
-  return Number(offsetText.replace("GMT", "")) || 1;
-}
 
 // Wandelt ein per Datumsfeld gewaehltes Kalenderdatum (YYYY-MM-DD) in den
 // Zeitpunkt "23:59:59 Uhr an diesem Tag in Berlin" um (als UTC-ISO-String).

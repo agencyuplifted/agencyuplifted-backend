@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
+import { VERFUEGBARKEIT_NEUTRAL_TEXT, berlinOffsetStunden } from "@/lib/format";
 
 // Einzige Stelle, an der berechnet wird, welche Restplaetze und welcher
 // Dringlichkeitstext auf der Website erscheinen. Vorher stand dieselbe Logik
@@ -7,6 +7,45 @@ import { VERFUEGBARKEIT_NEUTRAL_TEXT } from "@/lib/format";
 // "Anzeige ueberschrieben" anzeigen konnte -- ob Hero und Backstage wirklich
 // dasselbe meinen, war so nicht nachpruefbar. Jetzt nutzen die APIs (die der
 // Onepage-Hero live abfragt) und die Backstage-Seiten exakt diese Funktionen.
+
+// ---------------------------------------------------------------------------
+// Buchungsschluss: ab wann ein Termin oeffentlich nicht mehr buchbar ist.
+// Das Feld buchungsschluss_stunden_vor_start lag seit jeher in der Tabelle und
+// wurde von der Termin-Uebernahme mitkopiert, aber NIRGENDS ausgewertet --
+// am 06.10.2026 war SPS326 (Start 07.10. 09:00, Schluss 24 h) deshalb bis
+// zuletzt voll buchbar, Formular und Button inklusive. Diese Funktionen sind
+// jetzt die einzige Stelle, an der der Zeitpunkt berechnet wird; APIs und
+// Buchungs-POST greifen beide darauf zu.
+
+export type TerminFuerBuchbarkeit = {
+  datum_start: string;
+  zeit_start?: string | null;
+  buchungsschluss_stunden_vor_start?: number | null;
+};
+
+// Seminarstart als Zeitpunkt. zeit_start ist eine Ortszeit ohne Zone, deshalb
+// ueber den Berliner UTC-Abstand umgerechnet -- dieselbe Regel wie bei den
+// Preisstaffel-Stichtagen. Fehlt die Uhrzeit, gilt 00:00 des Starttags: der
+// Buchungsschluss faellt dadurch frueher, nie spaeter.
+export function seminarStartZeitpunkt(termin: TerminFuerBuchbarkeit): number {
+  const [jahr, monat, tag] = termin.datum_start.split("-").map(Number);
+  const [stunde, minute] = (termin.zeit_start || "00:00").split(":").map(Number);
+  const offset = berlinOffsetStunden(new Date(Date.UTC(jahr, monat - 1, tag, 12)));
+  return Date.UTC(jahr, monat - 1, tag, stunde - offset, minute || 0);
+}
+
+// Zeitpunkt, ab dem keine Buchung mehr angenommen wird -- null, wenn am Termin
+// kein Buchungsschluss hinterlegt ist (dann bleibt er bis zum Start buchbar).
+export function buchungsschlussZeitpunkt(termin: TerminFuerBuchbarkeit): number | null {
+  const stunden = termin.buchungsschluss_stunden_vor_start;
+  if (stunden === null || stunden === undefined) return null;
+  return seminarStartZeitpunkt(termin) - Number(stunden) * 3600_000;
+}
+
+export function buchungsschlussErreicht(termin: TerminFuerBuchbarkeit, jetzt: number = Date.now()): boolean {
+  const schluss = buchungsschlussZeitpunkt(termin);
+  return schluss !== null && jetzt >= schluss;
+}
 
 export type UrgencySchwellenwertTyp = "prozent" | "belegt" | "frei";
 

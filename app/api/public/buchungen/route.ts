@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { ladeBausteine, schalterAus, baueMailHtml } from "@/lib/mail-bausteine";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { buchungsschlussErreicht, ladeWebsiteVerfuegbarkeit } from "@/lib/verfuegbarkeit";
 import { getResend, ABSENDER } from "@/lib/email";
 import { formatDatum, effektiveTerminNaechte } from "@/lib/format";
 import { renderPlatzhalter } from "@/lib/funnel";
@@ -85,13 +86,32 @@ export async function POST(request: NextRequest) {
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, datum_start, datum_ende, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name)"
+      "id, titel, datum_start, datum_ende, zeit_start, buchungsschluss_stunden_vor_start, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, urgency_label_template, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name)"
     )
     .eq("id", seminarterminId)
     .single();
 
   if (!termin || termin.status === "abgesagt") {
     return withCors(NextResponse.json({ error: "termin_not_found" }, { status: 404 }));
+  }
+
+  // Buchungsschluss und Restplaetze serverseitig durchsetzen (Fix vom
+  // 06.10.2026): Beides war bisher reine Anzeige -- ein veralteter Tab, ein
+  // direkter POST oder eine gecachte Onepage-Seite konnte noch Stunden vor
+  // Seminarstart oder in einen ausgebuchten Termin hinein buchen. Eine solche
+  // Buchung ist organisatorisch nicht mehr sauber abzuwickeln (Zimmer,
+  // Catering, Zahlungsfrist).
+  if (buchungsschlussErreicht(termin as any)) {
+    return withCors(NextResponse.json({ error: "buchungsschluss_erreicht" }, { status: 409 }));
+  }
+  // Gesperrt wird, sobald ENTWEDER rechnerisch kein Platz mehr frei ist ODER
+  // die manuell angezeigten Restplaetze auf 0 stehen -- der Server soll nie
+  // annehmen, was die Website als unmoeglich darstellt, und nie ueber die
+  // echte Kapazitaet hinausgehen. Der Ueberbuchungspuffer bleibt bewusst
+  // aussen vor: er ist ein reiner Merkposten und wird nirgends gerechnet.
+  const belegung = (await ladeWebsiteVerfuegbarkeit(supabase, [termin as any])).get(termin.id);
+  if (belegung && Math.min(belegung.freiRechnerisch, belegung.freiePlaetze) <= 0) {
+    return withCors(NextResponse.json({ error: "ausgebucht" }, { status: 409 }));
   }
 
   const { data: option } = await supabase

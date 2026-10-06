@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
-import { ladeWebsiteVerfuegbarkeit } from "@/lib/verfuegbarkeit";
+import { ladeWebsiteVerfuegbarkeit, buchungsschlussErreicht, buchungsschlussZeitpunkt } from "@/lib/verfuegbarkeit";
 import { aktuellerPreisNetto, naechstePreisstufe } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Liste kuenftiger Seminartermine fuer die
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("seminartermine")
     .select(
-      "id, titel, kennung, datum_start, datum_ende, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(deaktiviert_am, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis))"
+      "id, titel, kennung, datum_start, datum_ende, zeit_start, buchungsschluss_stunden_vor_start, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(deaktiviert_am, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis))"
     )
     .gte("datum_start", heuteIso)
     .neq("status", "abgesagt")
@@ -81,6 +81,8 @@ export async function GET(request: NextRequest) {
 
   const ergebnis = (termine || []).map((t: any) => {
     const { freiePlaetze, belegtProzent, dringlichkeitstext } = verfuegbarkeit.get(t.id)!;
+    const schlussZeitpunkt = buchungsschlussZeitpunkt(t);
+    const schlussErreicht = buchungsschlussErreicht(t);
 
     // Deaktivierte Optionen (deaktiviert_am gesetzt) nie in Preis-/Verfuegbarkeitsberechnung
     // einbeziehen -- sonst koennte z.B. der guenstigste Preis einer laengst
@@ -138,6 +140,13 @@ export async function GET(request: NextRequest) {
       ab_preis_brutto: abPreisNetto !== null ? brutto(abPreisNetto) : null,
       hat_preisdaten: alleStaffeln.length > 0,
       naechste_preisstufe: naechsteStufe,
+      // Buchbarkeit als fertige Aussage statt als Rohdaten: Onepage soll den
+      // Buchungsschluss nicht selbst ausrechnen muessen (und dabei die
+      // Zeitzone verfehlen). buchbar fasst Buchungsschluss UND Restplaetze
+      // zusammen -- das ist die einzige Zahl, die der Terminwaehler braucht.
+      buchungsschluss_erreicht: schlussErreicht,
+      buchungsschluss_datum: schlussZeitpunkt !== null ? new Date(schlussZeitpunkt).toISOString() : null,
+      buchbar: !schlussErreicht && freiePlaetze > 0,
     };
   });
 
