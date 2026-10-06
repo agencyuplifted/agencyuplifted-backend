@@ -688,7 +688,7 @@ export default async function TerminDetailPage({
                 <input className="au-input" name="nachname" />
               </div>
             </div>
-            <label className="au-label">Firma (optional, nur bei neuer Person)</label>
+            <label className="au-label">Firma (optional, nur bei neuer Person – wird als Organisation angelegt bzw. verknüpft)</label>
             <input className="au-input" name="firma_freitext" />
             {aktiveOptionen.length > 0 && (
               <>

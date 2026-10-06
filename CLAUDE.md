@@ -42,7 +42,7 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 - `lib/insights.ts` — the Wissen CMS: typed content blocks (`Block` union: `absatz`, `ueberschrift`, `liste`, `zitat`, `bild`, `faq`), slug generation.
 - `lib/themen-radar.ts` / `lib/triage.ts` — content-topic radar/triage tooling feeding `content-creation` pages.
 - `lib/geburtstage.ts` — birthday email feature.
-- `lib/organisationsverknuepfung.ts` — auto-linking participants to organizations.
+- `lib/organisationsverknuepfung.ts` — auto-linking participants to organizations. `organisationFuerNamen()` = gemeinsame „Organisation zu eingetipptem Namen“-Routine (exakt → bestehende; gleiche Vergleichsform ohne Rechtsform/Satzzeichen, z. B. „Cromatics“ = „CROMATICS GmbH“ → bestehende; nur teilweise ähnlich → Rückfrage; sonst neu anlegen), genutzt von Teilnehmer-Formular (/teilnehmer), Schnellanlage am Termin (dort ohne Rückfrage: bei nur ähnlichem Namen bleibt es beim Freitext) und Teilnehmer-Seite („Neue Organisation anlegen & verknüpfen“). Vorher landete die Firma aus dem Teilnehmer-Formular nur in `firma_freitext`.
 - `lib/geschlecht.ts` — heuristic salutation (`Herr`/`Frau`) guessing from first name; explicit user input always wins (`anrede_quelle: "manuell"` vs. `"automatisch"`).
 - `lib/format.ts` — shared formatting helpers (currency incl. `MWST_SATZ` = 19% VAT — all stored prices are net/`netto`, this is where brutto is derived; German dates/date-ranges; `MONATSNAMEN`/`monatsName()` for German month names — reuse these instead of redefining month-name arrays).
 - `lib/webinargeek.ts` — server-only client for the WebinarGeek REST API v2 (registrations + broadcast/title/schedule lookups); API key never reaches the client.

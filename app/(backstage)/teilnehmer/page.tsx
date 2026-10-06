@@ -12,10 +12,11 @@ export default async function TeilnehmerPage() {
     .from("teilnehmer")
     .select("*, buchungspositionen(seminartermine(seminartypen(name))), legacy_buchungen(seminartypen(name)), teilnehmer_organisationen(ist_hauptorganisation, organisationen(name))")
     .order("erstellt_am", { ascending: false });
-  const [{ data: segmente }, { data: tags }, { data: zuordnungen }] = await Promise.all([
+  const [{ data: segmente }, { data: tags }, { data: zuordnungen }, { data: organisationen }] = await Promise.all([
     supabase.from("teilnehmer_segmente").select("*").order("erstellt_am", { ascending: false }),
     supabase.from("tags").select("id, label, aktiv").order("label"),
     supabase.from("teilnehmer_tags").select("teilnehmer_id, tag_id").limit(10000),
+    supabase.from("organisationen").select("name").order("name").limit(5000),
   ]);
   const tagsProTeilnehmer = new Map<string, string[]>();
   (zuordnungen || []).forEach((z: any) => tagsProTeilnehmer.set(z.teilnehmer_id, [...(tagsProTeilnehmer.get(z.teilnehmer_id) || []), z.tag_id]));
@@ -133,8 +134,16 @@ export default async function TeilnehmerPage() {
               <input className="au-input" name="position" />
             </div>
             <div>
-              <label className="au-label">Firma (falls keine Organisation im System)</label>
-              <input className="au-input" name="firma_freitext" />
+              <label className="au-label">Organisation / Firma</label>
+              <input className="au-input" name="organisation" list="teilnehmer-organisationen" autoComplete="off" placeholder="Bestehende wählen oder neu eintippen" />
+              <datalist id="teilnehmer-organisationen">
+                {Array.from(new Set((organisationen || []).map((o: any) => String(o.name || "").trim()).filter(Boolean))).map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+              <label className="au-klein" style={{ display: "flex", gap: "0.35rem", alignItems: "center", marginTop: "0.3rem" }}>
+                <input type="checkbox" name="organisation_neu" value="1" /> trotzdem neu anlegen (bei ähnlichem Namen)
+              </label>
             </div>
           </div>
 

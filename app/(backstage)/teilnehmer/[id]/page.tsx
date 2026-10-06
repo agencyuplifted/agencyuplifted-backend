@@ -14,10 +14,12 @@ import {
   deleteTeilnehmerReferenz,
   toggleReferenzFreigabe,
   setzeTeilnehmerTags,
+  legeOrganisationFuerTeilnehmerAn,
 } from "@/lib/actions";
 import PasteImageField from "../PasteImageField";
 import SeitenTabs from "../../SeitenTabs";
 import TagAuswahl from "./TagAuswahl";
+import AktionsFormular from "../../AktionsFormular";
 
 const consentBadgeClass: Record<string, string> = {
   abonniert: "au-badge-success",
@@ -528,6 +530,25 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
             <button type="submit" className="au-btn au-btn-primary au-btn-sm">Verknüpfen</button>
           </form>
         )}
+        <AktionsFormular action={legeOrganisationFuerTeilnehmerAn} zuruecksetzen className="au-orga-neu">
+          <input type="hidden" name="teilnehmer_id" value={id} />
+          <label className="au-label" style={{ marginTop: "0.9rem" }}>Neue Organisation anlegen &amp; verknüpfen</label>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              name="organisation"
+              className="au-input"
+              style={{ marginBottom: 0, width: "auto", minWidth: "260px" }}
+              placeholder="Firmenname"
+              defaultValue={!verknuepfteOrgs?.length ? t.firma_freitext || "" : ""}
+              required
+            />
+            <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Anlegen &amp; verknüpfen</button>
+            <label className="au-klein" style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+              <input type="checkbox" name="organisation_neu" value="1" /> trotzdem neu anlegen (bei ähnlichem Namen)
+            </label>
+          </div>
+          <p className="au-klein" style={{ margin: "0.3rem 0 0" }}>Gibt es die Firma schon (auch als „… GmbH“), wird die bestehende verknüpft statt doppelt angelegt.</p>
+        </AktionsFormular>
       </Bereich>
 
               </div>

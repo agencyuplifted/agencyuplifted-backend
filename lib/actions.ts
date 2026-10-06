@@ -20,7 +20,7 @@ import { TEILNAHME, TURNUS, EVENT_ROLLEN, KONTAKT_STATUS, nurErlaubterWert, berl
 import { FREQUENZEN, sendeErinnerung, type Erinnerung } from "./erinnerungen";
 import { randomBytes } from "crypto";
 import { getNetzwerkGruppen, sendeNetzwerkLink, getNetzwerkAuthKonfig } from "./netzwerk";
-import { verknuepfeTeilnehmerMitOrganisationAutomatisch } from "./organisationsverknuepfung";
+import { verknuepfeTeilnehmerMitOrganisationAutomatisch, verknuepfeTeilnehmerMitOrganisationManuell, organisationFuerNamen } from "./organisationsverknuepfung";
 import { findeTeilnehmerPerEmail, UNIQUE_VERSTOSS } from "./kontakt-suche";
 import { schaetzeAnredeAusVorname } from "./geschlecht";
 import { randomUUID } from "crypto";
@@ -116,7 +116,25 @@ export async function createTeilnehmer(formData: FormData): Promise<VorlagenAkti
     };
   }
 
-  const { error } = await supabase.from("teilnehmer").insert({
+  // Organisation mit anlegen bzw. bestehende verknuepfen -- vorher landete die
+  // Firma nur als Freitext am Teilnehmer und entstand nie unter
+  // Organisationen (Michael Fischer, 06.10.2026). Erst klaeren, dann den
+  // Teilnehmer anlegen: bei aehnlichem Namen kommt eine Rueckfrage, und es
+  // soll kein halber Datensatz zurueckbleiben.
+  const organisationName = String(formData.get("organisation") || "").trim();
+  let organisationId: string | null = null;
+  if (organisationName) {
+    const orga = await organisationFuerNamen(supabase, organisationName, formData.get("organisation_neu") === "1");
+    if ("fehler" in orga) return { fehler: orga.fehler };
+    if ("aehnlich" in orga) {
+      return {
+        fehler: `Ähnliche Organisation schon vorhanden: ${orga.aehnlich.join(", ")}. Bitte aus der Liste wählen – oder „trotzdem neu anlegen“ anhaken, wenn es wirklich eine andere Firma ist.`,
+      };
+    }
+    organisationId = orga.id;
+  }
+
+  const { data: neuerTeilnehmer, error } = await supabase.from("teilnehmer").insert({
     anrede,
     anrede_quelle,
     unternehmer_status: formData.get("unternehmer_status") || "unbekannt",
@@ -129,9 +147,8 @@ export async function createTeilnehmer(formData: FormData): Promise<VorlagenAkti
     linkedin_url: formData.get("linkedin_url") || null,
     geburtsdatum: formData.get("geburtsdatum") || null,
     position: formData.get("position") || null,
-    firma_freitext: formData.get("firma_freitext") || null,
     ernaehrung_sonderwuensche: formData.get("ernaehrung") || null,
-  });
+  }).select("id").single();
   if (error) {
     // Falls zwischen Abgleich und Insert jemand anders dieselbe Adresse
     // angelegt hat (Unique-Index teilnehmer_email_eindeutig).
@@ -139,6 +156,11 @@ export async function createTeilnehmer(formData: FormData): Promise<VorlagenAkti
       return { fehler: "Diese E-Mail wurde zwischenzeitlich für eine andere Person angelegt. Bitte die Liste neu laden." };
     }
     return { fehler: error.message };
+  }
+  if (organisationId && neuerTeilnehmer) {
+    const verknuepfFehler = await verknuepfeTeilnehmerMitOrganisationManuell(supabase, neuerTeilnehmer.id, organisationId);
+    if (verknuepfFehler) return { fehler: `Teilnehmer angelegt, aber Organisation nicht verknüpft: ${verknuepfFehler}` };
+    revalidatePath("/organisationen");
   }
   revalidatePath("/teilnehmer");
   return { fehler: null };
@@ -1315,13 +1337,22 @@ export async function fuegeTeilnehmerZuTerminHinzu(formData: FormData) {
   if (!teilnehmerId) {
     if (!vorname || !nachname) throw new Error("Neue Person: Vor- und Nachname sind Pflicht.");
     const { anrede, anrede_quelle } = ermittleAnredeUndQuelle(null, vorname);
+    const firma = String(formData.get("firma_freitext") || "").trim();
     const { data: neu, error } = await supabase
       .from("teilnehmer")
-      .insert({ anrede, anrede_quelle, vorname, nachname, email, firma_freitext: formData.get("firma_freitext") || null })
+      .insert({ anrede, anrede_quelle, vorname, nachname, email, firma_freitext: firma || null })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
     teilnehmerId = neu.id;
+    // Firma gleich als Organisation anlegen bzw. verknuepfen (wie im
+    // Teilnehmer-Formular). Bei nur aehnlichem Namen bleibt es beim Freitext --
+    // hier gibt es keine Rueckfrage; auf der Teilnehmer-Seite laesst sich die
+    // Organisation dann mit einem Klick anlegen oder verknuepfen.
+    if (firma) {
+      const orga = await organisationFuerNamen(supabase, firma);
+      if ("id" in orga) await verknuepfeTeilnehmerMitOrganisationManuell(supabase, neu.id, orga.id);
+    }
   }
 
   // Doppelzimmer gleich beim Hinzufuegen festhalten -- nachtraeglich im
@@ -5860,4 +5891,27 @@ export async function sendeFunnelHandversand(
   } catch (e: any) {
     return { fehler: e?.message || "Versand fehlgeschlagen." };
   }
+}
+
+// Teilnehmer-Seite: Organisation per Namen verknuepfen -- bestehende wird
+// wiedererkannt, sonst neu angelegt (vorher nur Auswahl bestehender, eine neue
+// Firma brauchte einen Umweg ueber /organisationen).
+export async function legeOrganisationFuerTeilnehmerAn(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const teilnehmerId = String(formData.get("teilnehmer_id") || "");
+  const name = String(formData.get("organisation") || "").trim();
+  if (!teilnehmerId || !name) return { fehler: "Bitte einen Namen angeben." };
+  const supabase = getSupabaseAdmin();
+  const orga = await organisationFuerNamen(supabase, name, formData.get("organisation_neu") === "1");
+  if ("fehler" in orga) return { fehler: orga.fehler };
+  if ("aehnlich" in orga) {
+    return { fehler: `Ähnliche Organisation schon vorhanden: ${orga.aehnlich.join(", ")}. Bitte genau so eintippen bzw. aus der Liste wählen – oder „trotzdem neu anlegen“ anhaken.` };
+  }
+  const verknuepfFehler = await verknuepfeTeilnehmerMitOrganisationManuell(supabase, teilnehmerId, orga.id);
+  if (verknuepfFehler) return { fehler: verknuepfFehler };
+  revalidatePath(`/teilnehmer/${teilnehmerId}`);
+  revalidatePath("/teilnehmer");
+  revalidatePath("/organisationen");
+  return { fehler: null };
 }
