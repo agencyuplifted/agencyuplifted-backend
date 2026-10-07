@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MWST_SATZ, MONATSNAMEN, effektiveTerminNaechte } from "@/lib/format";
 import { ladeWebsiteVerfuegbarkeit, buchungsschlussErreicht, buchungsschlussZeitpunkt } from "@/lib/verfuegbarkeit";
-import { aktuellerPreisNetto, sortierteStaffeln, gueltigBisText } from "@/lib/preisstaffeln";
+import { aktuellerPreisNetto, sortierteStaffeln, gueltigBisText, berlinKalendertag } from "@/lib/preisstaffeln";
 
 // Oeffentliche, rein lesende Schnittstelle fuer die Onepage-Website.
 // Gibt bewusst nur die Felder zurueck, die auf der Website angezeigt werden
@@ -87,6 +87,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   // Terminseite als "Website zeigt" an.
   const verfuegbarkeit = await ladeWebsiteVerfuegbarkeit(supabase, [termin as any]);
   const { freiePlaetze, belegtProzent, dringlichkeitstext } = verfuegbarkeit.get(termin.id)!;
+  const heuteBerlin = berlinKalendertag(new Date().toISOString());
   const schlussZeitpunkt = buchungsschlussZeitpunkt(termin as any);
   const schlussErreicht = buchungsschlussErreicht(termin as any);
 
@@ -196,6 +197,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       buchungsschluss_erreicht: schlussErreicht,
       buchungsschluss_datum: schlussZeitpunkt !== null ? new Date(schlussZeitpunkt).toISOString() : null,
       buchbar: !schlussErreicht && freiePlaetze > 0,
+      // siehe Listen-API: laeuft gerade = erster Tag erreicht, letzter nicht vorbei
+      laeuft_gerade: heuteBerlin >= termin.datum_start && heuteBerlin <= termin.datum_ende,
       // "zahlen" = Restplatzzahl + Fuellstandsbalken anzeigen (bisheriges
       // Verhalten), "neutral" = Onepage soll Zahlen/Balken ausblenden und
       // stattdessen nur dringlichkeitstext (den festen neutralen Text) zeigen.

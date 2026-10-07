@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { MWST_SATZ, MONATSNAMEN } from "@/lib/format";
+import { berlinKalendertag } from "@/lib/preisstaffeln";
 import { ladeWebsiteVerfuegbarkeit, buchungsschlussErreicht, buchungsschlussZeitpunkt } from "@/lib/verfuegbarkeit";
 import { aktuellerPreisNetto, naechstePreisstufe } from "@/lib/preisstaffeln";
 
@@ -54,14 +55,23 @@ export async function GET(request: NextRequest) {
   const seminartypIdsRaw = request.nextUrl.searchParams.get("seminartyp_id");
   const seminartypIds = seminartypIdsRaw ? seminartypIdsRaw.split(",").map((s) => s.trim()).filter(Boolean) : null;
 
-  const heuteIso = new Date().toISOString().slice(0, 10);
+  // Berliner Kalendertag, nicht UTC: Sonst wechselt die Liste erst um 02:00
+  // Ortszeit auf den neuen Tag -- ein Seminar waere zwei Stunden laenger
+  // gelistet, als es laeuft.
+  const heuteIso = berlinKalendertag(new Date().toISOString());
 
   let query = supabase
     .from("seminartermine")
     .select(
       "id, titel, kennung, datum_start, datum_ende, zeit_start, buchungsschluss_stunden_vor_start, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, urgency_label_template, onepage_slug, status, seminartyp_id, seminartypen(name), veranstaltungsorte(name, nahe_grossstadt), seminartermin_optionen(deaktiviert_am, preisstaffeln(stichtag_tage_vor_start, stichtag_datum, preis))"
     )
-    .gte("datum_start", heuteIso)
+    // Bis einschliesslich des LETZTEN Seminartags listen, nicht nur bis zum
+    // ersten (Fix vom 07.10.2026): Vorher verschwand ein dreitaegiges Seminar
+    // am Morgen des zweiten Tages mitten aus Kalender und Terminliste -- fuer
+    // Teilnehmer, die waehrend des Seminars nach Uhrzeiten oder Anfahrt
+    // schauen, sah das aus wie ein Fehler. Gebucht werden kann es ohnehin
+    // nicht mehr, dafuer sorgt der Buchungsschluss.
+    .gte("datum_ende", heuteIso)
     .neq("status", "abgesagt")
     .order("datum_start", { ascending: true });
 
@@ -147,6 +157,12 @@ export async function GET(request: NextRequest) {
       buchungsschluss_erreicht: schlussErreicht,
       buchungsschluss_datum: schlussZeitpunkt !== null ? new Date(schlussZeitpunkt).toISOString() : null,
       buchbar: !schlussErreicht && freiePlaetze > 0,
+      // Laeuft gerade: erster Seminartag erreicht, letzter noch nicht vorbei.
+      // Vom Backend entschieden, damit die Sektionen kein eigenes Datum
+      // bilden muessen -- ein im Browser gerechnetes "heute" weicht beim
+      // Server-Rendern ab und loest Hydration-Fehler aus (siehe die
+      // Kommentare im termin-resolver).
+      laeuft_gerade: t.datum_start <= heuteIso && heuteIso <= t.datum_ende,
     };
   });
 
