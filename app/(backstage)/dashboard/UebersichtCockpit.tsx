@@ -3,6 +3,7 @@ import { berechneDeckungsbeitraege } from "@/lib/deckungsbeitrag";
 import { formatEURGanz, formatDatum, MONATSNAMEN } from "@/lib/format";
 import { monatKurz, type Zeitraum } from "@/lib/zeitraeume";
 import { Sparkline } from "./SeminarCockpit";
+import { ladeSeminarZaehler } from "@/lib/seminarzaehler";
 
 // Dashboard-Uebersicht: Kennzahlen + Umsatz nach Geschaeftsfeldern + naechste
 // Seminare, alles fuer EINEN Zeitraum aus der gemeinsamen Zeitraum-Leiste.
@@ -188,6 +189,8 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
   const max = Math.max(1, ...zeilen.map((z) => z.summe), unklarSumme);
   const verlaufText = art === "Monat" ? `pro Monat, ${monatKurz(abschnitte[0].von.slice(0, 7))} – ${monatKurz(abschnitte[abschnitte.length - 1].von.slice(0, 7))}` : "pro Woche";
 
+  const zaehler = await ladeSeminarZaehler(supabase, heute);
+
   return (
     <div className="au-sz">
       <div className="au-sz-kpis">
@@ -233,6 +236,21 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
           <div className="au-sz-kpi-sub">{offenAnzahl ? `${offenAnzahl} Buchung${offenAnzahl === 1 ? "" : "en"} angefragt, noch nicht bezahlt` : "alles bezahlt"}</div>
         </Link>
       </div>
+
+      {zaehler.map((z) => (
+        <section key={z.praefix} className="au-sz-karte au-zaehler">
+          <div className="au-zaehler-nummer">#{z.anzahl}</div>
+          <div className="au-zaehler-text">
+            <b>{z.bezeichnung}</b>
+            <small>
+              {z.anzahl} Seminare seit {z.seit}
+              {z.naechster && (
+                <> · nächstes: <Link href={`/termine/${z.naechster.id}`} prefetch={false}>{z.naechster.kennung}</Link> am {formatDatum(z.naechster.datum_start)} (#{z.naechster.nummer})</>
+              )}
+            </small>
+          </div>
+        </section>
+      ))}
 
       <section className="au-sz-karte">
         <header className="au-sz-karte-kopf">

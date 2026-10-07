@@ -6477,3 +6477,25 @@ a.au-sz-chip { text-decoration: none; }
 .au-handversand-bestaetigung p { margin: 0 0 0.6rem; font-size: 0.88rem; }
 .au-handversand-knoepfe { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .au-handversand-knoepfe .au-input { width: 10rem; margin: 0; }
+
+/* Seminarzaehler ("Seminar #49") auf der Dashboard-Uebersicht */
+.au-zaehler { display: flex; align-items: center; gap: 1.1rem; padding: 0.9rem 1.15rem; }
+.au-zaehler-nummer {
+  flex: none;
+  min-width: 4.2rem;
+  height: 4.2rem;
+  padding: 0 0.6rem;
+  border-radius: 14px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.au-zaehler-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.au-zaehler-text b { font-size: 1rem; font-weight: 600; }
+.au-zaehler-text small { font-size: 0.8rem; color: var(--color-text-muted); }
+.au-zaehler-text small.au-zaehler-vorschau { color: var(--color-text-faint); }
