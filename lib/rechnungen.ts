@@ -12,6 +12,7 @@ import {
   fastbillEntwurfLoeschen,
   fastbillRechnungStornieren,
   fastbillZahlungsstand,
+  fastbillDokumentLaden,
 } from "./fastbill";
 
 // Seminar-Rechnungen: Backstage baut den Entwurf in FastBill, Markus prueft und
@@ -409,10 +410,7 @@ export async function erstelleRechnungsentwurf(supabase: any, buchungId: string,
 
 // PDF der fertigen Rechnung: DOCUMENT_URL aus invoice.get.
 async function ladePdf(url: string): Promise<Buffer> {
-  const res = await fetch(url);
-  const typ = res.headers.get("content-type") || "";
-  if (!res.ok || !(typ.includes("pdf") || typ.includes("octet-stream"))) throw new Error(`PDF konnte nicht geladen werden (Status ${res.status}, ${typ || "ohne Typ"}).`);
-  return Buffer.from(await res.arrayBuffer());
+  return fastbillDokumentLaden(url);
 }
 
 export async function sendeRechnungsmail(supabase: any, rechnungId: string): Promise<void> {

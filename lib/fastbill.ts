@@ -273,3 +273,27 @@ export function fastbillZahlungsstand(inv: any): { status: "offen" | "teilbezahl
   if (paidDatum) return { status: "bezahlt", bezahltAm: paidDatum, betrag: total, storniert };
   return { status: "offen", bezahltAm: null, betrag: 0, storniert };
 }
+
+// PDF hinter DOCUMENT_URL laden. Erst ohne, dann mit API-Anmeldung (Basic Auth)
+// -- der Link lieferte im Test (10/2026) eine HTML-Seite statt des PDFs.
+// Im Fehlerfall Seitentitel + Pfad (ohne Query/Token) fuer die Diagnose.
+export async function fastbillDokumentLaden(url: string): Promise<Buffer> {
+  const { email, apiKey } = getAuth();
+  const versuche: RequestInit[] = [{}, { headers: { Authorization: `Basic ${Buffer.from(`${email}:${apiKey}`).toString("base64")}` } }];
+  let diagnose = "";
+  for (const init of versuche) {
+    const res = await fetch(url, { ...init, redirect: "follow" });
+    const typ = res.headers.get("content-type") || "";
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (res.ok && (typ.includes("pdf") || buf.subarray(0, 5).toString() === "%PDF-")) return buf;
+    const html = buf.toString("utf8");
+    const titel = (html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 120)).trim();
+    let pfad = "";
+    try {
+      const u = new URL(res.url || url);
+      pfad = `${u.host}${u.pathname}`;
+    } catch {}
+    diagnose = `Status ${res.status}, ${typ || "ohne Typ"}, ${pfad}, „${titel}“`;
+  }
+  throw new Error(`PDF konnte nicht geladen werden (${diagnose}).`);
+}
