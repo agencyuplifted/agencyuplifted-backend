@@ -3,13 +3,15 @@
 import { useState } from "react";
 import { createBuchung } from "@/lib/actions";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
-import { aktuellerPreisNetto, type Preisstaffel } from "@/lib/preisstaffeln";
+import { aktuellerPreisNetto, sortierteStaffeln, istPreisstaffelAktiv, letzterGueltigerTag, aktuellePreisstaffel, type Preisstaffel } from "@/lib/preisstaffeln";
 
 type Teilnehmer = { id: string; vorname: string; nachname: string; email: string };
 type Organisation = { id: string; name: string };
-type Option = { id: string; titel: string; preisstaffeln?: Preisstaffel[] };
+type Option = { id: string; titel: string; preisstaffeln?: (Preisstaffel & { name?: string | null })[] };
 type Termin = {
   id: string;
+  kennung?: string | null;
+  seminartyp_id?: string | null;
   datum_start: string;
   seminartypen?: { name: string } | null;
   zusatzteilnehmer_preis?: number | null;
@@ -39,10 +41,10 @@ export default function BuchungForm({
   initialSeminarterminId?: string;
 }) {
   const [modus, setModus] = useState<"seminar" | "individuell">("seminar");
-  const [abrechnung, setAbrechnung] = useState<"normal" | "paket">("normal");
+  const [abrechnung, setAbrechnung] = useState<"rechnung" | "bezahlt" | "paket">("rechnung");
   const [seminarterminId, setSeminarterminId] = useState(initialSeminarterminId || "");
   const [teilnehmerZeilen, setTeilnehmerZeilen] = useState([
-    { key: 0, teilnehmerId: initialTeilnehmerId || "", optionId: "", listenpreis: "", rabatt: "0" },
+    { key: 0, teilnehmerId: initialTeilnehmerId || "", optionId: "", listenpreis: "", rabatt: "0", preisstufe: "" },
   ]);
   const [einzelTeilnehmerId, setEinzelTeilnehmerId] = useState(initialTeilnehmerId || "");
   const vorausgewaehlt = teilnehmer.find((t) => t.id === initialTeilnehmerId);
@@ -69,7 +71,7 @@ export default function BuchungForm({
     const erste = teilnehmerZeilen[0];
     setTeilnehmerZeilen([
       ...teilnehmerZeilen,
-      { key: rowIdCounter++, teilnehmerId: "", optionId: erste?.optionId || "", listenpreis: preisVorschlagFuer(erste?.optionId || "", true, erste?.listenpreis), rabatt: "0" },
+      { key: rowIdCounter++, teilnehmerId: "", optionId: erste?.optionId || "", listenpreis: preisVorschlagFuer(erste?.optionId || "", true, erste?.listenpreis), rabatt: "0", preisstufe: "" },
     ]);
   }
 
@@ -84,11 +86,17 @@ export default function BuchungForm({
         if (feld === "optionId") {
           const idx = teilnehmerZeilen.findIndex((zz) => zz.key === key);
           const vorschlag = preisVorschlagFuer(wert, idx > 0, teilnehmerZeilen[0]?.listenpreis);
-          return { ...z, optionId: wert, listenpreis: vorschlag || z.listenpreis };
+          return { ...z, optionId: wert, listenpreis: vorschlag || z.listenpreis, preisstufe: "" };
         }
+        // Preis von Hand geaendert -> gewaehlte Preisstufe gilt nicht mehr
+        if (feld === "listenpreis") return { ...z, listenpreis: wert, preisstufe: "" };
         return { ...z, [feld]: wert };
       })
     );
+  }
+
+  function preisstufeWaehlen(key: number, preis: string, meta: string) {
+    setTeilnehmerZeilen(teilnehmerZeilen.map((z) => (z.key === key ? { ...z, listenpreis: preis, preisstufe: meta } : z)));
   }
 
   return (
@@ -131,14 +139,29 @@ export default function BuchungForm({
           <label className="au-label">Abrechnung</label>
           <div style={{ display: "flex", gap: "1.5rem", marginBottom: abrechnung === "paket" ? "0.5rem" : "1rem", flexWrap: "wrap" }}>
             <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
-              <input type="radio" checked={abrechnung === "normal"} onChange={() => setAbrechnung("normal")} />
-              Normal (Rechnung an den Kunden)
+              <input type="radio" checked={abrechnung === "rechnung"} onChange={() => setAbrechnung("rechnung")} />
+              Rechnung folgt (Zahlung offen)
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
+              <input type="radio" checked={abrechnung === "bezahlt"} onChange={() => setAbrechnung("bezahlt")} />
+              Bereits bezahlt / anders abgerechnet
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
               <input type="radio" checked={abrechnung === "paket"} onChange={() => setAbrechnung("paket")} />
               Paket / ohne Kundeninfo (z. B. im Coaching-Paket enthalten)
             </label>
           </div>
+          {abrechnung === "rechnung" && (
+            <p className="au-banner au-card-tint" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+              Die Buchung wird als „Zahlung offen“ angelegt und der Rechnungsentwurf in FastBill gleich mit erstellt. Danach landest Du auf der Buchungsseite:
+              Rechnung prüfen, „Freigeben &amp; Senden“. Geht die Zahlung in FastBill ein, wird die Buchung automatisch bestätigt (mit Zahlungsbestätigung).
+            </p>
+          )}
+          {abrechnung === "bezahlt" && (
+            <p className="au-banner au-card-tint" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+              Wie bisher: sofort bestätigt, keine Rechnung aus Backstage (z. B. schon in FastBill abgerechnet).
+            </p>
+          )}
           {abrechnung === "paket" && (
             <p className="au-banner au-card-tint" style={{ fontSize: "0.85rem", marginTop: 0 }}>
               Wird nur angelegt: keine Buchungs- oder Zahlungsmail an den Kunden, nie „unbezahlt“. Die Mails vor Seminarstart und nach Seminarende bekommt er wie alle.
@@ -153,7 +176,7 @@ export default function BuchungForm({
             value={seminarterminId}
             onChange={(e) => {
               setSeminarterminId(e.target.value);
-              setTeilnehmerZeilen([{ key: rowIdCounter++, teilnehmerId: "", optionId: "", listenpreis: "", rabatt: "0" }]);
+              setTeilnehmerZeilen([{ key: rowIdCounter++, teilnehmerId: "", optionId: "", listenpreis: "", rabatt: "0", preisstufe: "" }]);
             }}
           >
             <option value="">— bitte wählen —</option>
@@ -200,17 +223,27 @@ export default function BuchungForm({
                     <option key={t.id} value={t.id}>{t.vorname} {t.nachname} ({t.email})</option>
                   ))}
                 </select>
-                <select
-                  className="au-input" style={{ marginBottom: 0 }}
-                  name={`seminartermin_option_id_${idx}`}
-                  value={z.optionId}
-                  onChange={(e) => zeileAendern(z.key, "optionId", e.target.value)}
-                >
-                  <option value="">— ohne Option —</option>
-                  {optionenDesTermins.map((o) => (
-                    <option key={o.id} value={o.id}>{o.titel}</option>
-                  ))}
-                </select>
+                <div>
+                  <select
+                    className="au-input" style={{ marginBottom: "0.35rem" }}
+                    name={`seminartermin_option_id_${idx}`}
+                    value={z.optionId}
+                    onChange={(e) => zeileAendern(z.key, "optionId", e.target.value)}
+                  >
+                    <option value="">— ohne Option —</option>
+                    {optionenDesTermins.map((o) => (
+                      <option key={o.id} value={o.id}>{o.titel}</option>
+                    ))}
+                  </select>
+                  <input type="hidden" name={`preisstufe_${idx}`} value={z.preisstufe} />
+                  <PreisstufenWahl
+                    termin={gewaehlterTermin}
+                    alleTermine={termine}
+                    option={optionenDesTermins.find((o) => o.id === z.optionId)}
+                    gewaehlt={z.preisstufe}
+                    onWahl={(preis, meta) => preisstufeWaehlen(z.key, preis, meta)}
+                  />
+                </div>
                 <div>
                   <input
                     className="au-input" style={{ marginBottom: "0.15rem" }}
@@ -298,5 +331,84 @@ export default function BuchungForm({
         Buchung anlegen
       </button>
     </form>
+  );
+}
+
+// Preisstufe bewusst waehlbar -- auch abgelaufene, und auch aus anderen
+// Terminen derselben Kategorie mit gleicher Option (z. B. FOK126 hatte nur zwei
+// Stufen, die lange Staffel mit 3.460 € stand bei FOK127; Markus 10/2026).
+// Die Wahl wird als JSON an der Position gespeichert (metadata.preisstufe), die
+// Rechnung schreibt daraus "Preisstufe 1 von 7 (Normalpreis …)".
+type StufenEintrag = { wert: string; label: string; preis: number; meta: string };
+
+function stufenFuer(t: Termin, option: Option, istEigener: boolean): StufenEintrag[] {
+  const staffeln = option.preisstaffeln || [];
+  if (!staffeln.length) return [];
+  const sortiert = sortierteStaffeln(staffeln, t.datum_start);
+  const aktuell = aktuellePreisstaffel(staffeln, t.datum_start);
+  const preise = [...new Set(staffeln.map((s) => Number(s.preis)))].sort((a, b) => a - b);
+  const normalpreis = preise[preise.length - 1];
+  return sortiert.map((s, i) => {
+    const preis = Number(s.preis);
+    const bis = formatDatum(letzterGueltigerTag(s, t.datum_start));
+    const zustand = s === aktuell ? "aktuell" : istPreisstaffelAktiv(s, t.datum_start) ? `bis ${bis}` : `abgelaufen ${bis}`;
+    const name = s.name || `Stufe ${i + 1}`;
+    return {
+      wert: `${t.id}|${i}`,
+      label: `${name} – ${formatEUR(preis)} · ${istEigener ? zustand : `aus ${t.kennung || formatDatum(t.datum_start)}`}`,
+      preis,
+      meta: JSON.stringify({ name, stufe: preise.indexOf(preis) + 1, stufen: preise.length, normalpreis, quelle: t.kennung || t.id }),
+    };
+  });
+}
+
+function PreisstufenWahl({
+  termin,
+  alleTermine,
+  option,
+  gewaehlt,
+  onWahl,
+}: {
+  termin?: Termin;
+  alleTermine: Termin[];
+  option?: Option;
+  gewaehlt: string;
+  onWahl: (preis: string, meta: string) => void;
+}) {
+  if (!termin || !option) return null;
+  const eigene = stufenFuer(termin, option, true);
+  const andere = alleTermine
+    .filter((t) => t.id !== termin.id && t.seminartyp_id && t.seminartyp_id === termin.seminartyp_id)
+    .flatMap((t) => {
+      const o = (t.seminartermin_optionen || []).find((x) => x.titel.trim().toLowerCase() === option.titel.trim().toLowerCase());
+      return o ? [{ t, stufen: stufenFuer(t, o, false) }] : [];
+    })
+    .filter((g) => g.stufen.length);
+  const alle = [...eigene, ...andere.flatMap((g) => g.stufen)];
+  if (!alle.length) return null;
+  const aktiv = alle.find((e) => e.meta === gewaehlt)?.wert || "";
+  return (
+    <select
+      className="au-input"
+      style={{ marginBottom: 0, fontSize: "0.8rem" }}
+      value={aktiv}
+      onChange={(e) => {
+        const eintrag = alle.find((x) => x.wert === e.target.value);
+        if (eintrag) onWahl(String(eintrag.preis), eintrag.meta);
+      }}
+      aria-label="Preisstufe"
+    >
+      <option value="">Preisstufe wählen (sonst Preis von Hand)</option>
+      {eigene.length > 0 && (
+        <optgroup label={`Dieser Termin${termin.kennung ? ` (${termin.kennung})` : ""}`}>
+          {eigene.map((e) => <option key={e.wert} value={e.wert}>{e.label}</option>)}
+        </optgroup>
+      )}
+      {andere.map((g) => (
+        <optgroup key={g.t.id} label={`Staffel von ${g.t.kennung || formatDatum(g.t.datum_start)}`}>
+          {g.stufen.map((e) => <option key={e.wert} value={e.wert}>{e.label}</option>)}
+        </optgroup>
+      ))}
+    </select>
   );
 }

@@ -193,7 +193,7 @@ const STANDARD_POSITION = "Seminar {{seminartitel}}\n{{zeitraum}}\n{{ort}}\n\n{{
 const STANDARD_ZUSATZ = "Weitere Teilnehmer aus Deiner Agentur\nSeminar {{seminartitel}}, {{zeitraum}}\nLeistungen wie oben";
 const STANDARD_PREISSTUFE = "Frühbucherpreis – Preisstufe {{stufe}} von {{stufen}} (Normalpreis {{normalpreis}} netto)";
 
-function terminWerte(t: any, opt: any, vorgaben: Textvorgaben, listenpreis: number): Record<string, string> {
+function terminWerte(t: any, opt: any, vorgaben: Textvorgaben, listenpreis: number, gewaehlt?: any): Record<string, string> {
   // Vorabend: gepflegter Anreisetag, sonst bei inkl. Vorabendanreise der Tag vor dem Start
   const vorabendISO = t.vorabendanreise_inklusive ? (t.vorabend_anreise_datum ? String(t.vorabend_anreise_datum).slice(0, 10) : tagMinus(t.datum_start, 1)) : null;
   const naechte = Math.max(0, tageZwischen(vorabendISO || t.datum_start, t.datum_ende || t.datum_start));
@@ -204,8 +204,10 @@ function terminWerte(t: any, opt: any, vorgaben: Textvorgaben, listenpreis: numb
   const preise = [...new Set(((opt?.preisstaffeln || []) as any[]).map((s) => Number(s.preis || 0)).filter((x) => x > 0))].sort((x, y) => x - y);
   const normalpreis = preise.length ? preise[preise.length - 1] : 0;
   const stufe = preise.findIndex((x) => Math.abs(x - listenpreis) < 0.005) + 1;
-  const preisstufe =
-    opt && normalpreis && listenpreis < normalpreis - 0.005
+  // Bei der Buchung bewusst gewaehlte Stufe (ggf. aus anderem Termin) hat Vorrang
+  const preisstufe = gewaehlt?.normalpreis && listenpreis < Number(gewaehlt.normalpreis) - 0.005
+    ? fuelleRechnungsvorlage(vorgaben.preisstufeVorlage, { stufe: String(gewaehlt.stufe || ""), stufen: String(gewaehlt.stufen || ""), normalpreis: formatEUR(Number(gewaehlt.normalpreis)) })
+    : opt && normalpreis && stufe && listenpreis < normalpreis - 0.005
       ? fuelleRechnungsvorlage(vorgaben.preisstufeVorlage, {
           stufe: stufe ? String(stufe) : "",
           stufen: String(preise.length),
@@ -253,7 +255,7 @@ function positionenAus(b: any, vorgaben: Textvorgaben): { positionen: Position[]
     const opt = p.seminartermin_optionen;
     let text: string;
     if (t) {
-      const werte = { ...terminWerte(t, opt, vorgaben, Number(p.listenpreis || 0)), beschreibung: p.beschreibung || "" };
+      const werte = { ...terminWerte(t, opt, vorgaben, Number(p.listenpreis || 0), p.metadata?.preisstufe), beschreibung: p.beschreibung || "" };
       const vorlage = !opt
         ? "{{beschreibung}}\n{{seminartitel}}, {{zeitraum}}" // z. B. Zimmer-Upgrade
         : istZusatz.has(p.id)

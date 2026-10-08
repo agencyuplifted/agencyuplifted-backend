@@ -1224,15 +1224,18 @@ export async function createBuchung(formData: FormData) {
   // der offizielle Preis zaehlt fuer den Termin-DB, nicht im Gesamtumsatz der
   // Uebersicht -- das Geld steckt in der Coaching-Rechnung (Markus 06.10.2026).
   const paket = modus === "seminar" && formData.get("buchungsart") === "paket";
+  // "Rechnung folgt": unbezahlt anlegen, Rechnungsentwurf gleich mit -- die
+  // Zahlung bestaetigt der FastBill-Abgleich (lib/rechnungen.ts). "bezahlt"
+  // und Paket wie bisher sofort bestaetigt (Stichtag der Funnel-Strecke heute).
+  const rechnungFolgt = modus === "seminar" && formData.get("buchungsart") === "rechnung";
+  const benutzerFuerRechnung = await getAktuellerBenutzer();
   const { data: buchung, error } = await supabase
     .from("buchungen")
     .insert({
       organisation_id: organisationId || null,
       rechnungsempfaenger_teilnehmer_id: organisationId ? null : ersterTeilnehmerId,
-      status: "bestaetigt",
-      // Von Hand angelegte Buchung gilt sofort als bestaetigt -- Stichtag der
-      // Funnel-Strecke ist damit heute
-      bestaetigt_am: new Date().toISOString(),
+      status: rechnungFolgt ? "angefragt" : "bestaetigt",
+      bestaetigt_am: rechnungFolgt ? null : new Date().toISOString(),
       ...(paket ? { metadata: { buchungsart: "paket" } } : {}),
     })
     .select()
@@ -1258,14 +1261,20 @@ export async function createBuchung(formData: FormData) {
     const seminarterminId = String(formData.get("seminartermin_id"));
 
     // Gesammelte Teilnehmerzeilen einlesen (teilnehmer_id_0, seminartermin_option_id_0, listenpreis_0, rabatt_betrag_0, ...)
-    const zeilen: { teilnehmerId: string; optionId: string | null; listenpreis: number; rabatt: number }[] = [];
+    const zeilen: { teilnehmerId: string; optionId: string | null; listenpreis: number; rabatt: number; preisstufe: any }[] = [];
     let i = 0;
     while (formData.has(`teilnehmer_id_${i}`)) {
       const tId = String(formData.get(`teilnehmer_id_${i}`));
       const optionRaw = formData.get(`seminartermin_option_id_${i}`);
       const listenpreis = Number(formData.get(`listenpreis_${i}`) || 0);
       const rabatt = Number(formData.get(`rabatt_betrag_${i}`) || 0);
-      zeilen.push({ teilnehmerId: tId, optionId: optionRaw ? String(optionRaw) : null, listenpreis, rabatt });
+      // Bewusst gewaehlte Preisstufe (ggf. aus anderem Termin) fuer die Rechnung merken
+      let preisstufe: any = null;
+      try {
+        const roh = String(formData.get(`preisstufe_${i}`) || "");
+        if (roh) preisstufe = JSON.parse(roh);
+      } catch {}
+      zeilen.push({ teilnehmerId: tId, optionId: optionRaw ? String(optionRaw) : null, listenpreis, rabatt, preisstufe });
       i++;
     }
     if (zeilen.length === 0) {
@@ -1275,6 +1284,7 @@ export async function createBuchung(formData: FormData) {
         optionId: optionRaw ? String(optionRaw) : null,
         listenpreis: Number(formData.get("listenpreis") || 0),
         rabatt: Number(formData.get("rabatt_betrag") || 0),
+        preisstufe: null,
       });
     }
 
@@ -1286,6 +1296,7 @@ export async function createBuchung(formData: FormData) {
         seminartermin_option_id: z.optionId,
         listenpreis: z.listenpreis,
         rabatt_betrag: z.rabatt,
+        ...(z.preisstufe ? { metadata: { preisstufe: z.preisstufe } } : {}),
       }))
     );
     if (posError) throw new Error(posError.message);
@@ -1305,6 +1316,24 @@ export async function createBuchung(formData: FormData) {
     for (const tId of teilnehmerIds) {
       await verknuepfeTeilnehmerMitOrganisationAutomatisch(supabase, tId, String(organisationId));
     }
+  }
+
+  if (rechnungFolgt) {
+    // Fehler (z. B. Adresse fehlt) verhindern die Buchung nicht -- die
+    // Buchungsseite zeigt, was fehlt, der Entwurf laesst sich nachholen.
+    try {
+      await erstelleRechnungsentwurf(supabase, buchung.id, benutzerFuerRechnung?.name || "Unbekannt");
+    } catch (e: any) {
+      await supabase.from("aenderungsprotokoll").insert({
+        bezug_typ: "buchung",
+        bezug_id: buchung.id,
+        ereignis: "rechnung_fehler",
+        beschreibung: `Rechnungsentwurf nicht automatisch angelegt: ${e?.message || e}`,
+        bearbeiter: "System",
+      });
+    }
+    revalidatePath("/buchungen");
+    redirect(`/buchungen/${buchung.id}`);
   }
 
   revalidatePath("/buchungen");
