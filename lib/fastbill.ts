@@ -1,5 +1,10 @@
 // Server-seitiger Client fuer die FastBill-API (https://apidocs.fastbill.com/).
-// Nur lesend genutzt (invoice.get, item.get) -- niemals invoice.create/update/delete/cancel/setpaid.
+// Lesend fuer den Rechnungsabgleich (invoice.get, item.get). Schreibend NUR fuer
+// die Seminar-Rechnungen aus Backstage (lib/rechnungen.ts, Markus 10/2026):
+// customer.get/create, invoice.create (Entwurf), invoice.complete (Freigabe),
+// invoice.delete (nur Entwuerfe) und invoice.cancel (nur Storno einer
+// unbezahlten Buchung). Nie invoice.setpaid/sendbyemail -- Zahlungen bucht
+// Markus in FastBill, der Versand laeuft ueber Resend.
 // Zugangsdaten liegen ausschliesslich in Vercel unter FASTBILL_EMAIL/FASTBILL_APIKEY,
 // erreichen nie den Client. Aktueller Umfang bewusst schmal gehalten: nur Ausgangsrechnungen
 // eines Kalenderjahrs abrufen, roh speichern, dann manuell in der Backstage-UI abgleichen
@@ -194,4 +199,66 @@ export function findePreisMatch(
     return { seminartermin_id: treffer[0].seminartermin_id, option_id: treffer[0].option_id };
   }
   return null;
+}
+
+
+// ---------------------------------------------------------------------------
+// Schreibende Aufrufe fuer Seminar-Rechnungen (lib/rechnungen.ts)
+
+export async function fastbillKundenSuchen(term: string): Promise<any[]> {
+  const r = await callFastbill("customer.get", { LIMIT: 100, FILTER: { TERM: term } });
+  return asArray<any>(r?.CUSTOMERS?.CUSTOMER ?? r?.CUSTOMERS);
+}
+
+export async function fastbillKundeHolen(customerId: string): Promise<any | null> {
+  const r = await callFastbill("customer.get", { FILTER: { CUSTOMER_ID: customerId } });
+  return asArray<any>(r?.CUSTOMERS?.CUSTOMER ?? r?.CUSTOMERS)[0] || null;
+}
+
+export async function fastbillKundeAnlegen(daten: Record<string, unknown>): Promise<string> {
+  const r = await callFastbill("customer.create", { DATA: daten });
+  if (!r?.CUSTOMER_ID) throw new Error(`FastBill customer.create ohne CUSTOMER_ID: ${JSON.stringify(r).slice(0, 300)}`);
+  return String(r.CUSTOMER_ID);
+}
+
+export async function fastbillEntwurfAnlegen(daten: Record<string, unknown>): Promise<string> {
+  const r = await callFastbill("invoice.create", { DATA: daten });
+  if (!r?.INVOICE_ID) throw new Error(`FastBill invoice.create ohne INVOICE_ID: ${JSON.stringify(r).slice(0, 300)}`);
+  return String(r.INVOICE_ID);
+}
+
+export async function fastbillRechnungFertigstellen(invoiceId: string): Promise<{ invoiceNumber: string }> {
+  const r = await callFastbill("invoice.complete", { DATA: { INVOICE_ID: invoiceId } });
+  return { invoiceNumber: String(r?.INVOICE_NUMBER ?? "") };
+}
+
+export async function fastbillRechnungHolen(invoiceId: string): Promise<any | null> {
+  const r = await callFastbill("invoice.get", { FILTER: { INVOICE_ID: invoiceId } });
+  return asArray<any>(r?.INVOICES?.INVOICE ?? r?.INVOICES)[0] || null;
+}
+
+export async function fastbillEntwurfLoeschen(invoiceId: string): Promise<void> {
+  await callFastbill("invoice.delete", { DATA: { INVOICE_ID: invoiceId } });
+}
+
+export async function fastbillRechnungStornieren(invoiceId: string): Promise<void> {
+  await callFastbill("invoice.cancel", { DATA: { INVOICE_ID: invoiceId } });
+}
+
+export async function fastbillVorlagen(): Promise<{ id: string; name: string }[]> {
+  const r = await callFastbill("template.get", {});
+  return asArray<any>(r?.TEMPLATES?.TEMPLATE ?? r?.TEMPLATES).map((t) => ({ id: String(t.TEMPLATE_ID), name: String(t.TEMPLATE_NAME || t.TEMPLATE_ID) }));
+}
+
+// Zahlungsstand einer Rechnung: PAID_DATE gesetzt = bezahlt; sonst Summe der
+// PAYMENTS > 0 = teilbezahlt (Ratenzahlung -- gueltiger Dauerzustand).
+export function fastbillZahlungsstand(inv: any): { status: "offen" | "teilbezahlt" | "bezahlt"; bezahltAm: string | null; betrag: number; storniert: boolean } {
+  const paid = String(inv?.PAID_DATE ?? "").slice(0, 10);
+  const bezahltAm = paid && !paid.startsWith("0000") ? paid : null;
+  const zahlungen = asArray<any>(inv?.PAYMENTS?.PAYMENT ?? inv?.PAYMENTS);
+  const betrag = zahlungen.reduce((s, z) => s + Number(z?.AMOUNT ?? 0), 0);
+  const storniert = String(inv?.IS_CANCELED) === "1";
+  if (bezahltAm) return { status: "bezahlt", bezahltAm, betrag: betrag || Number(inv?.TOTAL ?? 0), storniert };
+  if (betrag > 0) return { status: "teilbezahlt", bezahltAm: null, betrag, storniert };
+  return { status: "offen", bezahltAm: null, betrag: 0, storniert };
 }

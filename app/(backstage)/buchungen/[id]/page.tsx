@@ -5,6 +5,7 @@ import { stornoBuchung, umbuchenBuchung, bestaetigeBuchung, setzeBuchungOrganisa
 import { formatDatum, formatDatumsspanne, formatEUR, formatEURBrutto } from "@/lib/format";
 import { quizProfil } from "@/lib/programm-buchung";
 import Link from "next/link";
+import RechnungBereich from "./RechnungBereich";
 
 export default async function BuchungDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -184,6 +185,8 @@ export default async function BuchungDetailPage({ params }: { params: Promise<{ 
           </dl>
         </div>
       )}
+
+      <RechnungBereich supabase={supabase} buchungId={buchung.id} />
 
       {buchung.status === "angefragt" && (
         <div className="au-card">

@@ -1,9 +1,11 @@
 export const dynamic = "force-dynamic";
 
+import { erstelleRechnungsentwurf } from "@/lib/rechnungen";
 import { ladeBausteine, schalterAus, baueMailHtml } from "@/lib/mail-bausteine";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buchungsschlussErreicht, ladeWebsiteVerfuegbarkeit } from "@/lib/verfuegbarkeit";
+import { aktualisiereSnapshotNachAenderung } from "@/lib/onepage-fallback";
 import { getResend, ABSENDER } from "@/lib/email";
 import { formatDatum, effektiveTerminNaechte } from "@/lib/format";
 import { renderPlatzhalter } from "@/lib/funnel";
@@ -86,7 +88,7 @@ export async function POST(request: NextRequest) {
   const { data: termin } = await supabase
     .from("seminartermine")
     .select(
-      "id, titel, datum_start, datum_ende, zeit_start, buchungsschluss_stunden_vor_start, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, urgency_label_template, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name)"
+      "id, titel, seminartyp_id, datum_start, datum_ende, zeit_start, buchungsschluss_stunden_vor_start, kapazitaet, angezeigte_restplaetze, verfuegbarkeit_anzeige_modus, urgency_label_template, status, vorabendanreise_inklusive, zimmerupgrade_beschreibung, zimmerupgrade_preis_pro_nacht_netto, zusatzteilnehmer_preis, zusatzteilnehmer_rabatt_prozent, seminartypen(name)"
     )
     .eq("id", seminarterminId)
     .single();
@@ -260,6 +262,25 @@ export async function POST(request: NextRequest) {
 
   await verknuepfeMitOrganisation(supabase, organisationId, teilnehmerIds);
 
+  // Rechnungsentwurf in FastBill gleich mit anlegen (lib/rechnungen.ts) --
+  // erst nach der Antwort an den Browser, damit die Buchung nicht auf FastBill
+  // wartet. Ein Fehler dort (z. B. FastBill nicht erreichbar) darf die Buchung
+  // nie verhindern; er steht im Protokoll, der Entwurf laesst sich auf der
+  // Buchungsseite per Knopf nachholen.
+  after(async () => {
+    try {
+      await erstelleRechnungsentwurf(supabase, buchung.id, "Website-Buchung");
+    } catch (e: any) {
+      await supabase.from("aenderungsprotokoll").insert({
+        bezug_typ: "buchung",
+        bezug_id: buchung.id,
+        ereignis: "rechnung_fehler",
+        beschreibung: `Rechnungsentwurf nicht automatisch angelegt: ${e?.message || e}`,
+        bearbeiter: "System",
+      });
+    }
+  });
+
   // Reservierungsbestaetigung sofort an alle Teilnehmer verschicken (transaktional,
   // nicht ueber den taeglichen Funnel-Cron, damit sie direkt beim Absenden ankommt).
   const seminartitel = termin.titel || (termin as any).seminartypen?.name || "das Seminar";
@@ -337,6 +358,11 @@ export async function POST(request: NextRequest) {
   } catch (e: any) {
     console.error("Interne Buchungs-Benachrichtigung fehlgeschlagen:", e?.message);
   }
+
+  // Der Platz ist ab jetzt belegt -- das muss auch im Fallback-Snapshot stehen,
+  // sonst zeigt eine Onepage-Seite, deren Live-Abruf nicht durchkommt, bis zum
+  // naechsten Cron-Lauf noch die alte Restplatzzahl.
+  await aktualisiereSnapshotNachAenderung((termin as any).seminartyp_id, "buchung");
 
   return withCors(NextResponse.json({ ok: true, buchungId: buchung.id, buchungsnummer: buchung.buchungsnummer }));
 }

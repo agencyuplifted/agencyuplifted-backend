@@ -2,7 +2,9 @@ export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatDatumZeit } from "@/lib/format";
-import { updateFinanzKonfiguration } from "@/lib/actions";
+import { updateFinanzKonfiguration, speichereFastbillVorlage } from "@/lib/actions";
+import { fastbillVorlagen } from "@/lib/fastbill";
+import AktionsFormular from "../AktionsFormular";
 import { ladeKostenVergleich } from "@/lib/deckungsbeitrag";
 import Link from "next/link";
 
@@ -16,6 +18,14 @@ export default async function EinstellungenPage() {
 
   const fremdkosten = Number(konfig?.fremdkosten_pro_person_netto ?? 300);
   const vergleich = await ladeKostenVergleich(supabase);
+  // Vorlagen live aus FastBill -- schlaegt der Abruf fehl, bleibt das Feld frei eintragbar.
+  let vorlagen: { id: string; name: string }[] = [];
+  let vorlagenFehler: string | null = null;
+  try {
+    vorlagen = await fastbillVorlagen();
+  } catch (e: any) {
+    vorlagenFehler = e?.message || "FastBill nicht erreichbar.";
+  }
 
   return (
     <main>
@@ -61,6 +71,27 @@ export default async function EinstellungenPage() {
             {konfig.aktualisiert_von ? ` von ${konfig.aktualisiert_von}` : ""}
           </p>
         )}
+      </div>
+
+      <div className="au-card" id="fastbill">
+        <h2>Seminar-Rechnungen (FastBill)</h2>
+        <p style={{ color: "var(--color-text-muted)" }}>
+          Vorlage, mit der Backstage Rechnungsentwürfe in FastBill anlegt (Buchungsseite → Bereich „Rechnung“). Ohne Auswahl nimmt FastBill seine Standardvorlage.
+        </p>
+        <AktionsFormular action={speichereFastbillVorlage} style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
+          {vorlagen.length ? (
+            <select name="fastbill_template_id" className="au-select" defaultValue={konfig?.fastbill_template_id || ""} style={{ width: "auto", minWidth: 280, marginBottom: 0 }}>
+              <option value="">— FastBill-Standardvorlage —</option>
+              {vorlagen.map((v) => (
+                <option key={v.id} value={v.id}>{v.name} (ID {v.id})</option>
+              ))}
+            </select>
+          ) : (
+            <input name="fastbill_template_id" className="au-input" defaultValue={konfig?.fastbill_template_id || ""} placeholder="Vorlagen-ID (TEMPLATE_ID)" style={{ width: 240, marginBottom: 0 }} />
+          )}
+          <button type="submit" className="au-btn au-btn-primary au-btn-sm">Speichern</button>
+        </AktionsFormular>
+        {vorlagenFehler && <p className="au-klein" style={{ color: "var(--color-danger)" }}>Vorlagen konnten nicht geladen werden: {vorlagenFehler}</p>}
       </div>
 
       <div className="au-card">

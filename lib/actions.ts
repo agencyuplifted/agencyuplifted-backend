@@ -4,14 +4,15 @@ import { parseRegeln } from "./kampagnen-regeln";
 import { ladeBausteine, schalterAus, baueMailHtml } from "@/lib/mail-bausteine";
 import { getSupabaseAdmin } from "./supabase";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { aktualisiereSnapshotNachAenderung, seminartypIdZuTermin } from "./onepage-fallback";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getResend, ABSENDER } from "./email";
-import { sendeSystemMail } from "./systemmail";
-import { PROGRAMM_SYSTEM_MAIL_BESTAETIGT } from "./programm-buchung";
 import { signSession, SESSION_COOKIE_NAME, SESSION_TTL } from "./session";
 import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
+import { bestaetigeBuchungIntern } from "./buchung-bestaetigen";
+import { erstelleRechnungsentwurf, gibRechnungFrei, verwirfEntwurf, sendeRechnungsmail, behandleRechnungBeiStorno, pruefeRechnungszahlungen } from "./rechnungen";
 import { del } from "@vercel/blob";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter, ladeHandversand, sendeFunnelMailManuell } from "./funnel";
@@ -78,6 +79,18 @@ function ermittleAnredeUndQuelle(
     return { anrede: geschaetzt, anrede_quelle: "automatisch" };
   }
   return { anrede: "keine_angabe", anrede_quelle: null };
+}
+
+// Nach jeder Aenderung an einem Termin (inkl. Optionen, Preisstaffeln und
+// Buchungen, die alle dieselbe Terminseite neu laden) wird zusaetzlich der
+// Onepage-Fallback-Snapshot nachgezogen. Grund: Die Onepage-Sektionen holen
+// ihre Daten erst client-seitig und erst beim Scrollen -- kommt der Abruf
+// nicht durch, bleiben die gespeicherten Werte stehen. Der Snapshot ist die
+// Quelle, aus der diese Werte befuellt werden, und wuerde sonst zwischen zwei
+// Cron-Laeufen einen ganzen Tag veralten.
+async function aktualisiereTerminseite(seminarterminId: string) {
+  await aktualisiereTerminseite(seminarterminId);
+  await aktualisiereSnapshotNachAenderung(await seminartypIdZuTermin(seminarterminId));
 }
 
 export async function createOrganisation(formData: FormData) {
@@ -685,7 +698,7 @@ export async function updateSeminartermin(formData: FormData) {
   }
 
   revalidatePath("/termine");
-  revalidatePath(`/termine/${id}`);
+  await aktualisiereTerminseite(id);
   redirect(`/termine/${id}`);
 }
 
@@ -850,7 +863,7 @@ export async function createSeminarOption(formData: FormData) {
     if (featuresError) throw new Error(featuresError.message);
   }
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // "Schnelleinfuegen" fuer eine BESTEHENDE Option (siehe OptionSchnelleinfuegen.tsx
@@ -901,7 +914,7 @@ export async function uebernehmeOptionSchnelleinfuegen(formData: FormData) {
     if (insError) throw new Error(insError.message);
   }
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function updateOptionBadge(formData: FormData) {
@@ -915,7 +928,7 @@ export async function updateOptionBadge(formData: FormData) {
     .update({ badge })
     .eq("id", optionId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function duplicateSeminarOption(formData: FormData) {
@@ -973,7 +986,7 @@ export async function duplicateSeminarOption(formData: FormData) {
     );
   }
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function importSeminarOptions(formData: FormData) {
@@ -1061,7 +1074,7 @@ export async function importSeminarOptions(formData: FormData) {
     bearbeiter: benutzer?.name || "Unbekannt",
   });
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function createOptionFeature(formData: FormData) {
@@ -1090,7 +1103,7 @@ export async function createOptionFeature(formData: FormData) {
     sortierung: naechsteSortierung,
   });
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function updateOptionFeature(formData: FormData) {
@@ -1108,7 +1121,7 @@ export async function updateOptionFeature(formData: FormData) {
     })
     .eq("id", featureId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // Gleiches Prinzip wie moveOptionFeature, nur fuer ganze Optionen eines
@@ -1148,7 +1161,7 @@ export async function moveSeminarOption(formData: FormData) {
     }
   }
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // Vertauscht per Auf/Ab-Pfeil die Reihenfolge eines Features mit seinem
@@ -1192,7 +1205,7 @@ export async function moveOptionFeature(formData: FormData) {
     }
   }
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function createBuchung(formData: FormData) {
@@ -1416,7 +1429,7 @@ export async function fuegeTeilnehmerZuTerminHinzu(formData: FormData) {
     bearbeiter: benutzer?.name || "Unbekannt",
   });
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
   revalidatePath("/buchungen");
   redirect(`/termine/${seminarterminId}#teilnehmer`);
 }
@@ -1479,129 +1492,36 @@ export async function stornoBuchung(formData: FormData) {
     bearbeiter: benutzer?.name || "Unbekannt",
   });
 
+  // Rechnung mitziehen: Entwurf loeschen, unbezahlte Rechnung in FastBill
+  // stornieren, bezahlte nur markieren (lib/rechnungen.ts). Ein FastBill-Fehler
+  // darf den Storno nicht verhindern -- er landet sichtbar im Protokoll.
+  try {
+    await behandleRechnungBeiStorno(supabase, buchungId, benutzer?.name || "Unbekannt");
+  } catch (e: any) {
+    await supabase.from("aenderungsprotokoll").insert({
+      bezug_typ: "buchung",
+      bezug_id: buchungId,
+      ereignis: "rechnung_fehler",
+      beschreibung: `Rechnung beim Storno nicht automatisch behandelt: ${e?.message || e}. Bitte in FastBill prüfen.`,
+      bearbeiter: "System",
+    });
+  }
+
   revalidatePath("/buchungen");
   revalidatePath(`/buchungen/${buchungId}`);
   redirect(`/buchungen/${buchungId}`);
 }
 
-const ZAHLUNGSBESTAETIGUNG_FUNNEL_MAIL_ID = "b8c1927c-c660-454c-bb02-e6db2d93e8c0";
 
 export async function bestaetigeBuchung(formData: FormData) {
   await requireBackstageLogin();
   const supabase = getSupabaseAdmin();
   const buchungId = String(formData.get("buchung_id"));
   const benutzer = await getAktuellerBenutzer();
-
-  // bestaetigt_am ist der Stichtag der Funnel-Strecke (siehe lib/funnel.ts)
-  const { error } = await supabase.from("buchungen").update({ status: "bestaetigt", bestaetigt_am: new Date().toISOString() }).eq("id", buchungId);
-  if (error) throw new Error(error.message);
-
-  await supabase.from("aenderungsprotokoll").insert({
-    bezug_typ: "buchung",
-    bezug_id: buchungId,
-    ereignis: "bestaetigung",
-    beschreibung: "Zahlung erhalten, Buchung endgültig bestätigt.",
-    bearbeiter: benutzer?.name || "Unbekannt",
-  });
-
-  // Programm-Buchungen (Uplift-Mitgliedschaft …) bekommen statt der
-  // Seminar-Zahlungsbestaetigung ("das Seminar am …") ihre eigene System-Mail.
-  const { data: programmPositionen } = await supabase
-    .from("buchungspositionen")
-    .select("teilnehmer(vorname, email), programme(name), programm_optionen(titel)")
-    .eq("buchung_id", buchungId)
-    .not("programm_id", "is", null);
-  if (programmPositionen?.length) {
-    const { data: buchungMeta } = await supabase
-      .from("buchungen")
-      .select("rechnungsempfaenger:rechnungsempfaenger_teilnehmer_id(vorname, email)")
-      .eq("id", buchungId)
-      .maybeSingle();
-    const erste: any = programmPositionen[0];
-    const empfaenger = new Map<string, string>();
-    for (const p of programmPositionen as any[]) if (p.teilnehmer?.email) empfaenger.set(p.teilnehmer.email, p.teilnehmer.vorname || "");
-    const re: any = (buchungMeta as any)?.rechnungsempfaenger;
-    if (re?.email) empfaenger.set(re.email, re.vorname || "");
-    await sendeSystemMail(
-      supabase,
-      PROGRAMM_SYSTEM_MAIL_BESTAETIGT,
-      [...empfaenger.entries()].map(([email, vorname]) => ({
-        email,
-        werte: { vorname, programm: erste.programme?.name || "", option: erste.programm_optionen?.titel || "" },
-      })),
-      { typ: "buchung", id: buchungId }
-    );
-    revalidatePath("/buchungen");
-    revalidatePath(`/buchungen/${buchungId}`);
-    revalidatePath("/programme/[programm]", "page");
-    redirect(`/buchungen/${buchungId}`);
-  }
-
-  // Zahlungsbestaetigungs-Mail sofort an alle Teilnehmer dieser Buchung verschicken.
-  const { data: positionen } = await supabase
-    .from("buchungspositionen")
-    .select("teilnehmer(vorname, email), seminartermine(titel, datum_start, seminartypen(name))")
-    .eq("buchung_id", buchungId);
-
-  const ersteSeminarPosition = (positionen || []).find((p: any) => p.seminartermine);
-  const seminartitel =
-    (ersteSeminarPosition as any)?.seminartermine?.titel ||
-    (ersteSeminarPosition as any)?.seminartermine?.seminartypen?.name ||
-    "das Seminar";
-  const seminardatum = (ersteSeminarPosition as any)?.seminartermine?.datum_start
-    ? formatDatum((ersteSeminarPosition as any).seminartermine.datum_start)
-    : "";
-
-  const empfaengerMap = new Map<string, string>();
-  (positionen || []).forEach((p: any) => {
-    if (p.teilnehmer?.email) empfaengerMap.set(p.teilnehmer.email, p.teilnehmer.vorname || "");
-  });
-
-  const { data: funnelMail } = await supabase
-    .from("funnel_mails")
-    .select("betreff, inhalt, baustein_signatur, baustein_rechtliches")
-    .eq("id", ZAHLUNGSBESTAETIGUNG_FUNNEL_MAIL_ID)
-    .single();
-
-  if (funnelMail) {
-    // Transaktionale Mail: Signatur/Rechtliches wie im Funnel, aber nie ein Abmeldelink
-    const bausteine = await ladeBausteine(supabase);
-    for (const [email, vorname] of empfaengerMap) {
-      const werte = { vorname, seminartitel, seminardatum };
-      const betreff = renderPlatzhalter(funnelMail.betreff, werte);
-      const inhaltHtml = baueMailHtml(renderPlatzhalter(funnelMail.inhalt, werte), bausteine, { ...schalterAus(funnelMail), abmelden: false }, null);
-
-      let status: "gesendet" | "fehler" = "gesendet";
-      let fehlermeldung: string | null = null;
-      let resendEmailId: string | null = null;
-      try {
-        const resend = getResend();
-        const { data, error: sendError } = await resend.emails.send({ from: ABSENDER, to: [email], subject: betreff, html: inhaltHtml });
-        if (sendError) {
-          status = "fehler";
-          fehlermeldung = sendError.message;
-        } else {
-          resendEmailId = data?.id || null;
-        }
-      } catch (e: any) {
-        status = "fehler";
-        fehlermeldung = e?.message || "Unbekannter Fehler beim Versand.";
-      }
-
-      await supabase.from("funnel_versand_log").insert({
-        funnel_mail_id: ZAHLUNGSBESTAETIGUNG_FUNNEL_MAIL_ID,
-        bezug_typ: "buchung",
-        bezug_id: buchungId,
-        empfaenger_email: email,
-        status,
-        fehlermeldung,
-        resend_email_id: resendEmailId,
-      });
-    }
-  }
-
+  const { programm } = await bestaetigeBuchungIntern(supabase, buchungId, benutzer?.name || "Unbekannt");
   revalidatePath("/buchungen");
   revalidatePath(`/buchungen/${buchungId}`);
+  if (programm) revalidatePath("/programme/[programm]", "page");
   redirect(`/buchungen/${buchungId}`);
 }
 
@@ -1684,8 +1604,8 @@ export async function umbuchenBuchung(formData: FormData) {
   revalidatePath("/buchungen");
   revalidatePath(`/buchungen/${buchungId}`);
   revalidatePath("/termine");
-  if (altePosition?.seminartermin_id) revalidatePath(`/termine/${altePosition.seminartermin_id}`);
-  revalidatePath(`/termine/${neuerTerminId}`);
+  if (altePosition?.seminartermin_id) await aktualisiereTerminseite(altePosition.seminartermin_id);
+  await aktualisiereTerminseite(neuerTerminId);
   redirect(`/buchungen/${buchungId}`);
 }
 
@@ -1713,7 +1633,7 @@ export async function createPreisstaffel(formData: FormData) {
     sortierung: stichtagTageVorStart ?? 0,
   });
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function updatePreisstaffel(formData: FormData) {
@@ -1740,7 +1660,7 @@ export async function updatePreisstaffel(formData: FormData) {
     })
     .eq("id", preisstaffelId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // Uebernimmt die komplette Preisstaffel-Konfiguration einer beliebigen
@@ -1768,7 +1688,7 @@ export async function copyPreisstaffelnFromOption(formData: FormData) {
     .eq("seminartermin_option_id", quellOptionId);
   if (qErr) throw new Error(qErr.message);
   if (!quellStaffeln?.length) {
-    revalidatePath(`/termine/${seminarterminId}`);
+    await aktualisiereTerminseite(seminarterminId);
     return;
   }
 
@@ -1791,7 +1711,7 @@ export async function copyPreisstaffelnFromOption(formData: FormData) {
   );
   if (insError) throw new Error(insError.message);
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // Preisstaffel-Vorlage "Monatlicher Stichtag rueckwaerts": erzeugt 5
@@ -1866,7 +1786,7 @@ export async function wendePreisstaffelVorlageAn(formData: FormData) {
   const { error } = await supabase.from("preisstaffeln").insert(neueStaffeln);
   if (error) throw new Error(error.message);
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // ---------------------------------------------------------------------------
@@ -2090,7 +2010,7 @@ export async function ersetzePreisstaffelnDurchVorlage(formData: FormData): Prom
   );
   if (insError) return { fehler: insError.message };
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
   return { fehler: null };
 }
 
@@ -2136,7 +2056,7 @@ export async function speicherePreisstaffelnAlsVorlage(formData: FormData): Prom
   if (error) return { fehler: vorlagenDbFehler(error, name) };
 
   revalidatePath("/preisstaffel-vorlagen");
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
   return { fehler: null };
 }
 
@@ -2185,7 +2105,7 @@ export async function updateVerfuegbarkeitsAnzeige(formData: FormData) {
   }
 
   revalidatePath("/termine");
-  revalidatePath(`/termine/${id}`);
+  await aktualisiereTerminseite(id);
 }
 
 // Urgency-Stufen koennen prozentual ("ab 60 % belegt") oder absolut ("ab 6
@@ -2222,7 +2142,7 @@ export async function createUrgencyStufe(formData: FormData) {
     ...leseUrgencyStufeAusFormData(formData),
   });
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
   revalidatePath("/termine");
 }
 
@@ -2237,7 +2157,7 @@ export async function updateUrgencyStufe(formData: FormData) {
     .eq("id", stufeId)
     .eq("seminartermin_id", seminarterminId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
   revalidatePath("/termine");
 }
 
@@ -2252,7 +2172,7 @@ export async function deleteUrgencyStufe(formData: FormData) {
     .eq("id", stufeId)
     .eq("seminartermin_id", seminarterminId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
   revalidatePath("/termine");
 }
 
@@ -2380,7 +2300,7 @@ export async function addMitarbeiterZuTermin(formData: FormData) {
     rolle,
   });
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function removeMitarbeiterVonTermin(formData: FormData) {
@@ -2393,7 +2313,7 @@ export async function removeMitarbeiterVonTermin(formData: FormData) {
     .delete()
     .eq("id", zuordnungId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // Referenten (Tabelle trainer) pro Termin. Der Haupt-Referent
@@ -2407,7 +2327,7 @@ export async function addReferentZuTermin(formData: FormData) {
     .from("seminartermin_referenten")
     .upsert({ seminartermin_id: seminarterminId, trainer_id: String(formData.get("trainer_id")) }, { onConflict: "seminartermin_id,trainer_id", ignoreDuplicates: true });
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function removeReferentVonTermin(formData: FormData) {
@@ -2423,7 +2343,7 @@ export async function removeReferentVonTermin(formData: FormData) {
     .eq("seminartermin_id", seminarterminId)
     .eq("trainer_id", trainerId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // Fremdkosten fuer Referenten/Mitarbeiter je Termin (leer = allgemeine Pauschale).
@@ -2437,7 +2357,7 @@ export async function setzeFremdkostenPersonal(formData: FormData) {
     .update({ fremdkosten_personal_pro_person_netto: roh === "" ? null : Math.max(0, Number(roh)) })
     .eq("id", seminarterminId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // Eigenes Mini-Formular statt Termin-Bearbeitung: das Zimmerkontingent aendert
@@ -2452,7 +2372,7 @@ export async function setzeZimmerReserviert(formData: FormData) {
     .update({ zimmer_reserviert: roh === "" ? null : Math.max(0, Math.round(Number(roh))) })
     .eq("id", seminarterminId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
   revalidatePath(`/termine/${seminarterminId}/teilnehmerliste`);
 }
 
@@ -2477,7 +2397,7 @@ export async function setzeZimmerpartner(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const seminarterminId = String(formData.get("seminartermin_id"));
   await trageZimmerpartnerEin(supabase, seminarterminId, String(formData.get("teilnehmer_id_a")), String(formData.get("teilnehmer_id_b")));
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function entferneZimmerpartner(formData: FormData) {
@@ -2490,7 +2410,7 @@ export async function entferneZimmerpartner(formData: FormData) {
     .delete()
     .eq("id", zuordnungId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function updateSeminarOption(formData: FormData) {
@@ -2522,7 +2442,7 @@ export async function updateSeminarOption(formData: FormData) {
     })
     .eq("id", optionId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // Optionen werden nicht hart geloescht (FKs von preisstaffeln/
@@ -2561,7 +2481,7 @@ export async function deaktivierenSeminarOption(formData: FormData) {
     bearbeiter: benutzer?.name || "Unbekannt",
   });
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 // Endgueltiges Loeschen fuer Optionen, die nie verwendet wurden (z. B. beim
@@ -2614,7 +2534,7 @@ export async function loescheSeminarOption(formData: FormData): Promise<Vorlagen
     bearbeiter: benutzer?.name || "Unbekannt",
   });
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
   return { fehler: null };
 }
 
@@ -2645,7 +2565,7 @@ export async function reaktiviereSeminarOption(formData: FormData) {
     bearbeiter: benutzer?.name || "Unbekannt",
   });
 
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function deleteOptionFeature(formData: FormData) {
@@ -2655,7 +2575,7 @@ export async function deleteOptionFeature(formData: FormData) {
   const seminarterminId = String(formData.get("seminartermin_id"));
   const { error } = await supabase.from("seminartermin_options_features").delete().eq("id", featureId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function deletePreisstaffel(formData: FormData) {
@@ -2665,7 +2585,7 @@ export async function deletePreisstaffel(formData: FormData) {
   const seminarterminId = String(formData.get("seminartermin_id"));
   const { error } = await supabase.from("preisstaffeln").delete().eq("id", preisstaffelId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 }
 
 export async function sendeTestMail(formData: FormData) {
@@ -2877,7 +2797,7 @@ export async function speichereSeminarUnterlage(formData: FormData): Promise<Vor
     position: (letzte?.[0]?.position ?? -1) + 1,
   });
   if (error) return { fehler: error.message };
-  revalidatePath(`/termine/${terminId}`);
+  await aktualisiereTerminseite(terminId);
   return { fehler: null };
 }
 
@@ -2898,7 +2818,7 @@ export async function verschiebeSeminarUnterlage(formData: FormData): Promise<Vo
   for (let k = 0; k < reihe.length; k++) {
     if (reihe[k].position !== k) await supabase.from("seminar_unterlagen").update({ position: k }).eq("id", reihe[k].id);
   }
-  revalidatePath(`/termine/${terminId}`);
+  await aktualisiereTerminseite(terminId);
   return { fehler: null };
 }
 
@@ -2914,7 +2834,7 @@ export async function loescheSeminarUnterlage(formData: FormData): Promise<Vorla
   if (String(u.datei_url).startsWith("storage:")) {
     await supabase.storage.from("seminar-unterlagen").remove([String(u.datei_url).slice(8)]);
   }
-  revalidatePath(`/termine/${u.seminartermin_id}`);
+  await aktualisiereTerminseite(u.seminartermin_id);
   return { fehler: null };
 }
 
@@ -2954,7 +2874,7 @@ export async function speichereKostenbeleg(formData: FormData): Promise<Vorlagen
     if (!pfad) return { fehler: "Keine Datei." };
     const { error } = await supabase.from("termin_kostenbelege").update({ datei_pfad: pfad, dateiname }).eq("id", belegId);
     if (error) return { fehler: error.message };
-    revalidatePath(`/termine/${terminId}`);
+    await aktualisiereTerminseite(terminId);
     return { fehler: null };
   }
 
@@ -2970,7 +2890,7 @@ export async function speichereKostenbeleg(formData: FormData): Promise<Vorlagen
     erstellt_von: benutzer?.name || null,
   });
   if (error) return { fehler: error.message };
-  revalidatePath(`/termine/${terminId}`);
+  await aktualisiereTerminseite(terminId);
   revalidatePath("/termine");
   return { fehler: null };
 }
@@ -2985,7 +2905,7 @@ export async function loescheKostenbeleg(formData: FormData): Promise<VorlagenAk
   const { error } = await supabase.from("termin_kostenbelege").delete().eq("id", id);
   if (error) return { fehler: error.message };
   if (b.datei_pfad) await supabase.storage.from("kostenbelege").remove([b.datei_pfad]);
-  revalidatePath(`/termine/${b.seminartermin_id}`);
+  await aktualisiereTerminseite(b.seminartermin_id);
   revalidatePath("/termine");
   return { fehler: null };
 }
@@ -3366,7 +3286,7 @@ export async function stornierSeminartermin(formData: FormData) {
   });
 
   revalidatePath("/termine");
-  revalidatePath(`/termine/${id}`);
+  await aktualisiereTerminseite(id);
   redirect(`/termine/${id}`);
 }
 
@@ -3400,7 +3320,7 @@ export async function reaktiviereSeminartermin(formData: FormData) {
   });
 
   revalidatePath("/termine");
-  revalidatePath(`/termine/${id}`);
+  await aktualisiereTerminseite(id);
 }
 
 export async function updateFinanzKonfiguration(formData: FormData) {
@@ -4681,8 +4601,41 @@ export async function importFastbillRechnungen(formData: FormData) {
     }));
 
   const seminarKategorie = await fastbillKategorieName(supabase, "seminar", "Seminar");
+  // Rechnungen, die Backstage selbst erzeugt hat (buchung_rechnungen), sind der
+  // Buchung schon bekannt -- direkt zuordnen statt in "offen" zu landen.
+  const { data: eigene } = await supabase
+    .from("buchung_rechnungen")
+    .select("fastbill_invoice_id, buchung_id, buchungen(buchungspositionen(seminartermin_id, seminartermin_option_id, teilnehmer_id))")
+    .not("fastbill_invoice_id", "is", null);
+  const eigeneProId = new Map<string, any>((eigene || []).map((e: any) => [String(e.fastbill_invoice_id), e]));
   let eingefuegt = 0;
   for (const inv of neueInvoices) {
+    const eigen = eigeneProId.get(inv.invoiceId);
+    if (eigen && inv.type !== "credit") {
+      const pos = (eigen.buchungen?.buchungspositionen || []).find((p: any) => p.seminartermin_id) || {};
+      const { error } = await supabase.from("fastbill_rechnungen").insert({
+        fastbill_invoice_id: inv.invoiceId,
+        fastbill_invoice_number: inv.invoiceNumber,
+        rechnungsdatum: inv.invoiceDate,
+        ist_storno: false,
+        kunde_firma: inv.organization,
+        kunde_vorname: inv.firstName,
+        kunde_nachname: inv.lastName,
+        betrag_netto: inv.subTotal,
+        betrag_brutto: inv.total,
+        positionen: inv.items,
+        rohdaten: inv.raw,
+        kategorie: seminarKategorie,
+        buchung_id: eigen.buchung_id,
+        seminartermin_id: pos.seminartermin_id || null,
+        seminartermin_option_id: pos.seminartermin_option_id || null,
+        teilnehmer_id: pos.teilnehmer_id || null,
+        status: "zugeordnet",
+        notiz: "Automatisch zugeordnet: in Backstage erzeugte Rechnung.",
+      });
+      if (!error) eingefuegt++;
+      continue;
+    }
     const match = findePreisMatch(inv.subTotal, preisKandidaten);
     const { error } = await supabase.from("fastbill_rechnungen").insert({
       fastbill_invoice_id: inv.invoiceId,
@@ -5000,7 +4953,7 @@ export async function bestaetigeFastbillZuordnung(formData: FormData) {
   revalidatePath("/buchungen/fastbill");
   revalidatePath("/teilnehmer");
   revalidatePath("/termine");
-  revalidatePath(`/termine/${seminarterminId}`);
+  await aktualisiereTerminseite(seminarterminId);
 
   // Sichtbare Bestaetigung -- vorher sprang die Zeile nur still in einen
   // anderen Block, und es sah aus, als waere nichts passiert. Nur die ID in
@@ -5926,5 +5879,85 @@ export async function legeOrganisationFuerTeilnehmerAn(formData: FormData): Prom
   revalidatePath(`/teilnehmer/${teilnehmerId}`);
   revalidatePath("/teilnehmer");
   revalidatePath("/organisationen");
+  return { fehler: null };
+}
+
+
+// ---------- Seminar-Rechnungen (lib/rechnungen.ts) ----------
+
+export async function erstelleRechnungsentwurfAktion(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const buchungId = String(formData.get("buchung_id") || "");
+  const benutzer = await getAktuellerBenutzer();
+  try {
+    await erstelleRechnungsentwurf(getSupabaseAdmin(), buchungId, benutzer?.name || "Unbekannt");
+  } catch (e: any) {
+    return { fehler: e?.message || "Entwurf konnte nicht erstellt werden." };
+  }
+  revalidatePath(`/buchungen/${buchungId}`);
+  return { fehler: null };
+}
+
+export async function gibRechnungFreiAktion(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const rechnungId = String(formData.get("rechnung_id") || "");
+  const buchungId = String(formData.get("buchung_id") || "");
+  const benutzer = await getAktuellerBenutzer();
+  try {
+    const r = await gibRechnungFrei(getSupabaseAdmin(), rechnungId, benutzer?.name || "Unbekannt");
+    revalidatePath(`/buchungen/${buchungId}`);
+    if (!r.versendet) return { fehler: `Rechnung ${r.rechnungsnummer} ist freigegeben, aber nicht verschickt: ${r.fehler}. „Erneut senden“ versuchen.` };
+  } catch (e: any) {
+    revalidatePath(`/buchungen/${buchungId}`);
+    return { fehler: e?.message || "Freigabe fehlgeschlagen." };
+  }
+  return { fehler: null };
+}
+
+export async function sendeRechnungErneutAktion(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const buchungId = String(formData.get("buchung_id") || "");
+  try {
+    await sendeRechnungsmail(getSupabaseAdmin(), String(formData.get("rechnung_id") || ""));
+  } catch (e: any) {
+    return { fehler: e?.message || "Versand fehlgeschlagen." };
+  }
+  revalidatePath(`/buchungen/${buchungId}`);
+  return { fehler: null };
+}
+
+export async function verwirfRechnungsentwurfAktion(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const buchungId = String(formData.get("buchung_id") || "");
+  const benutzer = await getAktuellerBenutzer();
+  try {
+    await verwirfEntwurf(getSupabaseAdmin(), String(formData.get("rechnung_id") || ""), benutzer?.name || "Unbekannt");
+  } catch (e: any) {
+    return { fehler: e?.message || "Konnte nicht verworfen werden." };
+  }
+  revalidatePath(`/buchungen/${buchungId}`);
+  return { fehler: null };
+}
+
+export async function pruefeRechnungszahlungAktion(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const buchungId = String(formData.get("buchung_id") || "");
+  const r = await pruefeRechnungszahlungen(getSupabaseAdmin(), buchungId);
+  revalidatePath(`/buchungen/${buchungId}`);
+  return { fehler: r.fehler.length ? r.fehler.join("; ") : null };
+}
+
+export async function speichereFastbillVorlage(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const id = String(formData.get("fastbill_template_id") || "").trim() || null;
+  const { error } = await getSupabaseAdmin().from("finanz_konfiguration").update({ fastbill_template_id: id }).eq("id", 1);
+  if (error) return { fehler: error.message };
+  revalidatePath("/einstellungen");
   return { fehler: null };
 }

@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/kampagnen",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/onepage-fallback-snapshot",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/fastbill-zahlungen",
+      "schedule": "30 5 * * *"
     }
   ]
 }
