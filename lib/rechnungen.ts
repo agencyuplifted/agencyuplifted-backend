@@ -60,8 +60,10 @@ async function ladeBuchung(supabase: any, buchungId: string) {
       "id, buchungsnummer, status, metadata, organisation_id, " +
         "organisationen(id, name, rechnungsadresse_strasse, rechnungsadresse_plz, rechnungsadresse_ort, rechnungsadresse_land, ust_id, fastbill_customer_id), " +
         "rechnungsempfaenger:rechnungsempfaenger_teilnehmer_id(id, vorname, nachname, email, privatadresse_strasse, privatadresse_plz, privatadresse_ort, privatadresse_land, fastbill_customer_id), " +
-        "buchungspositionen(id, beschreibung, listenpreis, rabatt_betrag, preis, metadata, teilnehmer(id, vorname, nachname, email), seminartermin_optionen(titel), " +
-        "seminartermine(id, kennung, titel, datum_start, datum_ende, seminartypen(name)), programme(name), programm_optionen(titel))"
+        "buchungspositionen(id, beschreibung, listenpreis, rabatt_betrag, preis, metadata, teilnehmer(id, vorname, nachname, email), " +
+        "seminartermin_optionen(titel, rechnung_leistungstext, preisstaffeln(name, preis)), " +
+        "seminartermine(id, kennung, titel, datum_start, datum_ende, vorabend_anreise_datum, vorabendanreise_inklusive, veranstaltungsorte(name, ort, nahe_grossstadt), " +
+        "seminartypen(name, rechnung_positionsvorlage, rechnung_fastbill_template_id, rechnung_einleitung)), programme(name), programm_optionen(titel))"
     )
     .eq("id", buchungId)
     .maybeSingle();
@@ -114,35 +116,173 @@ function zeitraum(t: any): string {
   return t.datum_ende && t.datum_ende !== t.datum_start ? `${formatDatum(t.datum_start)} – ${formatDatum(t.datum_ende)}` : formatDatum(t.datum_start);
 }
 
-function positionenAus(b: any): { positionen: Position[]; raten: { anzahl: number; betrag: number } | null } {
+// ---------------------------------------------------------------------------
+// Positionstexte aus Vorlagen (Markus 10/2026: "wir koennen nicht nur die
+// Option reinmachen"). Pro Seminarkategorie eine Vorlage mit Platzhaltern
+// (seminartypen.rechnung_positionsvorlage), pro Option ein Leistungstext
+// (seminartermin_optionen.rechnung_leistungstext). Zeilen, deren Platzhalter
+// leer bleiben, fallen weg (z. B. "Anreise am Vorabend" ohne Vorabend).
+// Keine Teilnehmernamen auf der Rechnung (Entscheidung Markus).
+
+const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+const ZAHLWORT = ["keine", "eine", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn"];
+const teile = (iso: string) => ({ t: Number(iso.slice(8, 10)), m: Number(iso.slice(5, 7)), j: Number(iso.slice(0, 4)) });
+const datumLang = (iso: string) => {
+  const d = teile(iso);
+  return `${d.t}. ${MONATE[d.m - 1]} ${d.j}`;
+};
+const tageZwischen = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+const tagMinus = (iso: string, n: number) => new Date(Date.parse(iso) - n * 86400000).toISOString().slice(0, 10);
+
+// "25. bis 27. November 2026", "14. und 15. April 2027", "30. November bis 2. Dezember 2026"
+export function zeitraumRechnung(start: string, ende?: string | null): string {
+  if (!ende || ende === start) return datumLang(start);
+  const a = teile(start);
+  const e = teile(ende);
+  if (a.j === e.j && a.m === e.m) return `${a.t}. ${tageZwischen(start, ende) === 1 ? "und" : "bis"} ${e.t}. ${MONATE[e.m - 1]} ${e.j}`;
+  if (a.j === e.j) return `${a.t}. ${MONATE[a.m - 1]} bis ${datumLang(ende)}`;
+  return `${datumLang(start)} bis ${datumLang(ende)}`;
+}
+
+export function fuelleRechnungsvorlage(vorlage: string, werte: Record<string, string>): string {
+  const zeilen = vorlage.split(/\r?\n/).flatMap((zeile) => {
+    const platzhalter = [...zeile.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
+    const ersetzt = zeile.replace(/\{\{(\w+)\}\}/g, (_, k) => werte[k] ?? "");
+    // Zeile nur aus leeren Platzhaltern (+ Satzzeichen/Klammern) -> weg
+    if (platzhalter.length && platzhalter.every((k) => !werte[k])) return [];
+    return ersetzt.split(/\r?\n/);
+  });
+  return zeilen.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+type Textvorgaben = { einleitung: string | null; preisstufeVorlage: string; positionsvorlage: string | null; zusatzVorlage: string };
+
+const STANDARD_POSITION = "Seminar {{seminartitel}}\n{{zeitraum}}\n{{ort}}\n\n{{leistungen}}\n\n{{preisstufe}}";
+const STANDARD_ZUSATZ = "Weitere Teilnehmer aus Deiner Agentur\nSeminar {{seminartitel}}, {{zeitraum}}\nLeistungen wie oben";
+const STANDARD_PREISSTUFE = "Frühbucherpreis – Preisstufe {{stufe}} von {{stufen}} (Normalpreis {{normalpreis}} netto)";
+
+function terminWerte(t: any, opt: any, vorgaben: Textvorgaben, listenpreis: number): Record<string, string> {
+  // Vorabend: gepflegter Anreisetag, sonst bei inkl. Vorabendanreise der Tag vor dem Start
+  const vorabendISO = t.vorabendanreise_inklusive ? (t.vorabend_anreise_datum ? String(t.vorabend_anreise_datum).slice(0, 10) : tagMinus(t.datum_start, 1)) : null;
+  const naechte = Math.max(0, tageZwischen(vorabendISO || t.datum_start, t.datum_ende || t.datum_start));
+  const vo = t.veranstaltungsorte;
+  // Preisstufe: keine "Rabatt"-Logik -- der Fruehbucherpreis IST das Entgelt
+  // (§ 14 Abs. 4 Nr. 7 UStG verlangt nur nicht schon eingerechnete Minderungen).
+  // Die Info-Zeile macht die Preisdifferenzierung fuer den Kunden nachvollziehbar.
+  const preise = [...new Set(((opt?.preisstaffeln || []) as any[]).map((s) => Number(s.preis || 0)).filter((x) => x > 0))].sort((x, y) => x - y);
+  const normalpreis = preise.length ? preise[preise.length - 1] : 0;
+  const stufe = preise.findIndex((x) => Math.abs(x - listenpreis) < 0.005) + 1;
+  const preisstufe =
+    opt && normalpreis && listenpreis < normalpreis - 0.005
+      ? fuelleRechnungsvorlage(vorgaben.preisstufeVorlage, {
+          stufe: stufe ? String(stufe) : "",
+          stufen: String(preise.length),
+          normalpreis: formatEUR(normalpreis),
+        })
+      : "";
+  return {
+    seminartitel: t.titel || t.seminartypen?.name || "Seminar",
+    kennung: t.kennung || "",
+    option: opt?.titel || "",
+    zeitraum: zeitraumRechnung(String(t.datum_start).slice(0, 10), t.datum_ende ? String(t.datum_ende).slice(0, 10) : null),
+    ort: vo ? `${vo.name || vo.ort || ""}${vo.nahe_grossstadt ? ` (bei ${vo.nahe_grossstadt})` : ""}` : "",
+    vorabend: vorabendISO ? datumLang(vorabendISO) : "",
+    uebernachtungen: naechte ? `${ZAHLWORT[naechte] || naechte} Übernachtung${naechte === 1 ? "" : "en"}` : "",
+    leistungen: opt?.rechnung_leistungstext || "",
+    preisstufe,
+  };
+}
+
+function positionenAus(b: any, vorgaben: Textvorgaben): { positionen: Position[]; raten: { anzahl: number; netto: number } | null } {
   const ust = Math.round(MWST_SATZ * 100);
-  const positionen: Position[] = [];
-  const raten = { anzahl: 0, betrag: 0 };
-  for (const p of b.buchungspositionen || []) {
+  const roh: Position[] = [];
+  const raten = { anzahl: 0, netto: 0 };
+  const alle = (b.buchungspositionen || []) as any[];
+
+  // Pro Termin+Option: teuerste Person = Hauptposition (volle Vorlage), alle
+  // weiteren = "Weitere Teilnehmer aus Deiner Agentur" (eigener, meist
+  // guenstigerer Preis). Keine Namen auf der Rechnung (Entscheidung Markus).
+  const gruppen = new Map<string, any[]>();
+  for (const p of alle) {
+    if (!p.seminartermine || !p.seminartermin_optionen) continue;
+    const k = `${p.seminartermine.id}|${p.seminartermin_optionen.titel}`;
+    if (!gruppen.has(k)) gruppen.set(k, []);
+    gruppen.get(k)!.push(p);
+  }
+  const istZusatz = new Set<string>();
+  for (const liste of gruppen.values()) {
+    liste.sort((x, y) => Number(y.listenpreis || 0) - Number(x.listenpreis || 0));
+    liste.slice(1).forEach((p) => istZusatz.add(p.id));
+  }
+
+  for (const p of alle) {
     const preis = Number(p.preis ?? 0);
-    const name = p.teilnehmer ? `${p.teilnehmer.vorname || ""} ${p.teilnehmer.nachname || ""}`.trim() : "";
     const t = p.seminartermine;
+    const opt = p.seminartermin_optionen;
     let text: string;
-    if (t && p.seminartermin_optionen) {
-      text = `Seminarteilnahme ${t.kennung || ""} – ${t.titel || t.seminartypen?.name || "Seminar"} (${zeitraum(t)}), Option ${p.seminartermin_optionen.titel}`;
-    } else if (t) {
-      text = `${p.beschreibung || "Zusatzleistung"} – ${t.kennung || t.titel || "Seminar"} (${zeitraum(t)})`;
+    if (t) {
+      const werte = { ...terminWerte(t, opt, vorgaben, Number(p.listenpreis || 0)), beschreibung: p.beschreibung || "" };
+      const vorlage = !opt
+        ? "{{beschreibung}}\n{{seminartitel}}, {{zeitraum}}" // z. B. Zimmer-Upgrade
+        : istZusatz.has(p.id)
+          ? vorgaben.zusatzVorlage
+          : t.seminartypen?.rechnung_positionsvorlage || vorgaben.positionsvorlage || STANDARD_POSITION;
+      text = fuelleRechnungsvorlage(vorlage, istZusatz.has(p.id) ? { ...werte, preisstufe: "" } : werte);
     } else if (p.programme) {
       text = `${p.programme.name}${p.programm_optionen?.titel ? ` – ${p.programm_optionen.titel}` : ""}`;
     } else {
       text = p.beschreibung || "Leistung";
     }
-    if (name) text += ` · Teilnehmer: ${name}`;
+    // Individuell vereinbarter Nachlass (rabatt_betrag) ist eine echte
+    // Entgeltminderung und wird ausgewiesen -- anders als die Preisstufe.
     const rabatt = Number(p.rabatt_betrag || 0);
-    if (rabatt > 0) text += ` (Listenpreis ${formatEUR(Number(p.listenpreis || 0))} abzüglich ${formatEUR(rabatt)} Rabatt)`;
-    positionen.push({ beschreibung: text, menge: 1, einzelpreis: Math.round(preis * 100) / 100, ust_prozent: ust });
+    if (rabatt > 0) text += `\nabzüglich ${formatEUR(rabatt)} Nachlass (Listenpreis ${formatEUR(Number(p.listenpreis || 0))})`;
+    roh.push({ beschreibung: text, menge: 1, einzelpreis: Math.round(preis * 100) / 100, ust_prozent: ust });
     if (p.metadata?.zahlweise === "raten" && Number(p.metadata?.anzahl_raten) > 1) {
-      const anzahl = Number(p.metadata.anzahl_raten);
-      raten.anzahl = anzahl;
-      raten.betrag += Number(p.metadata.rate_betrag || preis / anzahl);
+      raten.anzahl = Number(p.metadata.anzahl_raten);
+      raten.netto += preis;
     }
   }
+  // Gleiche Leistung zum gleichen Preis -> eine Position mit Menge (Anzahl Teilnehmer)
+  const positionen: Position[] = [];
+  for (const p of roh) {
+    const gleich = positionen.find((x) => x.beschreibung === p.beschreibung && x.einzelpreis === p.einzelpreis);
+    if (gleich) gleich.menge += 1;
+    else positionen.push({ ...p });
+  }
   return { positionen, raten: raten.anzahl ? raten : null };
+}
+
+// Zahlungsplan fuer Ratenzahlung: eine Rechnung ueber den Gesamtbetrag, die
+// Raten als Text (Markus erfasst jede Rate in FastBill als Teilzahlung, der
+// Abgleich zeigt "teilbezahlt"). Bruttobetraege, Rundungsrest in der letzten Rate.
+export function zahlungsplanText(anzahl: number, nettoGesamt: number): string {
+  const brutto = Math.round(nettoGesamt * (1 + MWST_SATZ) * 100);
+  const rate = Math.floor(brutto / anzahl);
+  const faellig = ["bei Erhalt der Rechnung", "einen Monat später", "zwei Monate später", "drei Monate später", "vier Monate später", "fünf Monate später"];
+  const zeilen = Array.from({ length: anzahl }, (_, i) => {
+    const betrag = i === anzahl - 1 ? brutto - rate * (anzahl - 1) : rate;
+    return `Rate ${i + 1} von ${anzahl}: ${formatEUR(betrag / 100)} – fällig ${faellig[i] || `${i} Monate später`}`;
+  });
+  return `Zahlungsplan (Ratenzahlung, Beträge inkl. USt.):\n${zeilen.join("\n")}`;
+}
+
+async function ladeTextvorgaben(supabase: any, b: any): Promise<Textvorgaben & { templateId: string | null }> {
+  const { data: konf } = await supabase
+    .from("finanz_konfiguration")
+    .select("fastbill_template_id, rechnung_einleitung, rechnung_preisstufe_text, rechnung_positionsvorlage, rechnung_zusatz_vorlage")
+    .eq("id", 1)
+    .maybeSingle();
+  const typ = (b.buchungspositionen || []).find((p: any) => p.seminartermine)?.seminartermine?.seminartypen;
+  // Standard fuer alle Seminare aus den Einstellungen; eine Kategorie weicht nur
+  // ab, wenn dort etwas eingetragen ist (z. B. Konferenz).
+  return {
+    einleitung: typ?.rechnung_einleitung || konf?.rechnung_einleitung || null,
+    preisstufeVorlage: konf?.rechnung_preisstufe_text || STANDARD_PREISSTUFE,
+    positionsvorlage: konf?.rechnung_positionsvorlage || null,
+    zusatzVorlage: konf?.rechnung_zusatz_vorlage || STANDARD_ZUSATZ,
+    templateId: typ?.rechnung_fastbill_template_id || konf?.fastbill_template_id || null,
+  };
 }
 
 // Bestehenden FastBill-Kunden wiedererkennen (gespeicherte ID, sonst Suche nach
@@ -192,7 +332,10 @@ export async function aktiveRechnung(supabase: any, buchungId: string) {
 export async function rechnungsVorschau(supabase: any, buchungId: string) {
   const b = await ladeBuchung(supabase, buchungId);
   const empfaenger = empfaengerAus(b);
-  const { positionen, raten } = positionenAus(b);
+  const vorgaben = await ladeTextvorgaben(supabase, b);
+  const { positionen, raten } = positionenAus(b, vorgaben);
+  const ratenhinweis = raten ? zahlungsplanText(raten.anzahl, raten.netto) : null;
+  const einleitung = [vorgaben.einleitung, ratenhinweis].filter(Boolean).join("\n\n") || null;
   const netto = positionen.reduce((s, p) => s + p.einzelpreis * p.menge, 0);
   const fehlt: string[] = [];
   if (!empfaenger.strasse || !empfaenger.plz || !empfaenger.ort) fehlt.push(empfaenger.typ === "business" ? `Rechnungsadresse der Organisation „${empfaenger.firma}“` : "Rechnungsadresse (Privatadresse) des Rechnungsempfängers");
@@ -200,7 +343,7 @@ export async function rechnungsVorschau(supabase: any, buchungId: string) {
   if (!positionen.length) fehlt.push("Positionen");
   const art = b.metadata?.buchungsart;
   const keineRechnung = art === "paket" ? "Paket-Buchung – keine eigene Rechnung." : art === "freiplatz" ? "Freiplatz – keine Rechnung." : b.status === "storniert" ? "Buchung ist storniert." : null;
-  return { buchung: b, empfaenger, positionen, raten, netto, brutto: Math.round(netto * (1 + MWST_SATZ) * 100) / 100, fehlt, keineRechnung };
+  return { buchung: b, empfaenger, positionen, raten, ratenhinweis, einleitung, templateId: vorgaben.templateId, netto, brutto: Math.round(netto * (1 + MWST_SATZ) * 100) / 100, fehlt, keineRechnung };
 }
 
 export async function erstelleRechnungsentwurf(supabase: any, buchungId: string, bearbeiter: string): Promise<{ id: string; fastbillInvoiceId: string }> {
@@ -220,6 +363,7 @@ export async function erstelleRechnungsentwurf(supabase: any, buchungId: string,
       empfaenger: v.empfaenger,
       empfaenger_email: v.empfaenger.email,
       positionen: v.positionen,
+      raten_anzahl: v.raten?.anzahl || null,
       betrag_netto: v.netto,
       betrag_brutto: v.brutto,
       erstellt_von: bearbeiter,
@@ -229,21 +373,18 @@ export async function erstelleRechnungsentwurf(supabase: any, buchungId: string,
   if (insErr) throw new Error(insErr.code === "23505" ? "Für diese Buchung gibt es schon eine Rechnung." : insErr.message);
 
   try {
-    const { data: konf } = await supabase.from("finanz_konfiguration").select("fastbill_template_id").eq("id", 1).maybeSingle();
     const kundenId = await sichereFastbillKunde(supabase, v.empfaenger);
     const termin = (v.buchung.buchungspositionen || []).find((p: any) => p.seminartermine)?.seminartermine;
-    const einleitung = v.raten
-      ? `Zahlbar in ${v.raten.anzahl} monatlichen Raten à ${formatEUR(v.raten.betrag)} zzgl. ${Math.round(MWST_SATZ * 100)} % USt. – die erste Rate bei Erhalt dieser Rechnung, die weiteren jeweils einen Monat später.`
-      : null;
+    const einleitung = v.einleitung;
     const invoiceId = await fastbillEntwurfAnlegen({
       CUSTOMER_ID: kundenId,
-      ...(konf?.fastbill_template_id ? { TEMPLATE_ID: konf.fastbill_template_id } : {}),
+      ...(v.templateId ? { TEMPLATE_ID: v.templateId } : {}),
       ...(termin ? { INVOICE_TITLE: `Seminar ${termin.kennung || termin.titel || ""}`.trim(), SERVICE_PERIOD_START: termin.datum_start, SERVICE_PERIOD_END: termin.datum_ende || termin.datum_start } : {}),
       ...(einleitung ? { INTROTEXT: einleitung } : {}),
       ORDER_REFERENCE: v.buchung.buchungsnummer || undefined,
       ITEMS: v.positionen.map((p) => ({ DESCRIPTION: p.beschreibung, QUANTITY: p.menge, UNIT_PRICE: p.einzelpreis, VAT_PERCENT: p.ust_prozent })),
     });
-    await supabase.from("buchung_rechnungen").update({ fastbill_invoice_id: invoiceId, fastbill_customer_id: kundenId, einleitung }).eq("id", zeile.id);
+    await supabase.from("buchung_rechnungen").update({ fastbill_invoice_id: invoiceId, fastbill_customer_id: kundenId, einleitung, ratenhinweis: v.ratenhinweis }).eq("id", zeile.id);
     await supabase.from("aenderungsprotokoll").insert({ bezug_typ: "buchung", bezug_id: buchungId, ereignis: "rechnung_entwurf", beschreibung: `Rechnungsentwurf in FastBill angelegt (${formatEUR(v.netto)} netto).`, bearbeiter });
     return { id: zeile.id, fastbillInvoiceId: invoiceId };
   } catch (e: any) {
@@ -274,7 +415,7 @@ export async function sendeRechnungsmail(supabase: any, rechnungId: string): Pro
   const text =
     `Hallo${vorname ? ` ${vorname}` : ""},\n\n` +
     `anbei erhältst Du die Rechnung ${r.rechnungsnummer} für ${leistung}.` +
-    (r.einleitung ? `\n\n${r.einleitung}` : "") +
+    (r.ratenhinweis ? `\n\n${r.ratenhinweis}` : "") +
     `\n\nBei Fragen antworte einfach auf diese Mail.`;
   const bausteine = await ladeBausteine(supabase);
   const { data, error } = await getResend().emails.send({
@@ -318,6 +459,7 @@ export async function gibRechnungFrei(supabase: any, rechnungId: string, bearbei
       status: "freigegeben",
       rechnungsnummer,
       dokument_url: inv?.DOCUMENT_URL || null,
+      faellig_am: /^\d{4}-\d{2}-\d{2}/.test(String(inv?.DUE_DATE || "")) && !String(inv.DUE_DATE).startsWith("0000") ? String(inv.DUE_DATE).slice(0, 10) : null,
       betrag_netto: inv?.SUB_TOTAL != null ? Number(inv.SUB_TOTAL) : gesperrt.betrag_netto,
       betrag_brutto: inv?.TOTAL != null ? Number(inv.TOTAL) : gesperrt.betrag_brutto,
       freigegeben_am: new Date().toISOString(),
@@ -403,4 +545,72 @@ export async function pruefeRechnungszahlungen(supabase: any, nurBuchungId?: str
     }
   }
   return ergebnis;
+}
+
+// Ueberfaellige Zahlungen fuer das Dashboard (nur fuer Markus, keine Kunden-Mail).
+// Erst ab KARENZ Tagen nach Faelligkeit -- kurze Banklaufzeiten sollen keinen
+// Alarm ausloesen ("nur wenn signifikant ueberfaellig", Markus 10/2026).
+// Raten: Rate i faellig i Monate nach Versand (wie im Zahlungsplan-Text);
+// sonst Faelligkeit aus FastBill (DUE_DATE), ersatzweise 14 Tage nach Versand.
+// Zahlungsstand kommt aus dem taeglichen FastBill-Abgleich.
+export const UEBERFAELLIG_KARENZ_TAGE = 7;
+
+const plusMonate = (iso: string, n: number) => {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+export type UeberfaelligeZahlung = { rechnungId: string; buchungId: string; buchungsnummer: string | null; kunde: string; rechnungsnummer: string | null; was: string; offen: number; faelligAm: string; tage: number };
+
+export async function ladeUeberfaelligeZahlungen(supabase: any, heute: string): Promise<UeberfaelligeZahlung[]> {
+  const { data } = await supabase
+    .from("buchung_rechnungen")
+    .select("id, buchung_id, rechnungsnummer, empfaenger, betrag_brutto, bezahlt_betrag, raten_anzahl, faellig_am, versendet_am, freigegeben_am, zahlungsstatus, buchungen(buchungsnummer)")
+    .in("status", ["freigegeben", "versendet"])
+    .neq("zahlungsstatus", "bezahlt");
+  const grenze = Date.parse(heute) - UEBERFAELLIG_KARENZ_TAGE * 86400000;
+  const liste: UeberfaelligeZahlung[] = [];
+  for (const r of data || []) {
+    const basis = String(r.versendet_am || r.freigegeben_am || "").slice(0, 10);
+    if (!basis) continue;
+    const brutto = Number(r.betrag_brutto || 0);
+    const bezahlt = Number(r.bezahlt_betrag || 0);
+    const kunde = r.empfaenger?.firma || [r.empfaenger?.vorname, r.empfaenger?.nachname].filter(Boolean).join(" ") || "—";
+    let faelligAm: string;
+    let offen: number;
+    let was: string;
+    const n = Number(r.raten_anzahl || 0);
+    if (n > 1) {
+      // erste noch nicht (voll) bezahlte Rate
+      const rate = Math.floor((brutto * 100) / n) / 100;
+      let kumuliert = 0;
+      let k = 0;
+      for (; k < n; k++) {
+        kumuliert = k === n - 1 ? brutto : Math.round((kumuliert + rate) * 100) / 100;
+        if (kumuliert > bezahlt + 0.01) break;
+      }
+      if (k >= n) continue;
+      faelligAm = k === 0 && r.faellig_am ? r.faellig_am : plusMonate(basis, k);
+      offen = Math.round((kumuliert - bezahlt) * 100) / 100;
+      was = `Rate ${k + 1} von ${n}`;
+    } else {
+      faelligAm = r.faellig_am || new Date(Date.parse(basis) + 14 * 86400000).toISOString().slice(0, 10);
+      offen = Math.round((brutto - bezahlt) * 100) / 100;
+      was = bezahlt > 0 ? "Restbetrag" : "Rechnung";
+    }
+    if (Date.parse(faelligAm) > grenze || offen <= 0.01) continue;
+    liste.push({
+      rechnungId: r.id,
+      buchungId: r.buchung_id,
+      buchungsnummer: r.buchungen?.buchungsnummer || null,
+      kunde,
+      rechnungsnummer: r.rechnungsnummer,
+      was,
+      offen,
+      faelligAm,
+      tage: Math.round((Date.parse(heute) - Date.parse(faelligAm)) / 86400000),
+    });
+  }
+  return liste.sort((a, b) => b.tage - a.tage);
 }

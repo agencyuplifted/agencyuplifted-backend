@@ -1029,6 +1029,7 @@ export async function importSeminarOptions(formData: FormData) {
         badge: null,
         sortierung: naechsteSortierung,
         zusatz_teilnehmer_hinweis: quelle.zusatz_teilnehmer_hinweis,
+        rechnung_leistungstext: quelle.rechnung_leistungstext ?? null,
         vorspann_text: quelle.vorspann_text,
         vorspann_anzeigen: quelle.vorspann_anzeigen || false,
       })
@@ -2425,6 +2426,7 @@ export async function updateSeminarOption(formData: FormData) {
       beschreibung: formData.get("beschreibung") || null,
       sortierung: Number(formData.get("sortierung") || 0),
       zusatz_teilnehmer_hinweis: formData.get("zusatz_teilnehmer_hinweis") || null,
+      ...(formData.has("rechnung_leistungstext") ? { rechnung_leistungstext: String(formData.get("rechnung_leistungstext") || "").trim() || null } : {}),
       zimmerupgrade_zusatznaechte: formData.get("zimmerupgrade_zusatznaechte")
         ? Number(formData.get("zimmerupgrade_zusatznaechte"))
         : null,
@@ -5956,8 +5958,37 @@ export async function speichereFastbillVorlage(formData: FormData): Promise<Vorl
   const fehler = await pruefeBackstageLogin();
   if (fehler) return { fehler };
   const id = String(formData.get("fastbill_template_id") || "").trim() || null;
-  const { error } = await getSupabaseAdmin().from("finanz_konfiguration").update({ fastbill_template_id: id }).eq("id", 1);
+  const { error } = await getSupabaseAdmin()
+    .from("finanz_konfiguration")
+    .update({
+      fastbill_template_id: id,
+      ...(formData.has("rechnung_einleitung") ? { rechnung_einleitung: String(formData.get("rechnung_einleitung") || "").trim() || null } : {}),
+      ...(formData.has("rechnung_preisstufe_text") ? { rechnung_preisstufe_text: String(formData.get("rechnung_preisstufe_text") || "").trim() || null } : {}),
+      ...(formData.has("rechnung_positionsvorlage") ? { rechnung_positionsvorlage: String(formData.get("rechnung_positionsvorlage") || "").trim() || null } : {}),
+      ...(formData.has("rechnung_zusatz_vorlage") ? { rechnung_zusatz_vorlage: String(formData.get("rechnung_zusatz_vorlage") || "").trim() || null } : {}),
+    })
+    .eq("id", 1);
   if (error) return { fehler: error.message };
   revalidatePath("/einstellungen");
+  return { fehler: null };
+}
+
+// Rechnungstexte einer Seminarkategorie (Positionsvorlage, FastBill-Vorlage,
+// optionale eigene Einleitung) -- siehe lib/rechnungen.ts.
+export async function speichereRechnungstexteKategorie(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const id = String(formData.get("seminartyp_id") || "");
+  const leer = (k: string) => String(formData.get(k) || "").trim() || null;
+  const { error } = await getSupabaseAdmin()
+    .from("seminartypen")
+    .update({
+      rechnung_positionsvorlage: leer("rechnung_positionsvorlage"),
+      rechnung_fastbill_template_id: leer("rechnung_fastbill_template_id"),
+      rechnung_einleitung: leer("rechnung_einleitung"),
+    })
+    .eq("id", id);
+  if (error) return { fehler: error.message };
+  revalidatePath("/seminartypen");
   return { fehler: null };
 }

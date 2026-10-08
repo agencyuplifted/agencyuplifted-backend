@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { createSeminartyp, updateSeminartyp } from "@/lib/actions";
+import { createSeminartyp, updateSeminartyp, speichereRechnungstexteKategorie } from "@/lib/actions";
+import AktionsFormular from "../AktionsFormular";
 import { PROGRAMME, PROGRAMM_KEYS } from "@/lib/programme";
 
 // Auswahl "Programm" (Foundation/Uplift/Advance) -- bestimmt den Programm-Kalender
@@ -109,6 +110,50 @@ export default async function SeminartypenPage() {
           </tbody>
         </table>
       </div>
+
+      <section className="au-card" id="rechnungstexte">
+        <h2>Rechnungstexte</h2>
+        <p style={{ color: "var(--color-text-muted)", marginTop: 0 }}>
+          Grundsätzlich gilt für alle Seminare die Standard-Vorlage aus den <a href="/einstellungen#fastbill">Einstellungen</a>. Hier nur eintragen, wenn eine
+          Kategorie abweichen soll (z. B. Konferenz) – leere Felder = Standard. Zeilen, deren Platzhalter leer bleiben, fallen automatisch weg, etwa die Vorabend-Zeile
+          bei Terminen ohne Vorabendanreise.
+        </p>
+        <details className="au-klein" style={{ marginBottom: "1rem" }}>
+          <summary>Platzhalter</summary>
+          <ul style={{ margin: "0.4rem 0 0", paddingLeft: "1.1rem", lineHeight: 1.6 }}>
+            <li><code>{"{{seminartitel}}"}</code> – Titel des Termins, z. B. Führung für Agenturunternehmer</li>
+            <li><code>{"{{option}}"}</code> – gebuchte Option, z. B. Clarity</li>
+            <li><code>{"{{zeitraum}}"}</code> – z. B. 25. bis 27. November 2026 · 14. und 15. April 2027</li>
+            <li><code>{"{{ort}}"}</code> – Veranstaltungsort, z. B. Weißes Ross, Illschwang (bei Nürnberg)</li>
+            <li><code>{"{{uebernachtungen}}"}</code> – z. B. drei Übernachtungen (inkl. Vorabend)</li>
+            <li><code>{"{{vorabend}}"}</code> – Anreisetag, z. B. 24. November 2026 (leer ohne Vorabendanreise)</li>
+            <li><code>{"{{leistungen}}"}</code> – „Leistungsumfang auf der Rechnung“ der Option (am Termin unter Optionen)</li>
+            <li><code>{"{{preisstufe}}"}</code> – z. B. „Frühbucherpreis – Preisstufe 4 von 6 (Normalpreis 4.360,00 € netto)“, beim Normalpreis leer</li>
+            <li><code>{"{{kennung}}"}</code> – z. B. FUE126</li>
+          </ul>
+        </details>
+        <div style={{ display: "grid", gap: "1.25rem" }}>
+          {(typen || []).map((t: any) => (
+            <AktionsFormular key={t.id} action={speichereRechnungstexteKategorie} className="au-rechnungstext">
+              <input type="hidden" name="seminartyp_id" value={t.id} />
+              <h3 style={{ margin: "0 0 0.5rem", fontSize: "0.95rem" }}>{t.name}</h3>
+              <label className="au-label">Positionsvorlage</label>
+              <textarea name="rechnung_positionsvorlage" className="au-input" rows={t.rechnung_positionsvorlage ? 9 : 2} defaultValue={t.rechnung_positionsvorlage || ""} placeholder="leer = Standard-Vorlage aus den Einstellungen" style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.82rem" }} />
+              <div className="au-row-2">
+                <div>
+                  <label className="au-label">FastBill-Vorlage (TEMPLATE_ID)</label>
+                  <input name="rechnung_fastbill_template_id" className="au-input" defaultValue={t.rechnung_fastbill_template_id || ""} placeholder="leer = Standard aus den Einstellungen" />
+                </div>
+                <div>
+                  <label className="au-label">Eigener Einleitungstext (optional)</label>
+                  <input name="rechnung_einleitung" className="au-input" defaultValue={t.rechnung_einleitung || ""} placeholder="leer = Standard aus den Einstellungen" />
+                </div>
+              </div>
+              <button type="submit" className="au-btn au-btn-secondary au-btn-sm">Speichern</button>
+            </AktionsFormular>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }

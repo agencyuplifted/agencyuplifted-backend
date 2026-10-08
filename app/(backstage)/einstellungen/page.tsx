@@ -76,9 +76,24 @@ export default async function EinstellungenPage() {
       <div className="au-card" id="fastbill">
         <h2>Seminar-Rechnungen (FastBill)</h2>
         <p style={{ color: "var(--color-text-muted)" }}>
-          Vorlage, mit der Backstage Rechnungsentwürfe in FastBill anlegt (Buchungsseite → Bereich „Rechnung“). Ohne Auswahl nimmt FastBill seine Standardvorlage.
+          Standard für Rechnungsentwürfe in FastBill (Buchungsseite → Bereich „Rechnung“). Positionstexte und eigene FastBill-Vorlagen pro Kategorie pflegst Du unter{" "}
+          <Link href="/seminartypen#rechnungstexte">Seminarkategorien → Rechnungstexte</Link>; was dort leer ist, kommt von hier.
         </p>
-        <AktionsFormular action={speichereFastbillVorlage} style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
+        <AktionsFormular action={speichereFastbillVorlage} style={{ display: "flex", gap: "0.6rem", alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div style={{ flexBasis: "100%" }}>
+            <label className="au-label">Einleitungstext (nach der Anrede der FastBill-Vorlage)</label>
+            <textarea name="rechnung_einleitung" className="au-input" rows={2} defaultValue={konfig?.rechnung_einleitung || ""} />
+            <label className="au-label">Positionsvorlage – Standard für alle Seminare</label>
+            <textarea name="rechnung_positionsvorlage" className="au-input" rows={10} defaultValue={konfig?.rechnung_positionsvorlage || ""} style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.82rem" }} />
+            <label className="au-label">Position „weitere Teilnehmer“ (ab der zweiten Person derselben Option)</label>
+            <textarea name="rechnung_zusatz_vorlage" className="au-input" rows={3} defaultValue={konfig?.rechnung_zusatz_vorlage || ""} style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.82rem" }} />
+            <label className="au-label">Preisstufen-Zeile (Platzhalter {"{{preisstufe}}"}; nur bei Preis unter dem Normalpreis – {"{{stufe}}"}, {"{{stufen}}"}, {"{{normalpreis}}"})</label>
+            <input name="rechnung_preisstufe_text" className="au-input" defaultValue={konfig?.rechnung_preisstufe_text || ""} />
+            <p className="au-klein" style={{ margin: "-0.4rem 0 0.75rem" }}>
+              Platzhalter der Vorlagen: <Link href="/seminartypen#rechnungstexte">Liste bei den Seminarkategorien</Link>. Ratenzahlung erzeugt automatisch einen Zahlungsplan unter der Einleitung.
+            </p>
+            <label className="au-label">FastBill-Vorlage (Standard)</label>
+          </div>
           {vorlagen.length ? (
             <select name="fastbill_template_id" className="au-select" defaultValue={konfig?.fastbill_template_id || ""} style={{ width: "auto", minWidth: 280, marginBottom: 0 }}>
               <option value="">— FastBill-Standardvorlage —</option>

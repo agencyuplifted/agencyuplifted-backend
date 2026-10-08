@@ -4,6 +4,7 @@ import { formatEURGanz, formatDatum, MONATSNAMEN } from "@/lib/format";
 import { monatKurz, type Zeitraum } from "@/lib/zeitraeume";
 import { Sparkline } from "./SeminarCockpit";
 import { ladeSeminarZaehler } from "@/lib/seminarzaehler";
+import { ladeUeberfaelligeZahlungen, UEBERFAELLIG_KARENZ_TAGE } from "@/lib/rechnungen";
 
 // Dashboard-Uebersicht: Kennzahlen + Umsatz nach Geschaeftsfeldern + naechste
 // Seminare, alles fuer EINEN Zeitraum aus der gemeinsamen Zeitraum-Leiste.
@@ -189,7 +190,7 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
   const max = Math.max(1, ...zeilen.map((z) => z.summe), unklarSumme);
   const verlaufText = art === "Monat" ? `pro Monat, ${monatKurz(abschnitte[0].von.slice(0, 7))} – ${monatKurz(abschnitte[abschnitte.length - 1].von.slice(0, 7))}` : "pro Woche";
 
-  const zaehler = await ladeSeminarZaehler(supabase, heute);
+  const [zaehler, ueberfaellig] = await Promise.all([ladeSeminarZaehler(supabase, heute), ladeUeberfaelligeZahlungen(supabase, heute)]);
 
   return (
     <div className="au-sz">
@@ -236,6 +237,27 @@ export default async function UebersichtCockpit({ supabase, heute, zeitraum }: {
           <div className="au-sz-kpi-sub">{offenAnzahl ? `${offenAnzahl} Buchung${offenAnzahl === 1 ? "" : "en"} angefragt, noch nicht bezahlt` : "alles bezahlt"}</div>
         </Link>
       </div>
+
+      {ueberfaellig.length > 0 && (
+        <section className="au-sz-karte au-ueberfaellig">
+          <header className="au-sz-karte-kopf">
+            <h3>Überfällige Zahlungen</h3>
+            <span>ab {UEBERFAELLIG_KARENZ_TAGE} Tagen nach Fälligkeit · Stand FastBill-Abgleich</span>
+          </header>
+          <div className="au-sz-artliste">
+            {ueberfaellig.map((u) => (
+              <Link key={u.rechnungId} href={`/buchungen/${u.buchungId}`} className="au-ue-termin" prefetch={false}>
+                <span className="au-sz-name">
+                  <b>{u.kunde}</b>
+                  <small>{u.was}{u.rechnungsnummer ? ` · ${u.rechnungsnummer}` : ""}{u.buchungsnummer ? ` · ${u.buchungsnummer}` : ""} · fällig {formatDatum(u.faelligAm)}</small>
+                </span>
+                <span className="au-ue-bis au-ueberfaellig-tage">{u.tage} Tage überfällig</span>
+                <span className="au-sz-betrag"><b>{formatEURGanz(u.offen)}</b><small>offen</small></span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {zaehler.map((z) => (
         <section key={z.praefix} className="au-sz-karte au-zaehler">

@@ -27,10 +27,7 @@ const ZAHLUNG: Record<string, { text: string; klasse: string }> = {
 };
 
 export default async function RechnungBereich({ supabase, buchungId }: { supabase: any; buchungId: string }) {
-  const [{ data: rechnungen }, { data: konf }] = await Promise.all([
-    supabase.from("buchung_rechnungen").select("*").eq("buchung_id", buchungId).order("erstellt_am", { ascending: false }),
-    supabase.from("finanz_konfiguration").select("fastbill_template_id").eq("id", 1).maybeSingle(),
-  ]);
+  const { data: rechnungen } = await supabase.from("buchung_rechnungen").select("*").eq("buchung_id", buchungId).order("erstellt_am", { ascending: false });
   const aktiv = (rechnungen || []).find((r: any) => ["entwurf", "wird_freigegeben", "freigegeben", "versendet"].includes(r.status));
   const frueher = (rechnungen || []).filter((r: any) => r !== aktiv);
   const vorschau = aktiv ? null : await rechnungsVorschau(supabase, buchungId);
@@ -91,7 +88,7 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
             <tbody>
               {positionen.map((p: any, i: number) => (
                 <tr key={i}>
-                  <td>{p.beschreibung}</td>
+                  <td style={{ whiteSpace: "pre-line" }}>{p.beschreibung}</td>
                   <td style={{ textAlign: "right" }}>{p.menge}</td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{formatEUR(p.einzelpreis)}</td>
                 </tr>
@@ -102,9 +99,9 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
               <tr><td colSpan={2} style={{ textAlign: "right" }}><b>Gesamt brutto</b></td><td style={{ textAlign: "right" }}><b>{formatEUR(brutto)}</b></td></tr>
             </tfoot>
           </table>
-          {(aktiv?.einleitung || vorschau?.raten) && (
-            <p className="au-klein">
-              {aktiv?.einleitung || `Ratenzahlung: ${vorschau!.raten!.anzahl} Raten à ${formatEUR(vorschau!.raten!.betrag)} netto – wird als Zahlungshinweis in die Rechnung geschrieben.`}
+          {(aktiv?.einleitung || vorschau?.einleitung) && (
+            <p className="au-klein" style={{ whiteSpace: "pre-line" }}>
+              <b>Einleitung:</b> {aktiv?.einleitung || vorschau?.einleitung}
             </p>
           )}
         </>
@@ -126,9 +123,9 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
               ) : null}
             </div>
           )}
-          {!konf?.fastbill_template_id && (
-            <p className="au-klein">Noch keine FastBill-Vorlage hinterlegt – FastBill nimmt dann seine Standardvorlage. <Link href="/einstellungen#fastbill">Vorlage wählen →</Link></p>
-          )}
+          <p className="au-klein">
+            FastBill-Vorlage: {vorschau.templateId || "FastBill-Standard"} · Texte: <Link href="/seminartypen#rechnungstexte">Seminarkategorien → Rechnungstexte</Link>
+          </p>
           <AktionsFormular action={erstelleRechnungsentwurfAktion}>
             <input type="hidden" name="buchung_id" value={buchungId} />
             <button type="submit" className="au-btn au-btn-primary" disabled={vorschau.fehlt.length > 0}>Rechnungsentwurf in FastBill erstellen</button>

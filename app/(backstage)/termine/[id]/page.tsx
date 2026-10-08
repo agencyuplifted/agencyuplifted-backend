@@ -1113,6 +1113,8 @@ export default async function TerminDetailPage({
                 <p style={{ color: "var(--color-text-faint)", fontSize: "0.8rem", margin: "-0.5rem 0 0.75rem" }}>
                   Reine Zahlungsvereinbarung, keine automatische Abbuchung — 1. Rate sofort fällig, restliche Raten gleich hoch auf die Folgemonate verteilt (Rundungsdifferenz bei der letzten Rate). Zahlungseingänge weiterhin manuell auf der Buchung markieren.
                 </p>
+                <label className="au-label">Leistungsumfang auf der Rechnung (Platzhalter {"{{leistungen}}"} in der Rechnungsvorlage der Kategorie)</label>
+                <textarea className="au-input" name="rechnung_leistungstext" rows={3} defaultValue={opt.rechnung_leistungstext || ""} placeholder="z. B. Zwei Tage Konferenz&#10;&#10;Zwei Übernachtungen im Einzelzimmer (Komfortkategorie)." />
                 <label className="au-label">Hinweis: zusätzlicher Teilnehmer (erscheint unter der Preistabelle auf Onepage)</label>
                 <FettTextarea
                   name="zusatz_teilnehmer_hinweis"

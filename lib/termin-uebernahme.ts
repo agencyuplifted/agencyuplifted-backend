@@ -88,6 +88,7 @@ export async function kopiereTerminInhalte(
           badge: opt.badge,
           sortierung: opt.sortierung,
           zusatz_teilnehmer_hinweis: opt.zusatz_teilnehmer_hinweis,
+          rechnung_leistungstext: opt.rechnung_leistungstext ?? null,
           zimmerupgrade_zusatznaechte: opt.zimmerupgrade_zusatznaechte,
           ratenzahlung_aktiv: opt.ratenzahlung_aktiv || false,
           ratenzahlung_anzahl_raten: opt.ratenzahlung_anzahl_raten,

@@ -250,15 +250,26 @@ export async function fastbillVorlagen(): Promise<{ id: string; name: string }[]
   return asArray<any>(r?.TEMPLATES?.TEMPLATE ?? r?.TEMPLATES).map((t) => ({ id: String(t.TEMPLATE_ID), name: String(t.TEMPLATE_NAME || t.TEMPLATE_ID) }));
 }
 
-// Zahlungsstand einer Rechnung: PAID_DATE gesetzt = bezahlt; sonst Summe der
-// PAYMENTS > 0 = teilbezahlt (Ratenzahlung -- gueltiger Dauerzustand).
+// Zahlungsstand einer Rechnung. PAYMENTS ist eine Liste {DATE "28.09.2026",
+// AMOUNT, PAYMENT_ID, NOTE} (so in den importierten Rechnungen). "bezahlt" erst,
+// wenn die Summe der Zahlungen den Rechnungsbetrag erreicht -- ob FastBill
+// PAID_DATE schon bei einer Teilzahlung setzt, war noch nicht pruefbar
+// (Ratenzahlung erst seit 10/2026). Ohne Zahlungsliste zaehlt PAID_DATE.
 export function fastbillZahlungsstand(inv: any): { status: "offen" | "teilbezahlt" | "bezahlt"; bezahltAm: string | null; betrag: number; storniert: boolean } {
-  const paid = String(inv?.PAID_DATE ?? "").slice(0, 10);
-  const bezahltAm = paid && !paid.startsWith("0000") ? paid : null;
-  const zahlungen = asArray<any>(inv?.PAYMENTS?.PAYMENT ?? inv?.PAYMENTS);
-  const betrag = zahlungen.reduce((s, z) => s + Number(z?.AMOUNT ?? 0), 0);
   const storniert = String(inv?.IS_CANCELED) === "1";
-  if (bezahltAm) return { status: "bezahlt", bezahltAm, betrag: betrag || Number(inv?.TOTAL ?? 0), storniert };
-  if (betrag > 0) return { status: "teilbezahlt", bezahltAm: null, betrag, storniert };
+  const total = Number(inv?.TOTAL ?? 0);
+  const zahlungen = asArray<any>(inv?.PAYMENTS?.PAYMENT ?? inv?.PAYMENTS);
+  const betrag = Math.round(zahlungen.reduce((s, z) => s + Number(z?.AMOUNT ?? 0), 0) * 100) / 100;
+  const paid = String(inv?.PAID_DATE ?? "").slice(0, 10);
+  const paidDatum = paid && !paid.startsWith("0000") ? paid : null;
+  const deDatum = (d: string) => (/^\d{2}\.\d{2}\.\d{4}$/.test(d) ? `${d.slice(6)}-${d.slice(3, 5)}-${d.slice(0, 2)}` : null);
+  if (zahlungen.length) {
+    if (total > 0 && betrag >= total - 0.01) {
+      const letzte = zahlungen.map((z) => deDatum(String(z?.DATE ?? ""))).filter(Boolean).sort().pop() || paidDatum;
+      return { status: "bezahlt", bezahltAm: letzte || null, betrag, storniert };
+    }
+    return betrag > 0 ? { status: "teilbezahlt", bezahltAm: null, betrag, storniert } : { status: "offen", bezahltAm: null, betrag: 0, storniert };
+  }
+  if (paidDatum) return { status: "bezahlt", bezahltAm: paidDatum, betrag: total, storniert };
   return { status: "offen", bezahltAm: null, betrag: 0, storniert };
 }
