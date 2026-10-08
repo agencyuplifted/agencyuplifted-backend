@@ -8,7 +8,7 @@ import {
   verwirfRechnungsentwurfAktion,
   pruefeRechnungszahlungAktion,
 } from "@/lib/actions";
-import { rechnungsVorschau } from "@/lib/rechnungen";
+import { rechnungsVorschau, fastbillDetailsLink } from "@/lib/rechnungen";
 import { formatDatum, formatEUR } from "@/lib/format";
 
 // Bereich "Rechnung" auf der Buchungsseite: Vorschau -> Entwurf in FastBill ->
@@ -38,6 +38,7 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
   const aktiv = (rechnungen || []).find((r: any) => ["entwurf", "wird_freigegeben", "freigegeben", "versendet"].includes(r.status));
   const frueher = (rechnungen || []).filter((r: any) => r !== aktiv);
   const vorschau = aktiv ? null : await rechnungsVorschau(supabase, buchungId);
+  const detailsLink = aktiv?.status === "entwurf" && aktiv.fastbill_invoice_id ? await fastbillDetailsLink(aktiv.fastbill_invoice_id) : null;
   if (vorschau?.keineRechnung && !frueher.length) return null;
 
   const empfaenger = aktiv?.empfaenger || vorschau?.empfaenger;
@@ -141,9 +142,20 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
         </>
       )}
 
-      {aktiv?.fastbill_invoice_id && ["entwurf", "freigegeben", "versendet"].includes(aktiv.status) && (
-        <details className="au-rechnung-pdf" open={aktiv.status === "entwurf"}>
-          <summary>So sieht die Rechnung in FastBill aus (PDF)</summary>
+      {aktiv?.status === "entwurf" && aktiv.fastbill_invoice_id && (
+        <p className="au-klein">
+          FastBill erzeugt das PDF erst bei der Freigabe.{" "}
+          {detailsLink ? (
+            <a href={detailsLink} target="_blank" rel="noreferrer">Entwurf in FastBill öffnen ↗</a>
+          ) : (
+            <>Den Entwurf findest Du in FastBill unter Ausgangsrechnungen → Entwürfe.</>
+          )}
+        </p>
+      )}
+
+      {aktiv?.fastbill_invoice_id && ["freigegeben", "versendet"].includes(aktiv.status) && (
+        <details className="au-rechnung-pdf">
+          <summary>Rechnung als PDF ansehen</summary>
           <iframe src={`/api/rechnungen/${aktiv.id}/pdf`} title="Rechnung als PDF" />
         </details>
       )}

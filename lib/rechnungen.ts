@@ -640,6 +640,19 @@ export async function rechnungsPdf(supabase: any, rechnungId: string): Promise<B
   const { data: r } = await supabase.from("buchung_rechnungen").select("fastbill_invoice_id").eq("id", rechnungId).maybeSingle();
   if (!r?.fastbill_invoice_id) throw new Error("Keine FastBill-Rechnung.");
   const inv = await fastbillRechnungHolen(r.fastbill_invoice_id);
-  if (!inv?.DOCUMENT_URL) throw new Error("FastBill liefert für diesen Entwurf (noch) kein PDF.");
+  // Entwuerfe haben in FastBill noch kein PDF (Download-Link liefert 0 Bytes,
+  // getestet 10/2026) -- erst nach invoice.complete.
+  if (String(inv?.TYPE || "") === "draft") throw new Error("FastBill erzeugt das PDF erst bei der Freigabe – den Entwurf siehst Du in FastBill.");
+  if (!inv?.DOCUMENT_URL) throw new Error("FastBill liefert für diese Rechnung (noch) kein PDF.");
   return ladePdf(inv.DOCUMENT_URL);
+}
+
+// Link in FastBills Oberflaeche (DETAILS_URL) -- fuer Entwuerfe, die noch kein PDF haben.
+export async function fastbillDetailsLink(fastbillInvoiceId: string): Promise<string | null> {
+  try {
+    const inv = await fastbillRechnungHolen(fastbillInvoiceId);
+    return inv?.DETAILS_URL || null;
+  } catch {
+    return null;
+  }
 }
