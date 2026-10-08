@@ -160,12 +160,30 @@ export function fuelleRechnungsvorlage(vorlage: string, werte: Record<string, st
 // deshalb erst & < > maskieren, dann **fett** -> <b>. Umbrueche als \r\n wie in
 // Markus' von Hand geschriebenen Rechnungen -- mit nacktem \n sahen sie im
 // Entwurf "komisch" aus (Markus 10/2026).
-export function textFuerFastbill(text: string): string {
+//
+// Geschuetzte Leerzeichen, damit FastBill in der schmalen Positionsspalte nicht
+// mitten in Datum und Betrag umbricht ("25." | "bis 27." oder "4.360,00" |
+// "€ netto", Markus 10/2026): als &nbsp;, weil die Postentabelle HTML versteht.
+const MONATS_RE = "Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember";
+const NBSP = "\u00A0";
+
+export function schuetzeZahlenUndDaten(text: string): string {
   return text
+    .replace(new RegExp(`(\\d{1,2}\\.) +(bis|und) +(\\d{1,2}\\.)`, "g"), `$1${NBSP}$2${NBSP}$3`)
+    .replace(new RegExp(`(\\d{1,2}\\.) +(${MONATS_RE})`, "g"), `$1${NBSP}$2`)
+    .replace(new RegExp(`(${MONATS_RE}) +(\\d{4})`, "g"), `$1${NBSP}$2`)
+    .replace(/(\d) +(€|EUR|Euro|Uhr|%)/g, `$1${NBSP}$2`)
+    .replace(/€ +(netto|brutto)/g, `€${NBSP}$1`)
+    .replace(/(Preisstufe|Rate) +(\d+) +von +(\d+)/g, `$1${NBSP}$2${NBSP}von${NBSP}$3`);
+}
+
+export function textFuerFastbill(text: string): string {
+  return schuetzeZahlenUndDaten(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\u00A0/g, "&nbsp;")
     .replace(/\r?\n/g, "\r\n");
 }
 
@@ -329,6 +347,9 @@ async function sichereFastbillKunde(supabase: any, e: Empfaenger): Promise<strin
       EMAIL: e.email,
       ...(e.ust_id ? { VAT_ID: e.ust_id } : {}),
       PAYMENT_TYPE: 1,
+      // Seminarrechnungen sind sofort faellig (Markus 10/2026). Nur bei neu
+      // angelegten Kunden -- bestehende behalten ihr Zahlungsziel aus FastBill.
+      DAYS_FOR_PAYMENT: 0,
     });
   }
   const kundenId = String(id);
