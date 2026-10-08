@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AktionsFormular from "../../AktionsFormular";
 import {
+  erneuereRechnungsentwurfAktion,
   erstelleRechnungsentwurfAktion,
   gibRechnungFreiAktion,
   sendeRechnungErneutAktion,
@@ -25,6 +26,12 @@ const ZAHLUNG: Record<string, { text: string; klasse: string }> = {
   teilbezahlt: { text: "teilbezahlt", klasse: "au-badge-warning" },
   bezahlt: { text: "bezahlt", klasse: "au-badge-success" },
 };
+
+// **fett** aus den Rechnungsvorlagen auch in der Backstage-Vorschau fett zeigen
+function MitFett({ text }: { text: string }) {
+  const teile = text.split(/(\*\*.+?\*\*)/g);
+  return <>{teile.map((t, i) => (t.startsWith("**") && t.endsWith("**") && t.length > 4 ? <b key={i}>{t.slice(2, -2)}</b> : <span key={i}>{t}</span>))}</>;
+}
 
 export default async function RechnungBereich({ supabase, buchungId }: { supabase: any; buchungId: string }) {
   const { data: rechnungen } = await supabase.from("buchung_rechnungen").select("*").eq("buchung_id", buchungId).order("erstellt_am", { ascending: false });
@@ -88,7 +95,7 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
             <tbody>
               {positionen.map((p: any, i: number) => (
                 <tr key={i}>
-                  <td style={{ whiteSpace: "pre-line" }}>{p.beschreibung}</td>
+                  <td style={{ whiteSpace: "pre-line" }}><MitFett text={p.beschreibung} /></td>
                   <td style={{ textAlign: "right" }}>{p.menge}</td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{formatEUR(p.einzelpreis)}</td>
                 </tr>
@@ -101,7 +108,7 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
           </table>
           {(aktiv?.einleitung || vorschau?.einleitung) && (
             <p className="au-klein" style={{ whiteSpace: "pre-line" }}>
-              <b>Einleitung:</b> {aktiv?.einleitung || vorschau?.einleitung}
+              <b>Einleitung:</b> <MitFett text={aktiv?.einleitung || vorschau?.einleitung || ""} />
             </p>
           )}
         </>
@@ -134,6 +141,13 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
         </>
       )}
 
+      {aktiv?.fastbill_invoice_id && ["entwurf", "freigegeben", "versendet"].includes(aktiv.status) && (
+        <details className="au-rechnung-pdf" open={aktiv.status === "entwurf"}>
+          <summary>So sieht die Rechnung in FastBill aus (PDF)</summary>
+          <iframe src={`/api/rechnungen/${aktiv.id}/pdf`} title="Rechnung als PDF" />
+        </details>
+      )}
+
       {aktiv?.status === "entwurf" && (
         <div className="au-rechnung-aktionen">
           <AktionsFormular
@@ -143,6 +157,11 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
             <input type="hidden" name="buchung_id" value={buchungId} />
             <input type="hidden" name="rechnung_id" value={aktiv.id} />
             <button type="submit" className="au-btn au-btn-primary">Freigeben &amp; Senden</button>
+          </AktionsFormular>
+          <AktionsFormular action={erneuereRechnungsentwurfAktion}>
+            <input type="hidden" name="buchung_id" value={buchungId} />
+            <input type="hidden" name="rechnung_id" value={aktiv.id} />
+            <button type="submit" className="au-btn au-btn-secondary" title="Nach Änderungen an den Rechnungstexten: Entwurf in FastBill löschen und mit den aktuellen Vorlagen neu anlegen">Entwurf neu aufbauen</button>
           </AktionsFormular>
           <AktionsFormular action={verwirfRechnungsentwurfAktion} bestaetigung="Entwurf in FastBill löschen? Es wird keine Rechnungsnummer verbraucht.">
             <input type="hidden" name="buchung_id" value={buchungId} />

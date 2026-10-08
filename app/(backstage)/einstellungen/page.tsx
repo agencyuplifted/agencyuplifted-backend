@@ -82,7 +82,7 @@ export default async function EinstellungenPage() {
         <AktionsFormular action={speichereFastbillVorlage} style={{ display: "flex", gap: "0.6rem", alignItems: "flex-end", flexWrap: "wrap" }}>
           <div style={{ flexBasis: "100%" }}>
             <label className="au-label">Einleitungstext (nach der Anrede der FastBill-Vorlage)</label>
-            <textarea name="rechnung_einleitung" className="au-input" rows={2} defaultValue={konfig?.rechnung_einleitung || ""} />
+            <textarea name="rechnung_einleitung" className="au-input" rows={4} defaultValue={konfig?.rechnung_einleitung || ""} />
             <label className="au-label">Positionsvorlage – Standard für alle Seminare</label>
             <textarea name="rechnung_positionsvorlage" className="au-input" rows={10} defaultValue={konfig?.rechnung_positionsvorlage || ""} style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.82rem" }} />
             <label className="au-label">Position „weitere Teilnehmer“ (ab der zweiten Person derselben Option)</label>
@@ -90,7 +90,8 @@ export default async function EinstellungenPage() {
             <label className="au-label">Preisstufen-Zeile (Platzhalter {"{{preisstufe}}"}; nur bei Preis unter dem Normalpreis – {"{{stufe}}"}, {"{{stufen}}"}, {"{{normalpreis}}"})</label>
             <input name="rechnung_preisstufe_text" className="au-input" defaultValue={konfig?.rechnung_preisstufe_text || ""} />
             <p className="au-klein" style={{ margin: "-0.4rem 0 0.75rem" }}>
-              Platzhalter der Vorlagen: <Link href="/seminartypen#rechnungstexte">Liste bei den Seminarkategorien</Link>. Ratenzahlung erzeugt automatisch einen Zahlungsplan unter der Einleitung.
+              Platzhalter der Vorlagen: <Link href="/seminartypen#rechnungstexte">Liste bei den Seminarkategorien</Link>. <code>**so**</code> wird fett. Ratenzahlung erzeugt automatisch einen Zahlungsplan unter der Einleitung.
+              Nach einer Änderung auf der Buchungsseite „Entwurf neu aufbauen“ – dort erscheint das PDF aus FastBill.
             </p>
             <label className="au-label">FastBill-Vorlage (Standard)</label>
           </div>

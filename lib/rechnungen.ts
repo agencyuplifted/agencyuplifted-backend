@@ -155,6 +155,19 @@ export function fuelleRechnungsvorlage(vorlage: string, werte: Record<string, st
   return zeilen.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// Text fuer FastBill: die Postentabelle versteht einfaches HTML (<b>, <i>, <br>),
+// deshalb erst & < > maskieren, dann **fett** -> <b>. Umbrueche als \r\n wie in
+// Markus' von Hand geschriebenen Rechnungen -- mit nacktem \n sahen sie im
+// Entwurf "komisch" aus (Markus 10/2026).
+export function textFuerFastbill(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\r?\n/g, "\r\n");
+}
+
 type Textvorgaben = { einleitung: string | null; preisstufeVorlage: string; positionsvorlage: string | null; zusatzVorlage: string };
 
 const STANDARD_POSITION = "Seminar {{seminartitel}}\n{{zeitraum}}\n{{ort}}\n\n{{leistungen}}\n\n{{preisstufe}}";
@@ -380,9 +393,9 @@ export async function erstelleRechnungsentwurf(supabase: any, buchungId: string,
       CUSTOMER_ID: kundenId,
       ...(v.templateId ? { TEMPLATE_ID: v.templateId } : {}),
       ...(termin ? { INVOICE_TITLE: `Seminar ${termin.kennung || termin.titel || ""}`.trim(), SERVICE_PERIOD_START: termin.datum_start, SERVICE_PERIOD_END: termin.datum_ende || termin.datum_start } : {}),
-      ...(einleitung ? { INTROTEXT: einleitung } : {}),
+      ...(einleitung ? { INTROTEXT: textFuerFastbill(einleitung) } : {}),
       ORDER_REFERENCE: v.buchung.buchungsnummer || undefined,
-      ITEMS: v.positionen.map((p) => ({ DESCRIPTION: p.beschreibung, QUANTITY: p.menge, UNIT_PRICE: p.einzelpreis, VAT_PERCENT: p.ust_prozent })),
+      ITEMS: v.positionen.map((p) => ({ DESCRIPTION: textFuerFastbill(p.beschreibung), QUANTITY: p.menge, UNIT_PRICE: p.einzelpreis, VAT_PERCENT: p.ust_prozent })),
     });
     await supabase.from("buchung_rechnungen").update({ fastbill_invoice_id: invoiceId, fastbill_customer_id: kundenId, einleitung, ratenhinweis: v.ratenhinweis }).eq("id", zeile.id);
     await supabase.from("aenderungsprotokoll").insert({ bezug_typ: "buchung", bezug_id: buchungId, ereignis: "rechnung_entwurf", beschreibung: `Rechnungsentwurf in FastBill angelegt (${formatEUR(v.netto)} netto).`, bearbeiter });
@@ -613,4 +626,22 @@ export async function ladeUeberfaelligeZahlungen(supabase: any, heute: string): 
     });
   }
   return liste.sort((a, b) => b.tage - a.tage);
+}
+
+// Entwurf mit den aktuellen Vorlagen neu aufbauen: alten Entwurf in FastBill
+// loeschen, neuen anlegen (Vorlagen anpassen -> Ergebnis sofort ansehen).
+export async function erneuereRechnungsentwurf(supabase: any, rechnungId: string, bearbeiter: string) {
+  const { data: r } = await supabase.from("buchung_rechnungen").select("id, buchung_id, status").eq("id", rechnungId).maybeSingle();
+  if (!r || r.status !== "entwurf") throw new Error("Nur Entwürfe lassen sich neu aufbauen.");
+  await verwirfEntwurf(supabase, r.id, bearbeiter);
+  return erstelleRechnungsentwurf(supabase, r.buchung_id, bearbeiter);
+}
+
+// PDF einer Rechnung bzw. eines Entwurfs aus FastBill (fuer die Vorschau in Backstage).
+export async function rechnungsPdf(supabase: any, rechnungId: string): Promise<Buffer> {
+  const { data: r } = await supabase.from("buchung_rechnungen").select("fastbill_invoice_id").eq("id", rechnungId).maybeSingle();
+  if (!r?.fastbill_invoice_id) throw new Error("Keine FastBill-Rechnung.");
+  const inv = await fastbillRechnungHolen(r.fastbill_invoice_id);
+  if (!inv?.DOCUMENT_URL) throw new Error("FastBill liefert für diesen Entwurf (noch) kein PDF.");
+  return ladePdf(inv.DOCUMENT_URL);
 }

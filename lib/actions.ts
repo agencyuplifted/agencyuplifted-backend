@@ -12,7 +12,7 @@ import { signSession, SESSION_COOKIE_NAME, SESSION_TTL } from "./session";
 import { hashePasswort, pruefePasswort } from "./passwort";
 import { getAktuellerBenutzer } from "./auth";
 import { bestaetigeBuchungIntern } from "./buchung-bestaetigen";
-import { erstelleRechnungsentwurf, gibRechnungFrei, verwirfEntwurf, sendeRechnungsmail, behandleRechnungBeiStorno, pruefeRechnungszahlungen } from "./rechnungen";
+import { erstelleRechnungsentwurf, erneuereRechnungsentwurf, gibRechnungFrei, verwirfEntwurf, sendeRechnungsmail, behandleRechnungBeiStorno, pruefeRechnungszahlungen } from "./rechnungen";
 import { del } from "@vercel/blob";
 import { TERMIN_FELD_LABELS, formatDatum } from "./format";
 import { renderPlatzhalter, ladeHandversand, sendeFunnelMailManuell } from "./funnel";
@@ -5990,5 +5990,20 @@ export async function speichereRechnungstexteKategorie(formData: FormData): Prom
     .eq("id", id);
   if (error) return { fehler: error.message };
   revalidatePath("/seminartypen");
+  return { fehler: null };
+}
+
+export async function erneuereRechnungsentwurfAktion(formData: FormData): Promise<VorlagenAktionsErgebnis> {
+  const fehler = await pruefeBackstageLogin();
+  if (fehler) return { fehler };
+  const buchungId = String(formData.get("buchung_id") || "");
+  const benutzer = await getAktuellerBenutzer();
+  try {
+    await erneuereRechnungsentwurf(getSupabaseAdmin(), String(formData.get("rechnung_id") || ""), benutzer?.name || "Unbekannt");
+  } catch (e: any) {
+    revalidatePath(`/buchungen/${buchungId}`);
+    return { fehler: e?.message || "Entwurf konnte nicht neu aufgebaut werden." };
+  }
+  revalidatePath(`/buchungen/${buchungId}`);
   return { fehler: null };
 }
