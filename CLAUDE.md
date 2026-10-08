@@ -69,6 +69,8 @@ Setup: copy `.env.example` to `.env.local` and fill in real values (Supabase pro
 
 ## Conventions worth following
 
+- Lange Auswahllisten (Personen, Organisationen) als durchsuchbares Feld: `app/(backstage)/SuchAuswahl.tsx` (mehrere Suchwörter, Zusatzzeile z. B. E-Mail · Firma, Wert über verstecktes Feld mit `name`, `required` funktioniert). Erstmals in `/buchungen/neu`; dort schlägt die erste Person ihre Hauptfirma als Rechnungsempfänger vor.
+
 - German naming for domain concepts, tables, and comments throughout (`teilnehmer`, `buchungen`, `seminartermine`, etc.) — match this rather than introducing English domain terms.
 - Comments explain *why*, often referencing a specific past bug/decision (e.g. why a layout was split, why a field falls back a certain way) — follow that style rather than describing *what* the code does.
 - All prices in the DB are net (`netto`); use `lib/format.ts`'s `MWST_SATZ`/`formatEURBrutto` when displaying gross prices, don't hardcode 19%/1.19 elsewhere.

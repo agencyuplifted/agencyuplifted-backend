@@ -1,11 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createBuchung } from "@/lib/actions";
+import SuchAuswahl, { type SuchOption } from "../../SuchAuswahl";
 import { formatDatum, formatEUR, formatEURBrutto } from "@/lib/format";
 import { aktuellerPreisNetto, sortierteStaffeln, istPreisstaffelAktiv, letzterGueltigerTag, aktuellePreisstaffel, type Preisstaffel } from "@/lib/preisstaffeln";
 
-type Teilnehmer = { id: string; vorname: string; nachname: string; email: string };
+type Teilnehmer = {
+  id: string;
+  vorname: string;
+  nachname: string;
+  email: string;
+  firma_freitext?: string | null;
+  deaktiviert_am?: string | null;
+  teilnehmer_organisationen?: { ist_hauptorganisation: boolean; organisation_id: string; organisationen?: { name: string } | null }[];
+};
 type Organisation = { id: string; name: string };
 type Option = { id: string; titel: string; preisstaffeln?: (Preisstaffel & { name?: string | null })[] };
 type Termin = {
@@ -48,6 +57,30 @@ export default function BuchungForm({
   ]);
   const [einzelTeilnehmerId, setEinzelTeilnehmerId] = useState(initialTeilnehmerId || "");
   const vorausgewaehlt = teilnehmer.find((t) => t.id === initialTeilnehmerId);
+
+  // Rechnungsempfaenger: wird beim ersten Teilnehmer mit dessen Hauptfirma
+  // vorbelegt, solange noch nichts gewaehlt ist.
+  const hauptOrga = (tId: string) => {
+    const t = teilnehmer.find((x) => x.id === tId);
+    const z = t?.teilnehmer_organisationen || [];
+    return (z.find((x) => x.ist_hauptorganisation) || z[0])?.organisation_id || "";
+  };
+  const [organisationId, setOrganisationId] = useState(initialTeilnehmerId ? hauptOrga(initialTeilnehmerId) : "");
+  const personOptionen: SuchOption[] = useMemo(
+    () =>
+      teilnehmer
+        .filter((t) => !t.deaktiviert_am)
+        .map((t) => {
+          const z = t.teilnehmer_organisationen || [];
+          const firma = (z.find((x) => x.ist_hauptorganisation) || z[0])?.organisationen?.name || t.firma_freitext || "";
+          return { value: t.id, label: `${t.vorname} ${t.nachname}`.trim(), sub: [t.email, firma].filter(Boolean).join(" · ") };
+        }),
+    [teilnehmer]
+  );
+  const orgaOptionen: SuchOption[] = useMemo(() => organisationen.map((o) => ({ value: o.id, label: o.name })), [organisationen]);
+  const personGewaehlt = (tId: string, istErster: boolean) => {
+    if (istErster && !organisationId && tId) setOrganisationId(hauptOrga(tId));
+  };
 
   const gewaehlterTermin = termine.find((t) => t.id === seminarterminId);
   const optionenDesTermins = gewaehlterTermin?.seminartermin_optionen || [];
@@ -126,12 +159,16 @@ export default function BuchungForm({
       </div>
 
       <label className="au-label">Rechnungsempfänger — Organisation (leer lassen, wenn Selbständige/r ohne Firma)</label>
-      <select className="au-input" name="organisation_id">
-        <option value="">— keine Organisation, direkt an Teilnehmer —</option>
-        {organisationen?.map((o) => (
-          <option key={o.id} value={o.id}>{o.name}</option>
-        ))}
-      </select>
+      <div style={{ marginBottom: "1rem" }}>
+        <SuchAuswahl
+          name="organisation_id"
+          optionen={orgaOptionen}
+          value={organisationId}
+          onChange={setOrganisationId}
+          placeholder="Firma suchen …"
+          leerText="— keine Organisation, direkt an Teilnehmer —"
+        />
+      </div>
 
       {modus === "seminar" ? (
         <>
@@ -211,18 +248,17 @@ export default function BuchungForm({
             </div>
             {teilnehmerZeilen.map((z, idx) => (
               <div key={z.key} style={teilnehmerRowStyle}>
-                <select
-                  className="au-input" style={{ marginBottom: 0 }}
+                <SuchAuswahl
                   name={`teilnehmer_id_${idx}`}
-                  required
+                  optionen={personOptionen}
                   value={z.teilnehmerId}
-                  onChange={(e) => zeileAendern(z.key, "teilnehmerId", e.target.value)}
-                >
-                  <option value="">— wählen —</option>
-                  {teilnehmer?.map((t) => (
-                    <option key={t.id} value={t.id}>{t.vorname} {t.nachname} ({t.email})</option>
-                  ))}
-                </select>
+                  onChange={(v) => {
+                    zeileAendern(z.key, "teilnehmerId", v);
+                    personGewaehlt(v, idx === 0);
+                  }}
+                  placeholder="Name, E-Mail oder Firma …"
+                  required
+                />
                 <div>
                   <select
                     className="au-input" style={{ marginBottom: "0.35rem" }}
@@ -287,18 +323,19 @@ export default function BuchungForm({
       ) : (
         <>
           <label className="au-label">Teilnehmer</label>
-          <select
-            className="au-input"
-            name="teilnehmer_id"
-            required
-            value={einzelTeilnehmerId}
-            onChange={(e) => setEinzelTeilnehmerId(e.target.value)}
-          >
-            <option value="">— wählen —</option>
-            {teilnehmer?.map((t) => (
-              <option key={t.id} value={t.id}>{t.vorname} {t.nachname} ({t.email})</option>
-            ))}
-          </select>
+          <div style={{ marginBottom: "1rem" }}>
+            <SuchAuswahl
+              name="teilnehmer_id"
+              optionen={personOptionen}
+              value={einzelTeilnehmerId}
+              onChange={(v) => {
+                setEinzelTeilnehmerId(v);
+                personGewaehlt(v, true);
+              }}
+              placeholder="Name, E-Mail oder Firma …"
+              required
+            />
+          </div>
 
           <label className="au-label">Beschreibung der Leistung</label>
           <input className="au-input" name="il_beschreibung" placeholder="z. B. Begleitung 3 Monate vor Ort + Erreichbarkeit" required />
