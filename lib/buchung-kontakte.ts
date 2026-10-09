@@ -25,7 +25,13 @@ export async function ermittleKontakte(
   supabase: any,
   personen: Teilnehmerangabe[],
   rechnungsadresse: Rechnungsadresse,
-  consentQuelle: string
+  consentQuelle: string,
+  // Mit welchem Marketing-Status neue Teilnehmer angelegt werden. Bewusst
+  // ein Parameter und kein fester Wert: "abonniert" darf nur die Strecke
+  // setzen, deren Formular den Werbehinweis auch tatsaechlich zeigt (siehe
+  // unten). Die Programm-Buchungen tun das noch nicht und bleiben deshalb
+  // auf "unbekannt".
+  consentStatus: "abonniert" | "unbekannt" = "unbekannt"
 ): Promise<{ fehler: { code: string; detail: string } | null; organisationId: string | null; teilnehmer: ErkannterTeilnehmer[] }> {
   // Organisation anlegen/wiedererkennen (nur beim Hauptkontakt abgefragt).
   let organisationId: string | null = null;
@@ -107,8 +113,21 @@ export async function ermittleKontakte(
         email: person.email,
         telefon: person.phone || null,
         firma_freitext: person.company || null,
-        marketing_consent_status: "unbekannt",
+        // Bestandskundenwerbung (§ 7 Abs. 3 UWG): Wer bucht, wird Kunde --
+        // Werbung per E-Mail fuer eigene aehnliche Leistungen ist dann auch
+        // ohne Opt-in-Haken zulaessig, ABER nur wenn der Kunde schon beim
+        // Erheben der Adresse klar auf das Widerspruchsrecht hingewiesen
+        // wurde. Genau dafuer steht der Werbehinweis im Buchungsformular
+        // (@siteui/seminar-booking-form, werbehinweisLabel) -- verschwindet
+        // der, faellt die Grundlage weg und hier darf nur noch "unbekannt"
+        // uebergeben werden. Abmeldelink und Sperrliste decken die uebrigen
+        // Bedingungen ab (lib/abmelden.ts, ladeSperrliste).
+        // Vorher stand hier fest "unbekannt" -- Kampagnen gehen aber nur an
+        // "abonniert", dadurch fiel jede Website-Buchung aus dem Verteiler
+        // (Befund Markus 09.10.2026: fuenf Teilnehmer seit dem Import).
+        marketing_consent_status: consentStatus,
         marketing_consent_quelle: consentQuelle,
+        marketing_consent_zeitpunkt: consentStatus === "abonniert" ? new Date().toISOString() : null,
         anrede: schaetzeAnredeAusVorname(person.firstName) || "keine_angabe",
         anrede_quelle: schaetzeAnredeAusVorname(person.firstName) ? "automatisch" : null,
         ...(istHauptkontaktOhneOrganisation

@@ -180,7 +180,13 @@ export async function POST(request: NextRequest) {
 
   // Organisation + Teilnehmer anlegen/wiedererkennen -- gemeinsame Logik mit
   // der Programm-Buchungsstrecke (lib/buchung-kontakte.ts)
-  const kontakte = await ermittleKontakte(supabase, personen, rechnungsadresse, "onepage_buchungsformular");
+  const kontakte = await ermittleKontakte(
+    supabase,
+    personen,
+    rechnungsadresse,
+    "onepage_buchungsformular (Bestandskunde § 7 Abs. 3 UWG)",
+    "abonniert"
+  );
   if (kontakte.fehler) {
     return withCors(NextResponse.json({ error: kontakte.fehler.code, detail: kontakte.fehler.detail }, { status: 500 }));
   }
