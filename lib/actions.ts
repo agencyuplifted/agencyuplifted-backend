@@ -5997,6 +5997,9 @@ export async function speichereFastbillVorlage(formData: FormData): Promise<Vorl
       ...(formData.has("rechnung_preisstufe_text") ? { rechnung_preisstufe_text: String(formData.get("rechnung_preisstufe_text") || "").trim() || null } : {}),
       ...(formData.has("rechnung_positionsvorlage") ? { rechnung_positionsvorlage: String(formData.get("rechnung_positionsvorlage") || "").trim() || null } : {}),
       ...(formData.has("rechnung_zusatz_vorlage") ? { rechnung_zusatz_vorlage: String(formData.get("rechnung_zusatz_vorlage") || "").trim() || null } : {}),
+      // Mail, mit der die Rechnung rausgeht -- leer = Standardtext aus lib/rechnungen.ts
+      ...(formData.has("rechnung_mail_betreff") ? { rechnung_mail_betreff: String(formData.get("rechnung_mail_betreff") || "").trim() || null } : {}),
+      ...(formData.has("rechnung_mail_text") ? { rechnung_mail_text: String(formData.get("rechnung_mail_text") || "").trim() || null } : {}),
     })
     .eq("id", 1);
   if (error) return { fehler: error.message };

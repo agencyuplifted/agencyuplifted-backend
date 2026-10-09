@@ -8,7 +8,7 @@ import {
   verwirfRechnungsentwurfAktion,
   pruefeRechnungszahlungAktion,
 } from "@/lib/actions";
-import { rechnungsVorschau, fastbillDetailsLink } from "@/lib/rechnungen";
+import { rechnungsVorschau, fastbillEntwurfStand } from "@/lib/rechnungen";
 import { formatDatum, formatEUR } from "@/lib/format";
 
 // Bereich "Rechnung" auf der Buchungsseite: Vorschau -> Entwurf in FastBill ->
@@ -38,7 +38,8 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
   const aktiv = (rechnungen || []).find((r: any) => ["entwurf", "wird_freigegeben", "freigegeben", "versendet"].includes(r.status));
   const frueher = (rechnungen || []).filter((r: any) => r !== aktiv);
   const vorschau = aktiv ? null : await rechnungsVorschau(supabase, buchungId);
-  const detailsLink = aktiv?.status === "entwurf" && aktiv.fastbill_invoice_id ? await fastbillDetailsLink(aktiv.fastbill_invoice_id) : null;
+  const fbStand = aktiv?.status === "entwurf" && aktiv.fastbill_invoice_id ? await fastbillEntwurfStand(aktiv.fastbill_invoice_id) : null;
+  const detailsLink = fbStand?.link || null;
   if (vorschau?.keineRechnung && !frueher.length) return null;
 
   const empfaenger = aktiv?.empfaenger || vorschau?.empfaenger;
@@ -143,14 +144,24 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
       )}
 
       {aktiv?.status === "entwurf" && aktiv.fastbill_invoice_id && (
-        <p className="au-klein">
-          FastBill erzeugt das PDF erst bei der Freigabe.{" "}
-          {detailsLink ? (
-            <a href={detailsLink} target="_blank" rel="noreferrer">Entwurf in FastBill öffnen ↗</a>
-          ) : (
-            <>Den Entwurf findest Du in FastBill unter Ausgangsrechnungen → Entwürfe.</>
-          )}
-        </p>
+        fbStand?.festgeschrieben ? (
+          /* In FastBill selbst gebucht: Nummer ist vergeben, Backstage muss nur
+             noch verschicken (siehe gibRechnungFrei). */
+          <div className="au-banner au-banner-warning">
+            In FastBill ist diese Rechnung bereits festgeschrieben (Nr. {fbStand.nummer}).
+            „Freigeben &amp; Senden“ vergibt keine neue Nummer mehr, sondern holt das PDF und verschickt es.
+            {detailsLink && <> <a href={detailsLink} target="_blank" rel="noreferrer">In FastBill ansehen ↗</a></>}
+          </div>
+        ) : (
+          <p className="au-klein">
+            FastBill erzeugt das PDF erst bei der Freigabe.{" "}
+            {detailsLink ? (
+              <a href={detailsLink} target="_blank" rel="noreferrer">Entwurf in FastBill öffnen ↗</a>
+            ) : (
+              <>Den Entwurf findest Du in FastBill unter Ausgangsrechnungen → Entwürfe.</>
+            )}
+          </p>
+        )
       )}
 
       {aktiv?.fastbill_invoice_id && ["freigegeben", "versendet"].includes(aktiv.status) && (
@@ -164,7 +175,11 @@ export default async function RechnungBereich({ supabase, buchungId }: { supabas
         <div className="au-rechnung-aktionen">
           <AktionsFormular
             action={gibRechnungFreiAktion}
-            bestaetigung={`Rechnung jetzt fertigstellen und an ${aktiv.empfaenger_email || "den Rechnungsempfänger"} schicken? FastBill vergibt dabei die Rechnungsnummer – rückgängig nur per Storno. Änderungen, die Du im FastBill-Entwurf gemacht hast, werden übernommen.`}
+            bestaetigung={
+              fbStand?.festgeschrieben
+                ? `Rechnung ${fbStand.nummer} jetzt an ${aktiv.empfaenger_email || "den Rechnungsempfänger"} schicken? Sie ist in FastBill schon festgeschrieben, es wird nur noch die Mail mit dem PDF verschickt.`
+                : `Rechnung jetzt fertigstellen und an ${aktiv.empfaenger_email || "den Rechnungsempfänger"} schicken? FastBill vergibt dabei die Rechnungsnummer – rückgängig nur per Storno. Änderungen, die Du im FastBill-Entwurf gemacht hast, werden übernommen.`
+            }
           >
             <input type="hidden" name="buchung_id" value={buchungId} />
             <input type="hidden" name="rechnung_id" value={aktiv.id} />

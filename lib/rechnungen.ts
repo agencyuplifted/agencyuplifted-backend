@@ -440,6 +440,66 @@ async function ladePdf(url: string): Promise<Buffer> {
   return fastbillDokumentLaden(url);
 }
 
+// Betreff und Text der Rechnungsmail sind unter /einstellungen#fastbill
+// pflegbar (finanz_konfiguration.rechnung_mail_*) -- vorher standen sie fest im
+// Code, waehrend die Texte auf der Rechnung selbst schon Vorlagen waren
+// (Markus 09.10.2026). Leer gelassen = diese Standardtexte.
+export const STANDARD_MAIL_BETREFF = "Rechnung {{rechnungsnummer}} – {{kennung}}";
+export const STANDARD_MAIL_TEXT =
+  "Hallo {{vorname}},\n\n" +
+  "anbei erhältst Du die Rechnung {{rechnungsnummer}} für {{leistung}}.\n\n" +
+  "{{zahlungsplan}}\n\n" +
+  "Bei Fragen antworte einfach auf diese Mail.";
+
+// Platzhalter der Rechnungsmail -- fuer die Hilfe unter /einstellungen#fastbill.
+export const RECHNUNG_MAIL_PLATZHALTER: { key: string; beschreibung: string }[] = [
+  { key: "{{vorname}}", beschreibung: "Rufname des Rechnungsempfängers, sonst Vorname" },
+  { key: "{{nachname}}", beschreibung: "Nachname des Rechnungsempfängers" },
+  { key: "{{firma}}", beschreibung: "Firma des Rechnungsempfängers (leer bei Privatperson)" },
+  { key: "{{rechnungsnummer}}", beschreibung: "Rechnungsnummer aus FastBill" },
+  { key: "{{leistung}}", beschreibung: "Seminartitel mit Zeitraum, z. B. „Wertorientierte Preisfindung (7. bis 9. Oktober 2026)“" },
+  { key: "{{seminartitel}}", beschreibung: "nur der Titel des Seminars" },
+  { key: "{{zeitraum}}", beschreibung: "nur der Zeitraum des Seminars" },
+  { key: "{{kennung}}", beschreibung: "Kennung des Termins (z. B. SPS426), sonst „AgencyUplifted“" },
+  { key: "{{betrag}}", beschreibung: "Rechnungsbetrag brutto" },
+  { key: "{{zahlungsplan}}", beschreibung: "Ratenplan – nur bei Ratenzahlung, sonst fällt die Zeile weg" },
+];
+
+function rechnungsmailWerte(r: any, termin: any, leistung: string, vorname: string): Record<string, string> {
+  return {
+    vorname,
+    nachname: r.empfaenger?.nachname || "",
+    firma: r.empfaenger?.firma || "",
+    rechnungsnummer: r.rechnungsnummer || "",
+    leistung,
+    seminartitel: termin ? termin.titel || termin.seminartypen?.name || "Seminar" : "",
+    zeitraum: termin ? zeitraum(termin) : "",
+    // Fallback wie bisher, damit im Betreff nie ein Gedankenstrich ohne Kennung steht
+    kennung: termin?.kennung || "AgencyUplifted",
+    betrag: r.betrag_brutto != null ? formatEUR(Number(r.betrag_brutto)) : "",
+    zahlungsplan: r.ratenhinweis || "",
+  };
+}
+
+export function baueRechnungsmail(
+  vorlagen: { betreff?: string | null; text?: string | null },
+  werte: Record<string, string>
+): { betreff: string; text: string } {
+  const text = fuelleRechnungsvorlage(vorlagen.text || STANDARD_MAIL_TEXT, werte);
+  // Betreff ist einzeilig, deshalb nicht ueber fuelleRechnungsvorlage: die wirft
+  // Zeilen mit leeren Platzhaltern weg und der Betreff waere dann leer.
+  const betreff = (vorlagen.betreff || STANDARD_MAIL_BETREFF)
+    .replace(/\{\{(\w+)\}\}/g, (_treffer: string, k: string) => werte[k] ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return { betreff: betreff || `Rechnung ${werte.rechnungsnummer}`.trim(), text };
+}
+
+async function ladeMailvorlage(supabase: any, werte: Record<string, string>): Promise<{ betreff: string; text: string }> {
+  const { data: konf } = await supabase.from("finanz_konfiguration").select("rechnung_mail_betreff, rechnung_mail_text").eq("id", 1).maybeSingle();
+  return baueRechnungsmail({ betreff: konf?.rechnung_mail_betreff, text: konf?.rechnung_mail_text }, werte);
+}
+
 export async function sendeRechnungsmail(supabase: any, rechnungId: string): Promise<void> {
   const { data: r } = await supabase.from("buchung_rechnungen").select("*").eq("id", rechnungId).maybeSingle();
   if (!r || !["freigegeben", "versendet"].includes(r.status)) throw new Error("Rechnung ist noch nicht freigegeben.");
@@ -451,16 +511,13 @@ export async function sendeRechnungsmail(supabase: any, rechnungId: string): Pro
   const leistung = termin ? `${termin.titel || termin.seminartypen?.name || "Seminar"} (${zeitraum(termin)})` : "Deine Buchung";
   // Anrede mit Rufname (persoenliche Korrespondenz), Rechnung selbst bleibt offiziell
   const vorname = (r.empfaenger?.rufname || "").trim() || r.empfaenger?.vorname || "";
-  const text =
-    `Hallo${vorname ? ` ${vorname}` : ""},\n\n` +
-    `anbei erhältst Du die Rechnung ${r.rechnungsnummer} für ${leistung}.` +
-    (r.ratenhinweis ? `\n\n${r.ratenhinweis}` : "") +
-    `\n\nBei Fragen antworte einfach auf diese Mail.`;
+  const werte = rechnungsmailWerte(r, termin, leistung, vorname);
+  const { betreff, text } = await ladeMailvorlage(supabase, werte);
   const bausteine = await ladeBausteine(supabase);
   const { data, error } = await getResend().emails.send({
     from: ABSENDER,
     to: [r.empfaenger_email],
-    subject: `Rechnung ${r.rechnungsnummer} – ${termin?.kennung || "AgencyUplifted"}`,
+    subject: betreff,
     html: baueMailHtml(text, bausteine, { signatur: true, rechtliches: true, abmelden: false }, null),
     attachments: [{ filename: `Rechnung-${r.rechnungsnummer}.pdf`, content: pdf }],
   });
@@ -484,11 +541,20 @@ export async function gibRechnungFrei(supabase: any, rechnungId: string, bearbei
     await supabase.from("buchung_rechnungen").update({ status: "entwurf" }).eq("id", rechnungId);
     throw new Error("Entwurf ohne FastBill-ID.");
   }
-  try {
-    await fastbillRechnungFertigstellen(gesperrt.fastbill_invoice_id);
-  } catch (e: any) {
-    await supabase.from("buchung_rechnungen").update({ status: "entwurf", fehler: e?.message || "Freigabe fehlgeschlagen." }).eq("id", rechnungId);
-    throw e;
+  // Die Rechnung kann in FastBill schon festgeschrieben sein, wenn Markus den
+  // Entwurf dort selbst auf "gebucht" gesetzt hat (09.10.2026) -- Backstage
+  // sieht das nicht, FastBill meldet keinen Versand und keine Freigabe zurueck.
+  // Dann nur noch PDF holen und verschicken, statt invoice.complete erneut
+  // aufzurufen (haette entweder einen Fehler oder eine zweite Nummer gegeben).
+  const vorab = await fastbillRechnungHolen(gesperrt.fastbill_invoice_id).catch(() => null);
+  const schonFestgeschrieben = !!vorab && String(vorab.TYPE || "") !== "draft" && !!String(vorab.INVOICE_NUMBER || "").trim();
+  if (!schonFestgeschrieben) {
+    try {
+      await fastbillRechnungFertigstellen(gesperrt.fastbill_invoice_id);
+    } catch (e: any) {
+      await supabase.from("buchung_rechnungen").update({ status: "entwurf", fehler: e?.message || "Freigabe fehlgeschlagen." }).eq("id", rechnungId);
+      throw e;
+    }
   }
   const inv = await fastbillRechnungHolen(gesperrt.fastbill_invoice_id);
   const rechnungsnummer = String(inv?.INVOICE_NUMBER ?? "");
@@ -504,7 +570,15 @@ export async function gibRechnungFrei(supabase: any, rechnungId: string, bearbei
       freigegeben_am: new Date().toISOString(),
     })
     .eq("id", rechnungId);
-  await supabase.from("aenderungsprotokoll").insert({ bezug_typ: "buchung", bezug_id: gesperrt.buchung_id, ereignis: "rechnung_freigegeben", beschreibung: `Rechnung ${rechnungsnummer} freigegeben.`, bearbeiter });
+  await supabase.from("aenderungsprotokoll").insert({
+    bezug_typ: "buchung",
+    bezug_id: gesperrt.buchung_id,
+    ereignis: "rechnung_freigegeben",
+    beschreibung: schonFestgeschrieben
+      ? `Rechnung ${rechnungsnummer} war in FastBill bereits festgeschrieben – nur übernommen und versendet.`
+      : `Rechnung ${rechnungsnummer} freigegeben.`,
+    bearbeiter,
+  });
   try {
     await sendeRechnungsmail(supabase, rechnungId);
     return { rechnungsnummer, versendet: true, fehler: null };
@@ -675,12 +749,16 @@ export async function rechnungsPdf(supabase: any, rechnungId: string): Promise<B
   return ladePdf(inv.DOCUMENT_URL);
 }
 
-// Link in FastBills Oberflaeche (DETAILS_URL) -- fuer Entwuerfe, die noch kein PDF haben.
-export async function fastbillDetailsLink(fastbillInvoiceId: string): Promise<string | null> {
+// Zustand des Entwurfs in FastBill fuer die Buchungsseite: Link in FastBills
+// Oberflaeche (DETAILS_URL, fuer Entwuerfe, die noch kein PDF haben) und ob die
+// Rechnung dort inzwischen selbst festgeschrieben wurde -- dann vergibt
+// "Freigeben & Senden" keine Nummer mehr, sondern verschickt nur noch.
+export async function fastbillEntwurfStand(fastbillInvoiceId: string): Promise<{ link: string | null; festgeschrieben: boolean; nummer: string | null }> {
   try {
     const inv = await fastbillRechnungHolen(fastbillInvoiceId);
-    return inv?.DETAILS_URL || null;
+    const nummer = String(inv?.INVOICE_NUMBER || "").trim();
+    return { link: inv?.DETAILS_URL || null, festgeschrieben: String(inv?.TYPE || "") !== "draft" && !!nummer, nummer: nummer || null };
   } catch {
-    return null;
+    return { link: null, festgeschrieben: false, nummer: null };
   }
 }

@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { formatEUR, formatDatumZeit } from "@/lib/format";
 import { updateFinanzKonfiguration, speichereFastbillVorlage } from "@/lib/actions";
 import { fastbillVorlagen } from "@/lib/fastbill";
+import { RECHNUNG_MAIL_PLATZHALTER, STANDARD_MAIL_BETREFF, STANDARD_MAIL_TEXT } from "@/lib/rechnungen";
 import AktionsFormular from "../AktionsFormular";
 import { ladeKostenVergleich } from "@/lib/deckungsbeitrag";
 import Link from "next/link";
@@ -89,6 +90,25 @@ export default async function EinstellungenPage() {
             <textarea name="rechnung_zusatz_vorlage" className="au-input" rows={3} defaultValue={konfig?.rechnung_zusatz_vorlage || ""} style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.82rem" }} />
             <label className="au-label">Preisstufen-Zeile (Platzhalter {"{{preisstufe}}"}; nur bei Preis unter dem Normalpreis – {"{{stufe}}"}, {"{{stufen}}"}, {"{{normalpreis}}"})</label>
             <input name="rechnung_preisstufe_text" className="au-input" defaultValue={konfig?.rechnung_preisstufe_text || ""} />
+
+            {/* Mail, mit der die fertige Rechnung als PDF rausgeht (Resend) --
+                getrennt von den Texten auf der Rechnung selbst. */}
+            <label className="au-label">Rechnungsmail – Betreff</label>
+            <input name="rechnung_mail_betreff" className="au-input" defaultValue={konfig?.rechnung_mail_betreff || ""} placeholder={STANDARD_MAIL_BETREFF} />
+            <label className="au-label">Rechnungsmail – Text (die Rechnung selbst liegt immer als PDF bei)</label>
+            <textarea
+              name="rechnung_mail_text"
+              className="au-input"
+              rows={8}
+              defaultValue={konfig?.rechnung_mail_text || ""}
+              placeholder={STANDARD_MAIL_TEXT}
+              style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.82rem" }}
+            />
+            <p className="au-klein" style={{ margin: "-0.4rem 0 0.75rem" }}>
+              Leer = der angezeigte Standardtext. Signatur und Impressum/Datenschutz hängen automatisch darunter, einen Abmeldelink bekommt die Mail nie (Rechnung ist transaktional).
+              Platzhalter: {RECHNUNG_MAIL_PLATZHALTER.map((p) => p.key).join(", ")} – eine Zeile, in der nur leere Platzhalter stehen, fällt weg (z. B. {"{{zahlungsplan}}"} ohne Ratenzahlung).
+            </p>
+
             <p className="au-klein" style={{ margin: "-0.4rem 0 0.75rem" }}>
               Platzhalter der Vorlagen: <Link href="/seminartypen#rechnungstexte">Liste bei den Seminarkategorien</Link>. <code>**so**</code> wird fett. Ratenzahlung erzeugt automatisch einen Zahlungsplan unter der Einleitung.
               Nach einer Änderung auf der Buchungsseite „Entwurf neu aufbauen“ – dort erscheint das PDF aus FastBill.
