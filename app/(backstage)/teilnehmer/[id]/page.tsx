@@ -193,12 +193,12 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
 
   return (
     <main>
-      <p className="au-brotkrumen"><Link href="/teilnehmer">Teilnehmer</Link> <span>›</span> {t.vorname} {t.nachname}</p>
+      <p className="au-brotkrumen"><Link href="/teilnehmer">Teilnehmer</Link> <span>›</span> {t.vorname}{t.rufname ? ` „${t.rufname}“` : ""} {t.nachname}</p>
       <header className="au-dash-kopf">
         <div className="au-person-kopf">
           <span className="au-initialen au-initialen-gross">{initialen || "?"}</span>
           <div style={{ minWidth: 0 }}>
-            <h1>{t.vorname} {t.nachname}</h1>
+            <h1>{t.vorname}{t.rufname ? <span className="au-rufname"> „{t.rufname}“</span> : null} {t.nachname}</h1>
             <p className="au-termin-unterzeile">
               {t.position}
               {t.position && (hauptOrg || t.firma_freitext) ? " bei " : ""}
@@ -362,6 +362,11 @@ export default async function TeilnehmerDetailPage({ params }: { params: Promise
               <label className="au-label">Nachname</label>
               <input className="au-input" name="nachname" defaultValue={t.nachname} required />
             </div>
+          </div>
+          <div className="au-rufname-feld">
+            <label className="au-label">Rufname <span className="au-klein">– so möchte die Person angesprochen werden (z. B. „Ron“ statt „Ronny“)</span></label>
+            <input className="au-input" name="rufname" defaultValue={t.rufname || ""} placeholder="leer = Vorname" />
+            <p className="au-klein" style={{ margin: "0.2rem 0 0" }}>Wird in allen Mails als {"{{vorname}}"} und in Teilnehmerlisten verwendet – nicht auf Rechnungen und Anschriften.</p>
           </div>
 
           <div className="au-row-2">

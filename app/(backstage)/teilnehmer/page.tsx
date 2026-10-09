@@ -31,6 +31,7 @@ export default async function TeilnehmerPage() {
     return {
       id: t.id,
       vorname: t.vorname,
+      rufname: t.rufname || null,
       nachname: t.nachname,
       email: t.email,
       telefon: t.telefon,
@@ -104,6 +105,11 @@ export default async function TeilnehmerPage() {
               <label className="au-label">Nachname</label>
               <input className="au-input" name="nachname" required />
             </div>
+          </div>
+          <div className="au-rufname-feld">
+            <label className="au-label">Rufname <span className="au-klein">– so möchte die Person angesprochen werden (z. B. „Ron“ statt „Ronny“)</span></label>
+            <input className="au-input" name="rufname" placeholder="leer = Vorname" />
+            <p className="au-klein" style={{ margin: "0.2rem 0 0" }}>Wird in allen Mails als {"{{vorname}}"} und in Teilnehmerlisten verwendet – nicht auf Rechnungen und Anschriften.</p>
           </div>
 
           <div className="au-row-2">

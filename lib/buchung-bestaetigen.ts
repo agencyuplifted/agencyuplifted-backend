@@ -1,4 +1,4 @@
-import { formatDatum } from "./format";
+import { formatDatum, ansprechName } from "./format";
 import { getResend, ABSENDER } from "./email";
 import { sendeSystemMail } from "./systemmail";
 import { PROGRAMM_SYSTEM_MAIL_BESTAETIGT } from "./programm-buchung";
@@ -30,20 +30,20 @@ export async function bestaetigeBuchungIntern(supabase: any, buchungId: string, 
   // Seminar-Zahlungsbestaetigung ("das Seminar am …") ihre eigene System-Mail.
   const { data: programmPositionen } = await supabase
     .from("buchungspositionen")
-    .select("teilnehmer(vorname, email), programme(name), programm_optionen(titel)")
+    .select("teilnehmer(vorname, rufname, email), programme(name), programm_optionen(titel)")
     .eq("buchung_id", buchungId)
     .not("programm_id", "is", null);
   if (programmPositionen?.length) {
     const { data: buchungMeta } = await supabase
       .from("buchungen")
-      .select("rechnungsempfaenger:rechnungsempfaenger_teilnehmer_id(vorname, email)")
+      .select("rechnungsempfaenger:rechnungsempfaenger_teilnehmer_id(vorname, rufname, email)")
       .eq("id", buchungId)
       .maybeSingle();
     const erste: any = programmPositionen[0];
     const empfaenger = new Map<string, string>();
-    for (const p of programmPositionen as any[]) if (p.teilnehmer?.email) empfaenger.set(p.teilnehmer.email, p.teilnehmer.vorname || "");
+    for (const p of programmPositionen as any[]) if (p.teilnehmer?.email) empfaenger.set(p.teilnehmer.email, ansprechName(p.teilnehmer));
     const re: any = (buchungMeta as any)?.rechnungsempfaenger;
-    if (re?.email) empfaenger.set(re.email, re.vorname || "");
+    if (re?.email) empfaenger.set(re.email, ansprechName(re));
     await sendeSystemMail(
       supabase,
       PROGRAMM_SYSTEM_MAIL_BESTAETIGT,
@@ -59,7 +59,7 @@ export async function bestaetigeBuchungIntern(supabase: any, buchungId: string, 
   // Zahlungsbestaetigungs-Mail sofort an alle Teilnehmer dieser Buchung verschicken.
   const { data: positionen } = await supabase
     .from("buchungspositionen")
-    .select("teilnehmer(vorname, email), seminartermine(titel, datum_start, seminartypen(name))")
+    .select("teilnehmer(vorname, rufname, email), seminartermine(titel, datum_start, seminartypen(name))")
     .eq("buchung_id", buchungId);
 
   const ersteSeminarPosition = (positionen || []).find((p: any) => p.seminartermine);
@@ -73,7 +73,7 @@ export async function bestaetigeBuchungIntern(supabase: any, buchungId: string, 
 
   const empfaengerMap = new Map<string, string>();
   (positionen || []).forEach((p: any) => {
-    if (p.teilnehmer?.email) empfaengerMap.set(p.teilnehmer.email, p.teilnehmer.vorname || "");
+    if (p.teilnehmer?.email) empfaengerMap.set(p.teilnehmer.email, ansprechName(p.teilnehmer));
   });
 
   const { data: funnelMail } = await supabase

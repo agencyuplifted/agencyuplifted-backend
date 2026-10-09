@@ -8,6 +8,7 @@ import { speichereTeilnehmerSegment, loescheTeilnehmerSegment } from "@/lib/acti
 type Row = {
   id: string;
   vorname: string;
+  rufname?: string | null;
   nachname: string;
   email: string;
   telefon: string | null;
@@ -99,7 +100,7 @@ export default function TeilnehmerTable({
 
   const gefiltert = useMemo(() => {
     const liste = teilnehmer.filter((t) => {
-      const name = `${t.vorname} ${t.nachname}`.toLowerCase();
+      const name = `${t.vorname} ${t.rufname || ""} ${t.nachname}`.toLowerCase();
       const q = search.toLowerCase();
       const matchSearch =
         !search ||
@@ -265,7 +266,7 @@ export default function TeilnehmerTable({
                 <span className="au-plist-person">
                   <span className="au-initialen">{initialen(t.vorname, t.nachname)}</span>
                   <span className="au-plist-name">
-                    <strong>{t.vorname} {t.nachname}</strong>
+                    <strong>{t.vorname}{t.rufname ? <span className="au-rufname"> „{t.rufname}“</span> : null} {t.nachname}</strong>
                     <span className="au-klein">{[t.position, t.agentur].filter(Boolean).join(" · ") || "—"}</span>
                   </span>
                 </span>

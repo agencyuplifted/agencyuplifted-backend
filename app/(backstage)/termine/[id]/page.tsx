@@ -237,12 +237,12 @@ export default async function TerminDetailPage({
     supabase
       .from("buchungspositionen")
       .select(
-        "teilnehmer_id, seminartermin_option_id, beschreibung, preis, buchungen(status, metadata, organisationen(name)), teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle)"
+        "teilnehmer_id, seminartermin_option_id, beschreibung, preis, buchungen(status, metadata, organisationen(name)), teilnehmer(id, vorname, rufname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle)"
       )
       .eq("seminartermin_id", id),
     supabase
       .from("legacy_buchungen")
-      .select("teilnehmer(id, vorname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle), organisationen(name)")
+      .select("teilnehmer(id, vorname, rufname, nachname, email, telefon, mobiltelefon, ernaehrung_sonderwuensche, firma_freitext, rolle), organisationen(name)")
       .eq("seminartermin_id", id),
     supabase
       .from("seminartermin_zimmerpartner")
@@ -320,7 +320,7 @@ export default async function TerminDetailPage({
     }
     teilnehmerMap.set(p.teilnehmer.id, {
       id: p.teilnehmer.id,
-      name: `${p.teilnehmer.vorname} ${p.teilnehmer.nachname}`,
+      name: `${p.teilnehmer.vorname}${p.teilnehmer.rufname ? ` „${p.teilnehmer.rufname}“` : ""} ${p.teilnehmer.nachname}`,
       orga: p.buchungen?.organisationen?.name || p.teilnehmer.firma_freitext || "—",
       telefon: p.teilnehmer.telefon || p.teilnehmer.mobiltelefon || "—",
       email: p.teilnehmer.email || "—",
@@ -337,7 +337,7 @@ export default async function TerminDetailPage({
     if (!l.teilnehmer || teilnehmerMap.has(l.teilnehmer.id)) return;
     teilnehmerMap.set(l.teilnehmer.id, {
       id: l.teilnehmer.id,
-      name: `${l.teilnehmer.vorname} ${l.teilnehmer.nachname}`,
+      name: `${l.teilnehmer.vorname}${l.teilnehmer.rufname ? ` „${l.teilnehmer.rufname}“` : ""} ${l.teilnehmer.nachname}`,
       orga: l.organisationen?.name || l.teilnehmer.firma_freitext || "—",
       telefon: l.teilnehmer.telefon || l.teilnehmer.mobiltelefon || "—",
       email: l.teilnehmer.email || "—",

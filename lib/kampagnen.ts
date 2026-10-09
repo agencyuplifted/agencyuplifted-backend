@@ -35,6 +35,7 @@ export const TEILNAHME_STAND_LABEL: Record<string, string> = {
 export type GefilterterTeilnehmer = {
   id: string;
   vorname: string;
+  vorname_offiziell?: string;
   nachname: string;
   email: string;
   anrede: string;
@@ -83,7 +84,7 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
   const [{ data }, lifecycle, besuche, tagZuordnungen, nichtGeoeffnet, kampagnenLog, optionsPositionen] = await Promise.all([
     supabase
       .from("teilnehmer")
-      .select("id, vorname, nachname, email, anrede, rolle, unternehmer_status, marketing_consent_status, deaktiviert_am")
+      .select("id, vorname, rufname, nachname, email, anrede, rolle, unternehmer_status, marketing_consent_status, deaktiviert_am")
       .order("nachname", { ascending: true }),
     ladeAlleZeilen((von, bis) =>
       supabase.from("teilnehmer_lifecycle_stage").select("teilnehmer_id, anzahl_besuchte_seminare, teilnahme_stand, netzwerk_mitglied, vermutlich_ruhend").range(von, bis)
@@ -208,7 +209,9 @@ export async function ladeTeilnehmerFuerFilter(filter: FilterKriterien): Promise
     .filter((t: any) => regelnErfuellt(regeln, (b) => erfuellt(t, b)))
     .map((t: any) => ({
       id: t.id,
-      vorname: t.vorname,
+      // Ansprache: Rufname vor Vorname (Markus 10/2026)
+      vorname: (t.rufname || "").trim() || t.vorname,
+      vorname_offiziell: t.vorname,
       nachname: t.nachname,
       email: t.email,
       anrede: t.anrede || "keine_angabe",
@@ -364,7 +367,7 @@ export async function ermittleKampagnenEmpfaenger(kampagneId: string): Promise<{
   const empfaenger: KampagnenEmpfaenger[] = offen.map((t) => {
     const letzte = letzteMails.get(t.email.trim().toLowerCase()) || null;
     const variante = abAktiv(kampagne) ? varianteFuer(kampagne.id, t.id) : "A";
-    const werte = { vorname: t.vorname, nachname: t.nachname };
+    const werte = { vorname: t.vorname, vorname_offiziell: t.vorname_offiziell || t.vorname, nachname: t.nachname };
     return {
       ...t,
       letzteMarketingMailAm: letzte,

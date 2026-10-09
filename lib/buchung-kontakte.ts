@@ -17,7 +17,7 @@ export type Teilnehmerangabe = {
   roomOption?: string;
 };
 
-export type ErkannterTeilnehmer = { id: string; email: string; vorname: string; roomOption?: string };
+export type ErkannterTeilnehmer = { id: string; email: string; vorname: string; rufname?: string | null; roomOption?: string };
 
 export type Rechnungsadresse = { strasse: string; plz: string; ort: string };
 
@@ -75,11 +75,11 @@ export async function ermittleKontakte(
     // bekommen keine eigene Adresse (kein Feld im Formular).
     const istHauptkontaktOhneOrganisation = i === 0 && !organisationId;
 
-    const TEILNEHMER_SPALTEN = "id, privatadresse_strasse, privatadresse_plz, privatadresse_ort";
+    const TEILNEHMER_SPALTEN = "id, rufname, privatadresse_strasse, privatadresse_plz, privatadresse_ort";
     const bestehenderTeilnehmer = await findeTeilnehmerPerEmail(supabase, person.email, TEILNEHMER_SPALTEN);
 
     if (bestehenderTeilnehmer) {
-      teilnehmer.push({ id: bestehenderTeilnehmer.id, email: person.email, vorname: person.firstName, roomOption: person.roomOption });
+      teilnehmer.push({ id: bestehenderTeilnehmer.id, email: person.email, vorname: person.firstName, rufname: bestehenderTeilnehmer.rufname, roomOption: person.roomOption });
       if (
         istHauptkontaktOhneOrganisation &&
         !bestehenderTeilnehmer.privatadresse_strasse &&
@@ -131,7 +131,7 @@ export async function ermittleKontakte(
       if (teilnehmerError.code === UNIQUE_VERSTOSS) {
         const nachtraeglich = await findeTeilnehmerPerEmail(supabase, person.email, TEILNEHMER_SPALTEN);
         if (nachtraeglich) {
-          teilnehmer.push({ id: nachtraeglich.id, email: person.email, vorname: person.firstName, roomOption: person.roomOption });
+          teilnehmer.push({ id: nachtraeglich.id, email: person.email, vorname: person.firstName, rufname: nachtraeglich.rufname, roomOption: person.roomOption });
           continue;
         }
       }

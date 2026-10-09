@@ -39,7 +39,7 @@ export async function fordereLoginLinkAn(formData: FormData): Promise<Ergebnis> 
   const { pilot } = await getNetzwerkGruppen();
   const { data } = await admin
     .from("teilnehmer")
-    .select("id, vorname, anrede, email, teilnehmer_community_status!inner(status, community_gruppe_id)")
+    .select("id, vorname, rufname, anrede, email, teilnehmer_community_status!inner(status, community_gruppe_id)")
     .ilike("email", email.replace(/[%_\\]/g, "\\$&"))
     .is("deaktiviert_am", null)
     .eq("teilnehmer_community_status.community_gruppe_id", pilot)
@@ -48,7 +48,7 @@ export async function fordereLoginLinkAn(formData: FormData): Promise<Ergebnis> 
   // Bewusst immer dieselbe Antwort -- verraet nicht, wer Mitglied ist.
   if (treffer.length !== 1) return neutral;
   try {
-    await sendeNetzwerkLink({ email, vorname: treffer[0].vorname, anrede: treffer[0].anrede, art: "login" });
+    await sendeNetzwerkLink({ email, vorname: (treffer[0].rufname || "").trim() || treffer[0].vorname, anrede: treffer[0].anrede, art: "login" });
   } catch (e: any) {
     console.error("Netzwerk-Login-Link:", e.message);
   }

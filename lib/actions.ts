@@ -153,6 +153,7 @@ export async function createTeilnehmer(formData: FormData): Promise<VorlagenAkti
     unternehmer_status: formData.get("unternehmer_status") || "unbekannt",
     vorname,
     nachname: String(formData.get("nachname")),
+    rufname: String(formData.get("rufname") || "").trim() || null,
     email,
     email_zweite: formData.get("email_zweite") || null,
     telefon: formData.get("telefon") || null,
@@ -244,6 +245,7 @@ export async function updateTeilnehmerStammdaten(formData: FormData) {
       unternehmer_status: formData.get("unternehmer_status") || "unbekannt",
       vorname: String(formData.get("vorname")),
       nachname: String(formData.get("nachname")),
+      ...(formData.has("rufname") ? { rufname: String(formData.get("rufname") || "").trim() || null } : {}),
       email: String(formData.get("email")),
       email_zweite: formData.get("email_zweite") || null,
       telefon: formData.get("telefon") || null,
@@ -5608,7 +5610,7 @@ export async function ladeInPilotkreisEin(formData: FormData): Promise<VorlagenA
   const { pilot } = await getNetzwerkGruppen();
   const { data: personen, error } = await supabase
     .from("teilnehmer")
-    .select("id, vorname, nachname, anrede, email, marketing_consent_status, deaktiviert_am, teilnehmer_community_status(community_gruppe_id)")
+    .select("id, vorname, rufname, nachname, anrede, email, marketing_consent_status, deaktiviert_am, teilnehmer_community_status(community_gruppe_id)")
     .in("id", ids);
   if (error) return { fehler: error.message };
 
@@ -5622,7 +5624,7 @@ export async function ladeInPilotkreisEin(formData: FormData): Promise<VorlagenA
     const { error: insFehler } = await supabase.from("teilnehmer_community_status").insert({ teilnehmer_id: p.id, community_gruppe_id: pilot, status: "eingeladen" });
     if (insFehler) { uebersprungen.push(`${name} (${insFehler.message})`); continue; }
     try {
-      await sendeNetzwerkLink({ email: p.email, vorname: p.vorname, anrede: p.anrede, art: "einladung" });
+      await sendeNetzwerkLink({ email: p.email, vorname: (p.rufname || "").trim() || p.vorname, anrede: p.anrede, art: "einladung" });
       eingeladen.push(name);
     } catch (e: any) {
       // Ohne Mail keine "eingeladen"-Leiche hinterlassen
@@ -5641,11 +5643,11 @@ export async function sendeNetzwerkEinladungErneut(formData: FormData): Promise<
   const loginFehler = await pruefeBackstageLogin();
   if (loginFehler) return { fehler: loginFehler };
   const supabase = getSupabaseAdmin();
-  const { data: p } = await supabase.from("teilnehmer").select("vorname, anrede, email, marketing_consent_status").eq("id", String(formData.get("teilnehmer_id") || "")).maybeSingle();
+  const { data: p } = await supabase.from("teilnehmer").select("vorname, rufname, anrede, email, marketing_consent_status").eq("id", String(formData.get("teilnehmer_id") || "")).maybeSingle();
   if (!p?.email) return { fehler: "Keine E-Mail-Adresse." };
   if (NETZWERK_AUSGESCHLOSSEN.includes(p.marketing_consent_status)) return { fehler: "Einwilligung fehlt – keine Einladung möglich." };
   try {
-    await sendeNetzwerkLink({ email: p.email, vorname: p.vorname, anrede: p.anrede, art: "einladung" });
+    await sendeNetzwerkLink({ email: p.email, vorname: (p.rufname || "").trim() || p.vorname, anrede: p.anrede, art: "einladung" });
   } catch (e: any) {
     return { fehler: e.message };
   }

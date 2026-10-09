@@ -5,6 +5,13 @@ export function formatEUR(n: number) {
 export function formatEURGanz(n: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(Math.round(n));
 }
+// Wie die Person angesprochen werden moechte: Rufname (z. B. "Ron"), sonst
+// Vorname. Fuer Mails/Anrede und Teilnehmerlisten -- Rechnungen, Anschriften und
+// Hotellisten bleiben beim offiziellen Vornamen (Markus 10/2026).
+export function ansprechName(t: { vorname?: string | null; rufname?: string | null } | null | undefined): string {
+  return (t?.rufname || "").trim() || (t?.vorname || "").trim();
+}
+
 export function formatDatum(d: string) {
   return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(d));
 }

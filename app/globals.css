@@ -6537,3 +6537,8 @@ a.au-sz-chip { text-decoration: none; }
 .au-suchauswahl-liste li.markiert { background: var(--color-accent-soft); }
 .au-suchauswahl-liste li.gewaehlt span { font-weight: 600; }
 .au-suchauswahl-liste li.leer { cursor: default; color: var(--color-text-faint); font-size: 0.8rem; }
+
+/* Rufname ("Ronny „Ron“ Ullrich") */
+.au-rufname { color: var(--color-accent); font-weight: 600; }
+.au-rufname-feld { margin-bottom: 1rem; padding: 0.6rem 0.75rem; border-left: 3px solid var(--color-accent); background: var(--color-accent-soft); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.au-rufname-feld .au-input { margin-bottom: 0; background: var(--color-surface); }

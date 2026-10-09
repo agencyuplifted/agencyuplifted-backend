@@ -33,6 +33,8 @@ type Empfaenger = {
   teilnehmer_id: string | null;
   firma: string | null;
   vorname: string;
+  /** nur fuer die Anrede in der Mail, nie auf der Rechnung */
+  rufname?: string | null;
   nachname: string;
   email: string | null;
   strasse: string | null;
@@ -60,8 +62,8 @@ async function ladeBuchung(supabase: any, buchungId: string) {
     .select(
       "id, buchungsnummer, status, metadata, organisation_id, " +
         "organisationen(id, name, rechnungsadresse_strasse, rechnungsadresse_plz, rechnungsadresse_ort, rechnungsadresse_land, ust_id, fastbill_customer_id), " +
-        "rechnungsempfaenger:rechnungsempfaenger_teilnehmer_id(id, vorname, nachname, email, privatadresse_strasse, privatadresse_plz, privatadresse_ort, privatadresse_land, fastbill_customer_id), " +
-        "buchungspositionen(id, beschreibung, listenpreis, rabatt_betrag, preis, metadata, teilnehmer(id, vorname, nachname, email), " +
+        "rechnungsempfaenger:rechnungsempfaenger_teilnehmer_id(id, vorname, rufname, nachname, email, privatadresse_strasse, privatadresse_plz, privatadresse_ort, privatadresse_land, fastbill_customer_id), " +
+        "buchungspositionen(id, beschreibung, listenpreis, rabatt_betrag, preis, metadata, teilnehmer(id, vorname, rufname, nachname, email), " +
         "seminartermin_optionen(titel, rechnung_leistungstext, preisstaffeln(name, preis)), " +
         "seminartermine(id, kennung, titel, datum_start, datum_ende, vorabend_anreise_datum, vorabendanreise_inklusive, veranstaltungsorte(name, ort, nahe_grossstadt), " +
         "seminartypen(name, rechnung_positionsvorlage, rechnung_fastbill_template_id, rechnung_einleitung)), programme(name), programm_optionen(titel))"
@@ -85,6 +87,7 @@ function empfaengerAus(b: any): Empfaenger {
       teilnehmer_id: kontakt?.id || null,
       firma: o.name,
       vorname: kontakt?.vorname || "",
+      rufname: kontakt?.rufname || null,
       nachname: kontakt?.nachname || "",
       email: kontakt?.email || null,
       strasse: o.rechnungsadresse_strasse || null,
@@ -101,6 +104,7 @@ function empfaengerAus(b: any): Empfaenger {
     teilnehmer_id: kontakt?.id || null,
     firma: null,
     vorname: kontakt?.vorname || "",
+    rufname: kontakt?.rufname || null,
     nachname: kontakt?.nachname || "",
     email: kontakt?.email || null,
     strasse: re?.privatadresse_strasse || null,
@@ -445,7 +449,8 @@ export async function sendeRechnungsmail(supabase: any, rechnungId: string): Pro
   const b = await ladeBuchung(supabase, r.buchung_id);
   const termin = (b.buchungspositionen || []).find((p: any) => p.seminartermine)?.seminartermine;
   const leistung = termin ? `${termin.titel || termin.seminartypen?.name || "Seminar"} (${zeitraum(termin)})` : "Deine Buchung";
-  const vorname = r.empfaenger?.vorname || "";
+  // Anrede mit Rufname (persoenliche Korrespondenz), Rechnung selbst bleibt offiziell
+  const vorname = (r.empfaenger?.rufname || "").trim() || r.empfaenger?.vorname || "";
   const text =
     `Hallo${vorname ? ` ${vorname}` : ""},\n\n` +
     `anbei erhältst Du die Rechnung ${r.rechnungsnummer} für ${leistung}.` +

@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
   // Eingangsbestaetigung an alle Teilnehmer (+ Rechnungsempfaenger), Text im
   // Backstage unter Funnel-Mails editierbar
   const empfaenger = new Map<string, string>();
-  for (const t of [...teilnehmer, rechnungsempfaenger]) empfaenger.set(t.email, t.vorname);
+  for (const t of [...teilnehmer, rechnungsempfaenger]) empfaenger.set(t.email, (t.rufname || "").trim() || t.vorname);
   await sendeSystemMail(
     supabase,
     PROGRAMM_SYSTEM_MAIL_EINGANG,

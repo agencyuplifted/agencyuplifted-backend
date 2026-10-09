@@ -9,6 +9,7 @@ import { aktuellerPreisNetto, sortierteStaffeln, istPreisstaffelAktiv, letzterGu
 type Teilnehmer = {
   id: string;
   vorname: string;
+  rufname?: string | null;
   nachname: string;
   email: string;
   firma_freitext?: string | null;
@@ -73,7 +74,7 @@ export default function BuchungForm({
         .map((t) => {
           const z = t.teilnehmer_organisationen || [];
           const firma = (z.find((x) => x.ist_hauptorganisation) || z[0])?.organisationen?.name || t.firma_freitext || "";
-          return { value: t.id, label: `${t.vorname} ${t.nachname}`.trim(), sub: [t.email, firma].filter(Boolean).join(" · ") };
+          return { value: t.id, label: `${t.vorname}${t.rufname ? ` „${t.rufname}“` : ""} ${t.nachname}`.trim(), sub: [t.email, firma].filter(Boolean).join(" · ") };
         }),
     [teilnehmer]
   );

@@ -7,11 +7,11 @@ export async function ladeAbmeldeEmpfaenger(token: string): Promise<{ email: str
   if (!ziel) return null;
   const supabase = getSupabaseAdmin();
   const tabelle = ziel.typ === "t" ? "teilnehmer" : ziel.typ === "l" ? "leads" : "warteliste";
-  const spalten = ziel.typ === "t" ? "email, vorname" : "email, name";
+  const spalten = ziel.typ === "t" ? "email, vorname, rufname" : "email, name";
   const { data } = await supabase.from(tabelle).select(spalten).eq("id", ziel.id).maybeSingle();
   const d = data as any;
   if (!d?.email) return null;
-  return { email: String(d.email).trim().toLowerCase(), vorname: d.vorname || String(d.name || "").split(" ")[0] || "" };
+  return { email: String(d.email).trim().toLowerCase(), vorname: (d.rufname || "").trim() || d.vorname || String(d.name || "").split(" ")[0] || "" };
 }
 
 export async function istAbgemeldet(email: string): Promise<boolean> {

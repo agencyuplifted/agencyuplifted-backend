@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
     // Transaktionale Mail: Signatur/Rechtliches wie im Funnel, aber nie ein Abmeldelink
     const bausteine = await ladeBausteine(supabase);
     for (const t of teilnehmerIds) {
-      const werte = { vorname: t.vorname, seminartitel, seminardatum };
+      const werte = { vorname: (t.rufname || "").trim() || t.vorname, seminartitel, seminardatum };
       const betreff = renderPlatzhalter(funnelMail.data.betreff, werte);
       const inhaltHtml = baueMailHtml(renderPlatzhalter(funnelMail.data.inhalt, werte), bausteine, { ...schalterAus(funnelMail.data), abmelden: false }, null);
 

@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "./supabase";
 import { getResend, ABSENDER } from "./email";
-import { formatDatum, formatDatumsspanneLang, splitName } from "./format";
+import { formatDatum, formatDatumsspanneLang, splitName, ansprechName } from "./format";
 import { seminarLinks } from "./seminar-links";
 import { ladeBausteine, schalterAus, baueMailHtml, abmeldeUrl, abmeldeHeader, ladeSperrliste, type AbmeldeTyp } from "./mail-bausteine";
 
@@ -31,7 +31,8 @@ export const TRIGGER_LABEL: Record<TriggerTyp, string> = {
 };
 
 export const PLATZHALTER_HILFE: { key: string; beschreibung: string; verfuegbarBei: TriggerTyp[] }[] = [
-  { key: "{{vorname}}", beschreibung: "Vorname des Empfängers", verfuegbarBei: ["buchung_erstellt", "vor_seminarstart", "nach_seminarende", "lead_erstellt", "warteliste_eingetragen"] },
+  { key: "{{vorname}}", beschreibung: "Ansprache: Rufname, falls gepflegt (z. B. Ron), sonst Vorname", verfuegbarBei: ["buchung_erstellt", "vor_seminarstart", "nach_seminarende", "lead_erstellt", "warteliste_eingetragen"] },
+  { key: "{{vorname_offiziell}}", beschreibung: "Offizieller Vorname (z. B. Ronny), auch wenn ein Rufname gepflegt ist", verfuegbarBei: ["buchung_erstellt", "vor_seminarstart", "nach_seminarende", "lead_erstellt", "warteliste_eingetragen"] },
   { key: "{{nachname}}", beschreibung: "Nachname des Empfängers", verfuegbarBei: ["buchung_erstellt", "vor_seminarstart", "nach_seminarende", "lead_erstellt", "warteliste_eingetragen"] },
   { key: "{{seminartitel}}", beschreibung: "Titel bzw. Name des Seminars", verfuegbarBei: ["buchung_erstellt", "vor_seminarstart", "nach_seminarende"] },
   { key: "{{seminardatum}}", beschreibung: "Datum des Seminartermins", verfuegbarBei: ["buchung_erstellt", "vor_seminarstart", "nach_seminarende"] },
@@ -77,7 +78,7 @@ export function renderPlatzhalter(text: string, werte: Record<string, string>): 
 async function teilnehmerlisteText(supabase: any, seminarterminId: string): Promise<string> {
   const { data: positionen } = await supabase
     .from("buchungspositionen")
-    .select("teilnehmer(vorname, nachname, teilnehmerliste_opt_out), buchungen(status)")
+    .select("teilnehmer(vorname, rufname, nachname, teilnehmerliste_opt_out), buchungen(status)")
     .eq("seminartermin_id", seminarterminId);
   const { data: terminMitarbeiter } = await supabase
     .from("seminartermin_mitarbeiter")
@@ -89,7 +90,8 @@ async function teilnehmerlisteText(supabase: any, seminarterminId: string): Prom
     // Opt-out respektieren -- vorher standen auch Personen mit
     // "Nicht auf Teilnehmerlisten aufführen" in der Mail-Liste.
     if (p.buchungen?.status === "storniert" || !p.teilnehmer || p.teilnehmer.teilnehmerliste_opt_out) return;
-    zeilen.push(`${p.teilnehmer.vorname} ${p.teilnehmer.nachname}`);
+    // Rufname: so wollen sie im Seminar angesprochen werden
+    zeilen.push(`${ansprechName(p.teilnehmer)} ${p.teilnehmer.nachname}`);
   });
   (terminMitarbeiter || []).forEach((tm: any) => {
     if (!tm.mitarbeiter?.name) return;
@@ -137,7 +139,8 @@ function seminarEmpfaenger(p: any, terminId: string, basis: Awaited<ReturnType<t
   return {
     email: p.teilnehmer.email,
     werte: {
-      vorname: p.teilnehmer.vorname,
+      vorname: ansprechName(p.teilnehmer),
+      vorname_offiziell: p.teilnehmer.vorname,
       nachname: p.teilnehmer.nachname,
       seminartitel: basis.titel,
       seminardatum: basis.seminardatum,
@@ -202,14 +205,15 @@ async function sammleFaelligeEmpfaenger(
       if (!imFenster(anchor)) continue;
       const { data: positionen } = await supabase
         .from("buchungspositionen")
-        .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status), seminartermin_optionen(titel)")
+        .select("teilnehmer(id, vorname, rufname, nachname, email, marketing_consent_status), seminartermin_optionen(titel)")
         .eq("buchung_id", b.id);
       const empfaenger: Empfaenger[] = (positionen || [])
         .filter((p: any) => p.teilnehmer?.email && p.teilnehmer?.marketing_consent_status !== "abgemeldet")
         .map((p: any) => ({
           email: p.teilnehmer.email,
           werte: {
-            vorname: p.teilnehmer.vorname,
+            vorname: ansprechName(p.teilnehmer),
+            vorname_offiziell: p.teilnehmer.vorname,
             nachname: p.teilnehmer.nachname,
             firma: b.organisationen?.name || "",
             option: p.seminartermin_optionen?.titel || "",
@@ -240,7 +244,7 @@ async function sammleFaelligeEmpfaenger(
 
       const { data: positionen } = await supabase
         .from("buchungspositionen")
-        .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status), buchungen(status), seminartermin_optionen(titel)")
+        .select("teilnehmer(id, vorname, rufname, nachname, email, marketing_consent_status), buchungen(status), seminartermin_optionen(titel)")
         .eq("seminartermin_id", t.id);
       const basis = await seminarWerteBasis(supabase, t);
 
@@ -534,7 +538,7 @@ async function handversandDaten(supabase: any, funnelMailId: string, terminId: s
   const [{ data: positionen }, { data: log }, sperrliste, basis] = await Promise.all([
     supabase
       .from("buchungspositionen")
-      .select("teilnehmer(id, vorname, nachname, email, marketing_consent_status), buchungen(status, metadata), seminartermin_optionen(titel)")
+      .select("teilnehmer(id, vorname, rufname, nachname, email, marketing_consent_status), buchungen(status, metadata), seminartermin_optionen(titel)")
       .eq("seminartermin_id", terminId),
     supabase.from("funnel_versand_log").select("empfaenger_email, gesendet_am, status").eq("funnel_mail_id", funnelMailId).eq("bezug_id", terminId),
     ladeSperrliste(supabase),
